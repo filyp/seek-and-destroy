@@ -1,11 +1,13 @@
 # %%
-import torch as pt
-from transformers import AutoModelForCausalLM, AutoTokenizer, LlamaForCausalLM
-from datasets import load_dataset
-import numpy as np
 import time
-from utils import *
+
 import bitsandbytes as bnb
+import numpy as np
+import torch as pt
+from datasets import load_dataset
+from transformers import AutoModelForCausalLM, AutoTokenizer, LlamaForCausalLM
+
+from utils import *
 
 # model_id = "microsoft/Phi-3-mini-4k-instruct"
 model_id = "microsoft/Phi-3.5-mini-instruct"
@@ -32,17 +34,11 @@ for layer in model.model.layers:
     layer.mlp.activation_fn = pt.nn.LeakyReLU(negative_slope=0.12)
 print(eval_perplexity(model, eval_chunks[:32]))
 
-# %%
-
-# %%
-
-# %%
-
 # %% prepare training
 train_chunks = dataset_to_equal_chunks(dataset["train"], tokenizer)
 # optimizer = bnb.optim.Adam8bit(model.parameters(), lr=0.001) # instead of torch.optim.Adam
-gradient_acc_steps = 64
-optimizer = pt.optim.SGD(model.parameters(), lr=0.000003)
+gradient_acc_steps = 128
+optimizer = pt.optim.SGD(model.parameters(), lr=0.000002)
 loss_fn = pt.nn.CrossEntropyLoss()
 
 # %%
@@ -50,10 +46,10 @@ loss_fn = pt.nn.CrossEntropyLoss()
 batch_size = 1
 optimizer.zero_grad()
 for offset in range(0, len(train_chunks) - batch_size, batch_size):
-# for offset in range(0, 256, batch_size):
+    # for offset in range(0, 256, batch_size):
     # prepare
     batch = train_chunks[offset : offset + batch_size].to(device)
-    
+
     # forward pass
     output = model(batch)
     # compute loss
@@ -64,7 +60,7 @@ for offset in range(0, len(train_chunks) - batch_size, batch_size):
 
     # backprop
     loss.backward()
-        
+
     if (offset / batch_size + 1) % gradient_acc_steps == 0:
         # grad = model.model.layers[15].mlp.down_proj.weight.grad
         # print(f"grad: {pt.norm(grad)}")
@@ -78,7 +74,7 @@ for offset in range(0, len(train_chunks) - batch_size, batch_size):
         pt.cuda.empty_cache()
         ppl = eval_perplexity(model, eval_chunks[:32])
         print(ppl)
-    
+
     # clean up memory
     del output, pred, true, pred_flat, loss
     pt.cuda.empty_cache()
@@ -90,7 +86,9 @@ for offset in range(0, len(train_chunks) - batch_size, batch_size):
 # %%
 
 # %%
-
+# s1 = grad_samples[0]
+# s2 = grad_samples[5]
+# pt.cosine_similarity(s1.reshape(1, -1), s2.reshape(1, -1))
 # %%
 
 # %%
