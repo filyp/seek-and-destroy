@@ -67,31 +67,26 @@ ax.set_ylabel("Targetted response's log probability")
 
 # %% latent attack
 epsilon = 0.001
-pert_decay = 0.99  # 0.99
-example = unsafe_examples[200]
+pert_decay = 0.99
+epsilon_adaptation_speed = 0
+example = unsafe_examples[205]
 
 perturbation = None
 history_d_perturbation = []
 attack_scores = []
 perturbation_norms = []
 
-for i in range(50):
+for i in range(20):
     # forward
-    resp_log_prob, _ = get_response_log_prob(example, model, tokenizer)
-    print(f"{resp_log_prob.item()=}")
+    resp_log_prob, resp_len = get_response_log_prob(example, model, tokenizer)
     # backward
     resp_log_prob.backward()
 
-    attack_scores.append(resp_log_prob.cpu().detach().float())
+    attack_scores.append(resp_log_prob.cpu().detach().float() / resp_len)
     perturbation_norms.append(perturbation.norm().cpu().detach().float())
-    # print(d_perturbation.norm())
-
-    # # stop the loop early when the response has ~2% probability
-    # if response_log_prob > -20:  # -4:
-    #     break
+    print(f"attack_score = {attack_scores[-1].item():.4f}")
 
     # update perturbation
-    # perturbation += d_perturbation / d_perturbation.norm() * epsilon
     perturbation += d_perturbation * epsilon
     perturbation *= pert_decay ** (epsilon * 1000)
 
@@ -101,8 +96,7 @@ for i in range(50):
         p1 = history_d_perturbation[-1]
         p2 = history_d_perturbation[-2]
         cossim = pt.cosine_similarity(p1.reshape(1, -1), p2.reshape(1, -1))
-        # assert cossim > 0.2
-        rescale_factor = pt.exp((cossim - 0.9) * 1)
+        rescale_factor = pt.exp((cossim - 0.9) * epsilon_adaptation_speed)
         epsilon = (epsilon * rescale_factor).item()
         print(f"{cossim.item()=}\n{rescale_factor.item()=}\n{epsilon=}")
         print()
@@ -124,8 +118,8 @@ ax.legend()
 fig
 
 
-# %%
-
-# %%
+# %% change of activation function
+for layer in model.model.layers:
+    layer.mlp.activation_fn = pt.nn.LeakyReLU(negative_slope=0.12)
 
 # %%
