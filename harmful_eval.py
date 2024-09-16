@@ -7,6 +7,7 @@ from pathlib import Path
 import bitsandbytes as bnb
 import matplotlib.pyplot as plt
 import numpy as np
+import pandas as pd
 import torch as pt
 from datasets import load_dataset
 from tqdm import tqdm
@@ -64,11 +65,13 @@ wandb.init(
     project="softened_derivative",
     # track hyperparameters and run metadata
     config=dict(
-        epsilon=0.01,
+        epsilon=0.001,
         pert_decay=0.99,
-        epsilon_adaptation_speed=0,
-        thresh=0.95,
+        # epsilon_adaptation_speed=0,
+        # thresh=0.95,
     ),
+    # run name
+    name="LeakyReLU_0.12",
 )
 
 example = unsafe_examples[205]
@@ -78,19 +81,18 @@ last_d_perturbation_post_decay = None
 c = wandb.config
 epsilon = c.epsilon
 
-for i in tqdm(range(200)):
+for i in tqdm(range(1000)):
     # forward
     resp_log_prob, resp_len = get_response_log_prob(example, model, tokenizer)
     # backward
     resp_log_prob.backward()
 
     # update perturbation
-    _last_perturbation = perturbation.clone().detach() if isinstance(perturbation, pt.Tensor) else perturbation
-    # _last_perturbation = copy.deepcopy(perturbation)
+    _last_perturbation = perturbation.clone().detach() if isinstance(perturbation, pt.Tensor) else perturbation  # fmt: skip
     perturbation += d_perturbation * epsilon
     perturbation *= c.pert_decay ** (epsilon * 1000)
     d_perturbation_post_decay = perturbation - _last_perturbation
-    
+
     if last_d_perturbation_post_decay is None:
         last_d_perturbation_post_decay = d_perturbation_post_decay
         continue
@@ -98,23 +100,35 @@ for i in tqdm(range(200)):
     p1 = last_d_perturbation_post_decay
     p2 = d_perturbation_post_decay
     cossim = pt.cosine_similarity(p1.reshape(1, -1), p2.reshape(1, -1))
-    # rescale_factor = pt.exp((cossim - c.thresh) * c.epsilon_adaptation_speed)
-    rescale_factor = max(0.5, (cossim - c.thresh) * c.epsilon_adaptation_speed + 1)
-    epsilon *= rescale_factor
+    # rescale_factor = max(0.5, (cossim - c.thresh) * c.epsilon_adaptation_speed + 1)
+    # epsilon *= rescale_factor
     last_d_perturbation_post_decay = d_perturbation_post_decay
 
     wandb.log(
         dict(
             attack_score=resp_log_prob.float() / resp_len,
             perturbation_norm=perturbation.norm().float(),
-            epsilon=epsilon.float(),
             cossim=cossim.float(),
-            rescale_factor=float(rescale_factor),
+            # epsilon=epsilon.float(),
+            # rescale_factor=float(rescale_factor),
         )
     )
 
 wandb.finish()
 
 # %% change of activation function
-# for layer in model.model.layers:
-#     layer.mlp.activation_fn = pt.nn.LeakyReLU(negative_slope=0.12)
+for layer in model.model.layers:
+    layer.mlp.activation_fn = pt.nn.LeakyReLU(negative_slope=0.12)
+
+# %%
+# get data from the last wandb run through the API
+api = wandb.Api()
+runs = list(api.runs("softened_derivative"))
+print(len(runs))
+run = runs[-1]
+# get all steps, not just 500
+steps = pd.DataFrame(run.scan_history())
+
+# 2d line plot using matplotlib of attack score vs perturbation norm
+plt.plot(steps["perturbation_norm"], steps["attack_score"])
+# %%

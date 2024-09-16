@@ -5,6 +5,7 @@ import bitsandbytes as bnb
 import numpy as np
 import torch as pt
 from datasets import load_dataset
+from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer, LlamaForCausalLM
 
 from utils import *
@@ -26,7 +27,7 @@ dataset = load_dataset("wikitext", "wikitext-2-v1")
 
 # %% prepare the data
 eval_chunks = dataset_to_equal_chunks(dataset["validation"], tokenizer)
-print(f"num chunks: {len(eval_chunks)}")
+print(f"num eval chunks: {len(eval_chunks)}")
 
 # # %% eval pre and post change of activation
 print(eval_perplexity(model, eval_chunks[:32]))
@@ -45,7 +46,7 @@ loss_fn = pt.nn.CrossEntropyLoss()
 
 batch_size = 1
 optimizer.zero_grad()
-for offset in range(0, len(train_chunks) - batch_size, batch_size):
+for offset in tqdm(range(0, len(train_chunks) - batch_size, batch_size)):
     # for offset in range(0, 256, batch_size):
     # prepare
     batch = train_chunks[offset : offset + batch_size].to(device)
@@ -79,7 +80,8 @@ for offset in range(0, len(train_chunks) - batch_size, batch_size):
     del output, pred, true, pred_flat, loss
     pt.cuda.empty_cache()
 
-# %%
+# %% save the model
+model.save_pretrained("Phi-3.5-mini-instruct-LeakyReLU_0.12")
 
 # %%
 
