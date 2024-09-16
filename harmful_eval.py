@@ -1,4 +1,5 @@
 # %%
+import copy
 import time
 from itertools import islice
 from pathlib import Path
@@ -8,8 +9,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import torch as pt
 from datasets import load_dataset
+from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer, LlamaForCausalLM
 
+import wandb
 from utils import *
 
 # model_id = "meta-llama/Meta-Llama-3.1-8B-Instruct"
@@ -48,10 +51,6 @@ def add_perturbation_hook(module, args, output):
     assert len(output) == 2 and not isinstance(output[1], pt.Tensor)
     activation, cache = output
 
-    # prepare perturbation - only executed in the first loop
-    if perturbation is None:
-        perturbation = pt.zeros_like(activation)
-
     activation += perturbation
     return (activation, cache)
 
@@ -59,67 +58,63 @@ def add_perturbation_hook(module, args, output):
 model.model.layers[3].register_full_backward_hook(save_grad_hook)
 model.model.layers[3].register_forward_hook(add_perturbation_hook)
 
-# %%
-# new figure
-fig, ax = plt.subplots()
-ax.set_xlabel("Perturbation norm")
-ax.set_ylabel("Targetted response's log probability")
-
 # %% latent attack
-epsilon = 0.001
-pert_decay = 0.99
-epsilon_adaptation_speed = 0
+wandb.init(
+    # set the wandb project where this run will be logged
+    project="softened_derivative",
+    # track hyperparameters and run metadata
+    config=dict(
+        epsilon=0.01,
+        pert_decay=0.99,
+        epsilon_adaptation_speed=0,
+        thresh=0.95,
+    ),
+)
+
 example = unsafe_examples[205]
 
-perturbation = None
-history_d_perturbation = []
-attack_scores = []
-perturbation_norms = []
+perturbation = 0
+last_d_perturbation_post_decay = None
+c = wandb.config
+epsilon = c.epsilon
 
-for i in range(20):
+for i in tqdm(range(200)):
     # forward
     resp_log_prob, resp_len = get_response_log_prob(example, model, tokenizer)
     # backward
     resp_log_prob.backward()
 
-    attack_scores.append(resp_log_prob.cpu().detach().float() / resp_len)
-    perturbation_norms.append(perturbation.norm().cpu().detach().float())
-    print(f"attack_score = {attack_scores[-1].item():.4f}")
-
     # update perturbation
+    _last_perturbation = perturbation.clone().detach() if isinstance(perturbation, pt.Tensor) else perturbation
+    # _last_perturbation = copy.deepcopy(perturbation)
     perturbation += d_perturbation * epsilon
-    perturbation *= pert_decay ** (epsilon * 1000)
+    perturbation *= c.pert_decay ** (epsilon * 1000)
+    d_perturbation_post_decay = perturbation - _last_perturbation
+    
+    if last_d_perturbation_post_decay is None:
+        last_d_perturbation_post_decay = d_perturbation_post_decay
+        continue
 
-    history_d_perturbation.append(d_perturbation)
+    p1 = last_d_perturbation_post_decay
+    p2 = d_perturbation_post_decay
+    cossim = pt.cosine_similarity(p1.reshape(1, -1), p2.reshape(1, -1))
+    # rescale_factor = pt.exp((cossim - c.thresh) * c.epsilon_adaptation_speed)
+    rescale_factor = max(0.5, (cossim - c.thresh) * c.epsilon_adaptation_speed + 1)
+    epsilon *= rescale_factor
+    last_d_perturbation_post_decay = d_perturbation_post_decay
 
-    if len(history_d_perturbation) >= 2:
-        p1 = history_d_perturbation[-1]
-        p2 = history_d_perturbation[-2]
-        cossim = pt.cosine_similarity(p1.reshape(1, -1), p2.reshape(1, -1))
-        rescale_factor = pt.exp((cossim - 0.9) * epsilon_adaptation_speed)
-        epsilon = (epsilon * rescale_factor).item()
-        print(f"{cossim.item()=}\n{rescale_factor.item()=}\n{epsilon=}")
-        print()
+    wandb.log(
+        dict(
+            attack_score=resp_log_prob.float() / resp_len,
+            perturbation_norm=perturbation.norm().float(),
+            epsilon=epsilon.float(),
+            cossim=cossim.float(),
+            rescale_factor=float(rescale_factor),
+        )
+    )
 
-print(f"Attack took {i} iterations")
-
-# %%
-# ax.plot(perturbation_norms, attack_scores, label=f"{pert_decay=}", marker="o", alpha=0.1)
-# change alpha of only markers, not the line
-ax.plot(
-    perturbation_norms,
-    attack_scores,
-    label=f"{pert_decay=}",
-    marker="o",
-    markersize=6,
-    markerfacecolor=(1, 1, 1, 0.1),
-)
-ax.legend()
-fig
-
+wandb.finish()
 
 # %% change of activation function
-for layer in model.model.layers:
-    layer.mlp.activation_fn = pt.nn.LeakyReLU(negative_slope=0.12)
-
-# %%
+# for layer in model.model.layers:
+#     layer.mlp.activation_fn = pt.nn.LeakyReLU(negative_slope=0.12)
