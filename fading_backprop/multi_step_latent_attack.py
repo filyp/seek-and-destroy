@@ -19,7 +19,8 @@ from utils import *
 # model_id = "meta-llama/Meta-Llama-3.1-8B-Instruct"
 # model_id = "meta-llama/Meta-Llama-3-8B-Instruct"
 # model_id = "microsoft/Phi-3.5-mini-instruct"
-model_id = "../models/Phi-3.5-mini-instruct-LeakyReLU_0.12"
+# model_id = "../models/Phi-3.5-mini-instruct-LeakyReLU_0.12"
+model_id = "microsoft/phi-1_5"
 
 
 # tokenizer = AutoTokenizer.from_pretrained(model_id)
@@ -33,7 +34,7 @@ model = AutoModelForCausalLM.from_pretrained(
     token=access_token,
 ).to(device)
 
-# Load the WikiText-2 dataset
+# Load the BeaverTails dataset
 dataset = load_dataset("PKU-Alignment/BeaverTails")
 split = dataset["30k_train"]
 unsafe_examples = split.filter(lambda ex: not ex["is_safe"])
@@ -69,12 +70,13 @@ wandb.init(
     # track hyperparameters and run metadata
     config=dict(
         epsilon=0.001,
-        pert_decay=0.99,
+        pert_decay=1,#0.99,
         # epsilon_adaptation_speed=0,
         # thresh=0.95,
+        model_name=model_id,
     ),
     # run name
-    name="LeakyReLU_0.12_1epoch_retrained",
+    # name="LeakyReLU_0.12_1epoch_retrained",
 )
 
 example = unsafe_examples[205]
