@@ -18,9 +18,12 @@ from utils import *
 
 # model_id = "meta-llama/Meta-Llama-3.1-8B-Instruct"
 # model_id = "meta-llama/Meta-Llama-3-8B-Instruct"
-model_id = "microsoft/Phi-3.5-mini-instruct"
+# model_id = "microsoft/Phi-3.5-mini-instruct"
+model_id = "../models/Phi-3.5-mini-instruct-LeakyReLU_0.12"
 
-tokenizer = AutoTokenizer.from_pretrained(model_id)
+
+# tokenizer = AutoTokenizer.from_pretrained(model_id)
+tokenizer = AutoTokenizer.from_pretrained("microsoft/Phi-3.5-mini-instruct")
 device = "cuda"
 
 access_token = (Path.home() / ".cache/huggingface/token").read_text()
@@ -71,7 +74,7 @@ wandb.init(
         # thresh=0.95,
     ),
     # run name
-    name="LeakyReLU_0.12",
+    name="LeakyReLU_0.12_1epoch_retrained",
 )
 
 example = unsafe_examples[205]

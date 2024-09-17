@@ -7,11 +7,12 @@ import torch as pt
 from datasets import load_dataset
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer, LlamaForCausalLM
-
+import wandb
 from utils import *
 
 # model_id = "microsoft/Phi-3-mini-4k-instruct"
-model_id = "microsoft/Phi-3.5-mini-instruct"
+# model_id = "microsoft/Phi-3.5-mini-instruct"
+model_id = "microsoft/phi-1_5"
 
 tokenizer = AutoTokenizer.from_pretrained(model_id)
 device = "cuda"
@@ -19,7 +20,6 @@ device = "cuda"
 model = AutoModelForCausalLM.from_pretrained(
     model_id,
     torch_dtype=pt.bfloat16,
-    # attn_implementation="flash_attention_2",
 ).to(device)
 
 # Load the WikiText-2 dataset
@@ -28,29 +28,43 @@ dataset = load_dataset("wikitext", "wikitext-2-v1")
 # %% prepare the data
 eval_chunks = dataset_to_equal_chunks(dataset["validation"], tokenizer)
 print(f"num eval chunks: {len(eval_chunks)}")
+train_chunks = dataset_to_equal_chunks(dataset["train"], tokenizer)
+print(f"num train chunks: {len(train_chunks)}")
 
 # # %% eval pre and post change of activation
 print(eval_perplexity(model, eval_chunks[:32]))
+
+# %% find the best slope
+# for slope in np.linspace(0, 0.02, 21):
+#     for layer in model.model.layers:
+#         layer.mlp.activation_fn = pt.nn.LeakyReLU(negative_slope=slope)
+#     ppl = eval_perplexity(model, eval_chunks[:32])
+#     print(f"{slope=:.3f}: {ppl=:.2f}")
+# # best slope for phi-1.5: 0.01
+
 for layer in model.model.layers:
-    layer.mlp.activation_fn = pt.nn.LeakyReLU(negative_slope=0.12)
-print(eval_perplexity(model, eval_chunks[:32]))
+    layer.mlp.activation_fn = pt.nn.LeakyReLU(negative_slope=0.01)
+eval_perplexity(model, eval_chunks[:32])
 
 # %% prepare training
-train_chunks = dataset_to_equal_chunks(dataset["train"], tokenizer)
-# optimizer = bnb.optim.Adam8bit(model.parameters(), lr=0.001) # instead of torch.optim.Adam
-gradient_acc_steps = 128
-optimizer = pt.optim.SGD(model.parameters(), lr=0.000002)
+
+wandb.init(
+    project="softened_derivative2",
+    group="retrain",
+    config=dict(
+        lr=0.0001,
+        batch_size=32,
+    )
+)
+c = wandb.config
+
+optimizer = bnb.optim.AdamW8bit(model.parameters(), lr=c.lr)
 loss_fn = pt.nn.CrossEntropyLoss()
-
-# %%
-
-batch_size = 1
 optimizer.zero_grad()
-for offset in tqdm(range(0, len(train_chunks) - batch_size, batch_size)):
-    # for offset in range(0, 256, batch_size):
+# for offset in tqdm(range(0, len(train_chunks) - batch_size, batch_size)):
+for offset in tqdm(range(0, 256, c.batch_size)):
     # prepare
-    batch = train_chunks[offset : offset + batch_size].to(device)
-
+    batch = train_chunks[offset : offset + c.batch_size].to(device)
     # forward pass
     output = model(batch)
     # compute loss
@@ -58,70 +72,21 @@ for offset in tqdm(range(0, len(train_chunks) - batch_size, batch_size)):
     true = batch[:, 1:]
     pred_flat = pred.reshape(-1, pred.shape[-1])
     loss = loss_fn(pred_flat, true.flatten())
-
     # backprop
     loss.backward()
 
-    if (offset / batch_size + 1) % gradient_acc_steps == 0:
-        # grad = model.model.layers[15].mlp.down_proj.weight.grad
-        # print(f"grad: {pt.norm(grad)}")
+    # optimizer step
+    optimizer.step()
+    optimizer.zero_grad()
 
-        # optimizer step
-        optimizer.step()
-        optimizer.zero_grad()
+    # eval
+    # optimizer.zero_grad(set_to_none=True)
+    # pt.cuda.empty_cache()
+    ppl = eval_perplexity(model, eval_chunks[:32])
+    wandb.log(dict(wikitext_ppl=ppl))
+    # # clean up memory
+    # del output, pred, true, pred_flat, loss
+    # pt.cuda.empty_cache()
 
-        # also eval
-        optimizer.zero_grad(set_to_none=True)
-        pt.cuda.empty_cache()
-        ppl = eval_perplexity(model, eval_chunks[:32])
-        print(ppl)
-
-    # clean up memory
-    del output, pred, true, pred_flat, loss
-    pt.cuda.empty_cache()
-
-# %% save the model
-model.save_pretrained("Phi-3.5-mini-instruct-LeakyReLU_0.12")
 
 # %%
-
-# %%
-
-# %%
-# s1 = grad_samples[0]
-# s2 = grad_samples[5]
-# pt.cosine_similarity(s1.reshape(1, -1), s2.reshape(1, -1))
-# %%
-
-# %%
-
-# # %%
-# # prepare
-# offset = 2
-# batch_size = 1
-# batch = train_chunks[offset : offset + batch_size].to(device)
-# optimizer.zero_grad()
-
-# # %%
-
-# # forward pass
-# output = model(batch)
-# # compute loss
-# pred = output.logits[:, :-1, :]
-# true = batch[:, 1:]
-# pred_flat = pred.reshape(-1, pred.shape[-1])
-# loss = loss_fn(pred_flat, true.flatten())
-
-# # backprop
-# loss.backward()
-
-# # %%
-# grad2 = model.model.layers[15].mlp.down_proj.weight.grad
-# # print(f"grad: {pt.norm(grad)}")
-# # %%
-# pt.cosine_similarity(grad.reshape(1, -1), grad2.reshape(1, -1))
-# # %%
-
-# # %%
-# del output, pred, true, pred_flat, loss
-# pt.cuda.empty_cache()
