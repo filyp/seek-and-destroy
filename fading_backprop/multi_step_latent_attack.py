@@ -35,9 +35,10 @@ model = AutoModelForCausalLM.from_pretrained(
 ).to(device)
 
 # Load the BeaverTails dataset
-dataset = load_dataset("PKU-Alignment/BeaverTails")
-split = dataset["30k_train"]
-unsafe_examples = split.filter(lambda ex: not ex["is_safe"])
+beavertails = load_dataset("PKU-Alignment/BeaverTails")
+split = beavertails["30k_train"]
+category = "animal_abuse"
+beaver_category = split.filter(lambda ex: ex["category"][category])
 safe_examples = split.filter(lambda ex: ex["is_safe"])
 
 immediately_remove_param_gradients_to_save_memory(model)
@@ -69,24 +70,27 @@ wandb.init(
     project="softened_derivative",
     # track hyperparameters and run metadata
     config=dict(
-        epsilon=0.001,
-        pert_decay=1,#0.99,
-        # epsilon_adaptation_speed=0,
-        # thresh=0.95,
         model_name=model_id,
+        epsilon=0.1,
+        pert_decay=1,
+        num_steps=100,
     ),
     # run name
     # name="LeakyReLU_0.12_1epoch_retrained",
+    group="test",
 )
 
-example = unsafe_examples[205]
+# example = beaver_category[4]
+example = safe_examples[4]
+print(example["prompt"])
+print(example["response"])
 
 perturbation = 0
 last_d_perturbation_post_decay = None
 c = wandb.config
 epsilon = c.epsilon
 
-for i in tqdm(range(1000)):
+for i in tqdm(range(c.num_steps)):
     # forward
     resp_log_prob, resp_len = get_response_log_prob(example, model, tokenizer)
     # backward
@@ -102,11 +106,10 @@ for i in tqdm(range(1000)):
         last_d_perturbation_post_decay = d_perturbation_post_decay
         continue
 
+    # cossim of last two d_perturbations
     p1 = last_d_perturbation_post_decay
     p2 = d_perturbation_post_decay
     cossim = pt.cosine_similarity(p1.reshape(1, -1), p2.reshape(1, -1))
-    # rescale_factor = max(0.5, (cossim - c.thresh) * c.epsilon_adaptation_speed + 1)
-    # epsilon *= rescale_factor
     last_d_perturbation_post_decay = d_perturbation_post_decay
 
     wandb.log(
@@ -114,16 +117,14 @@ for i in tqdm(range(1000)):
             attack_score=resp_log_prob.float() / resp_len,
             perturbation_norm=perturbation.norm().float(),
             cossim=cossim.float(),
-            # epsilon=epsilon.float(),
-            # rescale_factor=float(rescale_factor),
         )
     )
 
 wandb.finish()
 
 # %% change of activation function
-for layer in model.model.layers:
-    layer.mlp.activation_fn = pt.nn.LeakyReLU(negative_slope=0.12)
+# for layer in model.model.layers:
+#     layer.mlp.activation_fn = pt.nn.LeakyReLU(negative_slope=0.12)
 
 # %%
 # get data from the last wandb run through the API
