@@ -23,8 +23,7 @@ from utils import *
 model_id = "microsoft/phi-1_5"
 
 
-# tokenizer = AutoTokenizer.from_pretrained(model_id)
-tokenizer = AutoTokenizer.from_pretrained("microsoft/Phi-3.5-mini-instruct")
+tokenizer = AutoTokenizer.from_pretrained(model_id)
 device = "cuda"
 
 access_token = (Path.home() / ".cache/huggingface/token").read_text()

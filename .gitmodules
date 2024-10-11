@@ -1,3 +1,0 @@
-[submodule "latent_adversarial_training"]
-	path = latent_adversarial_training
-	url = https://github.com/thestephencasper/latent_adversarial_training.git
