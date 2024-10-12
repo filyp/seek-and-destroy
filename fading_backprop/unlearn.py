@@ -12,15 +12,17 @@ import pandas as pd
 import torch as pt
 import wandb
 from datasets import Dataset, IterableDataset, IterableDatasetDict, load_dataset
+from torcheval.metrics.text import Perplexity
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer, LlamaForCausalLM
 
 # params
-model_id = "microsoft/phi-1_5"
-device = "cuda"
+model_id = "google/gemma-2-2b"
+# model_id = "microsoft/phi-1_5"
 context_len = 100
-batch_size = 16
+batch_size = 8
 
+device = "cuda"
 tokenizer = AutoTokenizer.from_pretrained(model_id)
 
 # %% load model
@@ -69,23 +71,35 @@ def load_one_oscar_shard(lang):
     )
 
 
-dataset = load_one_oscar_shard(lang="pl")
+pl_dataset = load_one_oscar_shard("pl")
+en_dataset = load_one_oscar_shard("en")
+assert next(iter(pl_dataset["test"]))["text"] != next(iter(pl_dataset["unlearn"]))["text"]
+
+
+def get_perplexity(model, dataset):
+    metric = Perplexity(device=device)
+    batch = next(iter(dataset["validation"].batch(8)))
+    input_ids = pt.cat(batch["input_ids"])
+    with pt.no_grad():
+        outputs = model(input_ids)
+    metric.update(outputs.logits[:, :-1], input_ids[:, 1:])
+    return metric.compute()
+
 
 # %%
 # optimizer = pt.optim.SGD(model.parameters(), lr=0.0001, momentum=0.9)
-optimizer = pt.optim.SGD(model.parameters(), lr=0.0001)
+optimizer = pt.optim.SGD(model.parameters(), lr=0.001)
 optimizer.zero_grad()
 loss_fn = pt.nn.CrossEntropyLoss()
 
-for batch in dataset["unlearn"].batch(batch_size, drop_last_batch=True).take(10):
+for batch in pl_dataset["unlearn"].batch(batch_size).take(10):
     # create batched input_ids
-    input_ids = pt.cat(batch["input_ids"])
-    assert list(input_ids.shape) == [batch_size, context_len]
+    input_ids = pt.cat(batch["input_ids"])  # shape: [batch_size, context_len]
 
     # forward pass
     output = model(input_ids)
     # compute loss
-    loss = loss_fn(
+    loss = -loss_fn(
         output.logits[:, :-1, :].flatten(end_dim=1),
         input_ids[:, 1:].flatten(),
     )
@@ -93,5 +107,14 @@ for batch in dataset["unlearn"].batch(batch_size, drop_last_batch=True).take(10)
     loss.backward()
     optimizer.step()
 
-    print(loss.item())
-# %%
+    res = dict(
+        pl=get_perplexity(model, pl_dataset).item(),
+        en=get_perplexity(model, en_dataset).item(),
+    )
+    print(res)
+
+    # clean memory
+    optimizer.zero_grad(set_to_none=True)
+    del output, loss
+    pt.cuda.empty_cache()
+
