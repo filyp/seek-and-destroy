@@ -65,3 +65,5 @@
         #     )
         # )
 # for ex in DataLoader(dataset["test"].take(1024), batch_size=8):
+
+# optimizer = pt.optim.SGD(model.parameters(), lr=0.0001, momentum=0.9)

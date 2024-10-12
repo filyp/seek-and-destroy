@@ -47,7 +47,7 @@ def load_one_oscar_shard(lang):
     quarter1, quarter2 = half1.train_test_split(test_size=0.5, seed=42).values()
     quarter3, quarter4 = half2.train_test_split(test_size=0.5, seed=42).values()
 
-    return (
+    dataset = (
         # define splits; make it iterable so that it can be processed on demand
         IterableDatasetDict(
             unlearn=IterableDataset.from_generator(lambda: (ex for ex in quarter1)),
@@ -69,11 +69,12 @@ def load_one_oscar_shard(lang):
         # filter out the short ones
         .filter(lambda ex: ex["input_ids"].shape[-1] >= context_len)
     )
+    assert next(iter(dataset["test"]))["text"] != next(iter(dataset["unlearn"]))["text"]
+    return dataset
 
 
 pl_dataset = load_one_oscar_shard("pl")
 en_dataset = load_one_oscar_shard("en")
-assert next(iter(pl_dataset["test"]))["text"] != next(iter(pl_dataset["unlearn"]))["text"]
 
 
 def get_perplexity(model, dataset):
@@ -87,34 +88,39 @@ def get_perplexity(model, dataset):
 
 
 # %%
-# optimizer = pt.optim.SGD(model.parameters(), lr=0.0001, momentum=0.9)
-optimizer = pt.optim.SGD(model.parameters(), lr=0.001)
-optimizer.zero_grad()
-loss_fn = pt.nn.CrossEntropyLoss()
+def train(model, dataset, loss_sign, num_batches):
+    optimizer = pt.optim.SGD(model.parameters(), lr=0.0003)
+    optimizer.zero_grad()
+    loss_fn = pt.nn.CrossEntropyLoss()
 
-for batch in pl_dataset["unlearn"].batch(batch_size).take(10):
-    # create batched input_ids
-    input_ids = pt.cat(batch["input_ids"])  # shape: [batch_size, context_len]
+    for batch in dataset.batch(batch_size).take(num_batches):
+        # create batched input_ids
+        input_ids = pt.cat(batch["input_ids"])
+        assert input_ids.shape[1] == context_len
 
-    # forward pass
-    output = model(input_ids)
-    # compute loss
-    loss = -loss_fn(
-        output.logits[:, :-1, :].flatten(end_dim=1),
-        input_ids[:, 1:].flatten(),
-    )
-    # backpropagate
-    loss.backward()
-    optimizer.step()
+        # forward pass
+        output = model(input_ids)
+        # compute loss
+        loss = loss_sign * loss_fn(
+            output.logits[:, :-1, :].flatten(end_dim=1),
+            input_ids[:, 1:].flatten(),
+        )
+        # backpropagate
+        loss.backward()
+        optimizer.step()
 
-    res = dict(
-        pl=get_perplexity(model, pl_dataset).item(),
-        en=get_perplexity(model, en_dataset).item(),
-    )
-    print(res)
+        res = dict(
+            pl=get_perplexity(model, pl_dataset).item(),
+            en=get_perplexity(model, en_dataset).item(),
+        )
+        print(res)
 
-    # clean memory
-    optimizer.zero_grad(set_to_none=True)
-    del output, loss
-    pt.cuda.empty_cache()
+        # clean memory
+        optimizer.zero_grad(set_to_none=True)
+        del output, loss
+        pt.cuda.empty_cache()
 
+
+# %%
+
+train(model, pl_dataset["unlearn"], loss_sign=1, num_batches=5)
