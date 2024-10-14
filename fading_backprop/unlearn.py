@@ -75,6 +75,7 @@ def load_one_oscar_shard(lang):
 
 pl_dataset = load_one_oscar_shard("pl")
 en_dataset = load_one_oscar_shard("en")
+# cs_dataset = load_one_oscar_shard("cs")
 
 
 def get_perplexity(model, dataset):
@@ -112,8 +113,9 @@ def train(model, dataset, loss_sign, num_batches):
         res = dict(
             pl=get_perplexity(model, pl_dataset).item(),
             en=get_perplexity(model, en_dataset).item(),
+            # cs=get_perplexity(model, cs_dataset).item(),
         )
-        print(res)
+        print({k: f"{v:.2f}" for k, v in res.items()})
 
         # clean memory
         optimizer.zero_grad(set_to_none=True)
@@ -123,4 +125,57 @@ def train(model, dataset, loss_sign, num_batches):
 
 # %%
 
-train(model, pl_dataset["unlearn"], loss_sign=1, num_batches=5)
+# train(model, pl_dataset["unlearn"], loss_sign=1, num_batches=10)
+
+# %% save residual stream activations
+grads = dict()
+
+def save_grad_hook(module, grad_input, grad_output):
+    grads[module] = grad_output[0]
+
+for layer in model.model.layers:
+    # clear hooks
+    layer._backward_hooks.clear()
+    # register hook
+    layer.register_full_backward_hook(save_grad_hook)
+
+# %% single example forward and backward pass
+
+batch = next(iter(pl_dataset["unlearn"].batch(1)))
+loss_fn = pt.nn.CrossEntropyLoss()
+# create batched input_ids
+input_ids = pt.cat(batch["input_ids"])
+# forward pass
+output = model(input_ids)
+# compute loss
+loss = loss_fn(
+    output.logits[:, :-1, :].flatten(end_dim=1),
+    input_ids[:, 1:].flatten(),
+)
+# backpropagate
+loss.backward()
+# clean memory
+del output, loss
+pt.cuda.empty_cache()
+
+# %% plot grads
+one_val_from_each_layer = [grads[layer][0, -2, 0].item() for layer in model.model.layers]
+plt.plot(one_val_from_each_layer)
+
+# %%
+def scale_grad_hook(module, grad_input, grad_output):
+    # grad_input[0].mul_(0)  # acc to docs, modifying in-place shouldn't be allowed
+    grad = list(grad_input)
+    grad[0] *= 0
+    return grad
+
+for layer in model.model.layers:
+    # layer.mlp._backward_hooks.clear()
+    # layer.mlp.register_full_backward_hook(scale_grad_hook)
+    # layer.self_attn._backward_hooks.clear()
+    # layer.self_attn.register_full_backward_hook(scale_grad_hook)
+    layer.pre_feedforward_layernorm._backward_hooks.clear()
+    layer.pre_feedforward_layernorm.register_full_backward_hook(scale_grad_hook)
+    layer.input_layernorm._backward_hooks.clear()
+    layer.input_layernorm.register_full_backward_hook(scale_grad_hook)
+
