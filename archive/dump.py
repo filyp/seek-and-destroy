@@ -1,6 +1,7 @@
 # model_id = "meta-llama/Meta-Llama-3.1-8B-Instruct"
 # model_id = "meta-llama/Meta-Llama-3-8B-Instruct"
 # model_id = "microsoft/Phi-3.5-mini-instruct"
+# model_id = "microsoft/phi-1_5"  # bad multilingual perf
 
 # dataset = load_dataset("open_subtitles", lang1="en", lang2="pl", trust_remote_code=True)
 # dataset = load_dataset("oscar-corpus/oscar", "unshuffled_deduplicated_pl", trust_remote_code=True)
@@ -67,3 +68,43 @@
 # for ex in DataLoader(dataset["test"].take(1024), batch_size=8):
 
 # optimizer = pt.optim.SGD(model.parameters(), lr=0.0001, momentum=0.9)
+
+
+# %% single example forward and backward pass
+
+batch = next(iter(pl_dataset["unlearn"].batch(1)))
+loss_fn = pt.nn.CrossEntropyLoss()
+# create batched input_ids
+input_ids = pt.cat(batch["input_ids"])
+# forward pass
+output = model(input_ids)
+# compute loss
+loss = loss_fn(
+    output.logits[:, :-1, :].flatten(end_dim=1),
+    input_ids[:, 1:].flatten(),
+)
+# backpropagate
+loss.backward()
+# clean memory
+del output, loss
+pt.cuda.empty_cache()
+
+# %% plot grads
+one_val_from_each_layer = [grads[layer][0, -2, 0].item() for layer in model.model.layers]
+plt.plot(one_val_from_each_layer)
+
+
+# %% save residual stream activations
+grads = dict()
+
+
+def save_grad_hook(module, grad_input, grad_output):
+    grads[module] = grad_output[0]
+
+
+for layer in model.model.layers:
+    # clear hooks
+    layer._backward_hooks.clear()
+    # register hook
+    layer.register_full_backward_hook(save_grad_hook)
+
