@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import torch as pt
 import wandb
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from utils import device, get_perplexity, load_one_oscar_shard, forward
+from utils import device, forward, get_perplexity, load_one_oscar_shard
 
 model_id = "google/gemma-2-2b"
 tokenizer = AutoTokenizer.from_pretrained(model_id)
@@ -36,6 +36,7 @@ for layer in model.model.layers:
     layer.mlp.down_proj._backward_hooks.clear()
     layer.mlp.down_proj.register_full_backward_hook(save_output_grad_hook)
 
+
 # %% install gradient scaling hooks
 def scale_grad_hook(module, grad_input, grad_output):
     grad = list(grad_input)
@@ -48,6 +49,7 @@ for layer in model.model.layers:
     layer.pre_feedforward_layernorm.register_full_backward_hook(scale_grad_hook)
     layer.input_layernorm._backward_hooks.clear()
     layer.input_layernorm.register_full_backward_hook(scale_grad_hook)
+
 
 # %%
 def train(model, batch_iter, lr=0.0003):
@@ -68,8 +70,8 @@ def train(model, batch_iter, lr=0.0003):
     return res
 
 
-
 # %% unlearning
+
 
 def unlearn(model, batch_iter):
     optimizer = pt.optim.SGD(model.parameters(), lr=0.2)
@@ -103,8 +105,8 @@ def unlearn(model, batch_iter):
             en=get_perplexity(model, en_dataset).item(),
         )
         print({k: f"{v:.2f}" for k, v in res.items()})
-        
-        if res["pl"] > 50 or res["en"] > 30:
+
+        if res["pl"] > 50 or res["en"] > 28:
             break
     return res
 
@@ -118,3 +120,7 @@ while True:
         print("relearning en")
         f = 1
         res = train(model, islice(en_relearn_iter, 10))
+    while res["pl"] > 50:
+        print("relearning pl")
+        f = 1
+        res = train(model, islice(pl_relearn_iter, 10))
