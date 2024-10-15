@@ -70,24 +70,6 @@
 # optimizer = pt.optim.SGD(model.parameters(), lr=0.0001, momentum=0.9)
 
 
-# %% save residual stream activations
-grads = dict()
-
-
-def save_grad_hook(module, grad_input, grad_output):
-    grads[module] = grad_output[0]
-
-
-for layer in model.model.layers:
-    # clear hooks
-    layer._backward_hooks.clear()
-    # register hook
-    layer.register_full_backward_hook(save_grad_hook)
-
-
-# %% plot grads
-one_val_from_each_layer = [grads[layer][0, -2, 0].item() for layer in model.model.layers]
-plt.plot(one_val_from_each_layer)
 
 
     # # clean memory

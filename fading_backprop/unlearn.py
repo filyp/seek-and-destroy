@@ -7,7 +7,8 @@ import wandb
 from transformers import AutoModelForCausalLM, AutoTokenizer
 from utils import device, forward, get_perplexity, load_one_oscar_shard
 
-model_id = "google/gemma-2-2b"
+# model_id = "google/gemma-2-2b"
+model_id = "Qwen/Qwen2.5-0.5B"
 tokenizer = AutoTokenizer.from_pretrained(model_id)
 
 # %% load dataset
@@ -43,10 +44,10 @@ def scale_grad_hook(module, grad_input, grad_output):
     grad[0] *= f
     return grad
 
-
+# works for gemma-2-2b and Qwen2.5-0.5B
 for layer in model.model.layers:
-    layer.pre_feedforward_layernorm._backward_hooks.clear()
-    layer.pre_feedforward_layernorm.register_full_backward_hook(scale_grad_hook)
+    layer.mlp._backward_hooks.clear()
+    layer.mlp.register_full_backward_hook(scale_grad_hook)
     layer.input_layernorm._backward_hooks.clear()
     layer.input_layernorm.register_full_backward_hook(scale_grad_hook)
 
@@ -71,10 +72,12 @@ def train(model, batch_iter, lr=0.0003):
 
 
 # %% unlearning
+pl_threshold = 70
+en_threshold = 33
 
 
 def unlearn(model, batch_iter):
-    optimizer = pt.optim.SGD(model.parameters(), lr=0.2)
+    optimizer = pt.optim.SGD(model.parameters(), lr=0.5)
     f = 0
     for batch in batch_iter:
         loss = forward(model, batch)
@@ -106,7 +109,7 @@ def unlearn(model, batch_iter):
         )
         print({k: f"{v:.2f}" for k, v in res.items()})
 
-        if res["pl"] > 50 or res["en"] > 28:
+        if res["pl"] > pl_threshold or res["en"] > en_threshold:
             break
     return res
 
@@ -116,11 +119,21 @@ while True:
     print("unlearning")
     f = 0
     res = unlearn(model, islice(pl_unlearn_iter, 10))
-    while res["en"] > 28:
+    while res["en"] > en_threshold:
         print("relearning en")
         f = 1
         res = train(model, islice(en_relearn_iter, 10))
-    while res["pl"] > 50:
+    while res["pl"] > pl_threshold:
         print("relearning pl")
         f = 1
         res = train(model, islice(pl_relearn_iter, 10))
+
+# %%
+print("relearning pl")
+f = 1
+res = train(model, islice(pl_relearn_iter, 10))
+
+# %%
+print("relearning en")
+f = 1
+res = train(model, islice(en_relearn_iter, 10))
