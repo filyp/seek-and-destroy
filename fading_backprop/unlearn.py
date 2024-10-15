@@ -65,51 +65,56 @@ def train(model, batch_iter, lr=0.0003):
             en=get_perplexity(model, en_dataset).item(),
         )
         print({k: f"{v:.2f}" for k, v in res.items()})
+    return res
+
 
 
 # %% unlearning
 
-optimizer = pt.optim.SGD(model.parameters(), lr=0.3)
-f = 0
-for batch in islice(pl_unlearn_iter, 30):
-    loss = forward(model, batch)
-    loss.backward()
-    # get rid of the normal grad
-    optimizer.zero_grad(set_to_none=True)
+def unlearn(model, batch_iter):
+    optimizer = pt.optim.SGD(model.parameters(), lr=0.2)
+    f = 0
+    for batch in batch_iter:
+        loss = forward(model, batch)
+        loss.backward()
+        # get rid of the normal grad
+        optimizer.zero_grad(set_to_none=True)
 
-    # calculate custom grads
-    for layer in model.model.layers:
-        module = layer.mlp.down_proj
-        # get the grad
-        output_grad = mlp_output_grads[module]
-        output_grad = output_grad[:, :-1, :]  # last token position has no gradient
-        # assert output_grad.norm(dim=-1).all()
+        # calculate custom grads
+        for layer in model.model.layers:
+            module = layer.mlp.down_proj
+            # get the grad
+            output_grad = mlp_output_grads[module]
+            output_grad = output_grad[:, :-1, :]  # last token position has no gradient
+            # assert output_grad.norm(dim=-1).all()
 
-        # calculate the projection
-        projection_amps = pt.einsum("oi,bto->bti", module.weight, output_grad)
-        projection_amps /= output_grad.norm(dim=-1, keepdim=True)
-        update = pt.einsum("bto,bti->oi", output_grad, projection_amps)
-        module.weight.grad = update
+            # calculate the projection
+            projection_amps = pt.einsum("oi,bto->bti", module.weight, output_grad)
+            projection_amps /= output_grad.norm(dim=-1, keepdim=True)
+            update = pt.einsum("bto,bti->oi", output_grad, projection_amps)
+            module.weight.grad = update
 
-    optimizer.step()
-    optimizer.zero_grad(set_to_none=True)
+        optimizer.step()
+        optimizer.zero_grad(set_to_none=True)
 
-    # print stats
-    res = dict(
-        pl=get_perplexity(model, pl_dataset).item(),
-        en=get_perplexity(model, en_dataset).item(),
-    )
-    print({k: f"{v:.2f}" for k, v in res.items()})
-    
-    if res["pl"] > 50:
-        break
+        # print stats
+        res = dict(
+            pl=get_perplexity(model, pl_dataset).item(),
+            en=get_perplexity(model, en_dataset).item(),
+        )
+        print({k: f"{v:.2f}" for k, v in res.items()})
+        
+        if res["pl"] > 50 or res["en"] > 30:
+            break
+    return res
 
-# %%
-print("relearning en")
-f = 1
-train(model, islice(en_relearn_iter, 10), loss_sign=1)
 
 # %%
-print("relearning pl")
-f = 1
-train(model, islice(pl_relearn_iter, 10), loss_sign=1)
+while True:
+    print("unlearning")
+    f = 0
+    res = unlearn(model, islice(pl_unlearn_iter, 10))
+    while res["en"] > 28:
+        print("relearning en")
+        f = 1
+        res = train(model, islice(en_relearn_iter, 10))
