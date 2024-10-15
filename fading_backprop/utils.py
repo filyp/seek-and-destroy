@@ -50,6 +50,7 @@ def load_one_oscar_shard(lang, tokenizer):
 
 
 def get_perplexity(model, dataset, batch_size=1):
+    # only use one batch
     metric = Perplexity(device=device)
     batch = next(iter(dataset["validation"].batch(batch_size)))
     input_ids = pt.cat(batch["input_ids"])
@@ -57,4 +58,15 @@ def get_perplexity(model, dataset, batch_size=1):
         outputs = model(input_ids)
     metric.update(outputs.logits[:, :-1], input_ids[:, 1:])
     return metric.compute()
+
+
+def forward(model, batch):
+    loss_fn = pt.nn.CrossEntropyLoss()
+    # create batched input_ids
+    input_ids = pt.cat(batch["input_ids"])
+    assert input_ids.shape[1] == context_len
+    # forward pass
+    logits = model(input_ids).logits
+    # compute loss
+    return loss_fn(logits[:, :-1, :].flatten(end_dim=1), input_ids[:, 1:].flatten())
 

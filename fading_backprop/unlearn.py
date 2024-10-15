@@ -5,11 +5,9 @@ import matplotlib.pyplot as plt
 import torch as pt
 import wandb
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from utils import context_len, device, get_perplexity, load_one_oscar_shard
+from utils import device, get_perplexity, load_one_oscar_shard, forward
 
-# params
 model_id = "google/gemma-2-2b"
-
 tokenizer = AutoTokenizer.from_pretrained(model_id)
 
 # %% load dataset
@@ -21,18 +19,10 @@ en_dataset = load_one_oscar_shard("en", tokenizer)
 def train(model, batch_iter, loss_sign=1, only_mlp_value=False):
     optimizer = pt.optim.SGD(model.parameters(), lr=0.0003)
     optimizer.zero_grad()
-    loss_fn = pt.nn.CrossEntropyLoss()
 
     for batch in batch_iter:
-        # create batched input_ids
-        input_ids = pt.cat(batch["input_ids"])
-        assert input_ids.shape[1] == context_len
-        # forward pass
-        logits = model(input_ids).logits
-        # compute loss
-        loss = loss_fn(logits[:, :-1, :].flatten(end_dim=1), input_ids[:, 1:].flatten())
+        loss = forward(model, batch)
         loss *= loss_sign
-        # backpropagate
         loss.backward()
 
         if only_mlp_value:
@@ -46,16 +36,13 @@ def train(model, batch_iter, loss_sign=1, only_mlp_value=False):
                 layer.self_attn.o_proj.weight.grad = None
 
         optimizer.step()
+        optimizer.zero_grad(set_to_none=True)
         # print stats
         res = dict(
             pl=get_perplexity(model, pl_dataset).item(),
             en=get_perplexity(model, en_dataset).item(),
         )
         print({k: f"{v:.2f}" for k, v in res.items()})
-        # clean memory
-        optimizer.zero_grad(set_to_none=True)
-        del logits, loss
-        pt.cuda.empty_cache()
 
 
 # %% load model
@@ -84,7 +71,7 @@ print("unlearning")
 batch_iter = iter(pl_dataset["unlearn"].batch(8))
 # %%
 f = 0
-train(model, islice(batch_iter, 10), loss_sign=-1, only_mlp_value=True)
+train(model, islice(batch_iter, 5), loss_sign=-1, only_mlp_value=True)
 
 # %%
 print("relearning")

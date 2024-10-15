@@ -85,27 +85,38 @@ for layer in model.model.layers:
     layer.register_full_backward_hook(save_grad_hook)
 
 
-# %% single example forward and backward pass
-f = 0
-
-batch = next(iter(pl_dataset["unlearn"].batch(1)))
-loss_fn = pt.nn.CrossEntropyLoss()
-# create batched input_ids
-input_ids = pt.cat(batch["input_ids"])
-# forward pass
-output = model(input_ids)
-# compute loss
-loss = loss_fn(
-    output.logits[:, :-1, :].flatten(end_dim=1),
-    input_ids[:, 1:].flatten(),
-)
-# backpropagate
-loss.backward()
-# clean memory
-del output, loss
-pt.cuda.empty_cache()
-
 # %% plot grads
 one_val_from_each_layer = [grads[layer][0, -2, 0].item() for layer in model.model.layers]
 plt.plot(one_val_from_each_layer)
+
+
+    # # clean memory
+    # del logits
+    # pt.cuda.empty_cache()
+
+
+# %% save mlp input activations
+mlp_input_activations = dict()
+
+
+def save_input_activation_hook(module, args, output):
+    mlp_input_activations[module] = args[0]
+
+
+for layer in model.model.layers:
+    layer.mlp.down_proj._forward_hooks.clear()
+    layer.mlp.down_proj.register_forward_hook(save_input_activation_hook)
+    break
+
+# 
+act = mlp_input_activations[module]
+assert pt.einsum("bti,btj->ij", grad, act).allclose(module.weight.grad)
+
+# %%
+# update = output_grad[0, 0].reshape(-1, 1) @ projection_amps[0, 0].reshape(1, -1)
+# update
+
+# %% trim the model to just two layers
+model.model.layers = model.model.layers[:2]
+pt.cuda.empty_cache()
 
