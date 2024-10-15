@@ -1,4 +1,6 @@
 # %%
+from itertools import islice
+
 import matplotlib.pyplot as plt
 import torch as pt
 import wandb
@@ -16,12 +18,12 @@ en_dataset = load_one_oscar_shard("en", tokenizer)
 # cs_dataset = load_one_oscar_shard("cs", tokenizer)
 
 
-def train(model, dataset, loss_sign, num_batches, batch_size=8):
+def train(model, batch_iter, loss_sign=1, only_mlp_value=False):
     optimizer = pt.optim.SGD(model.parameters(), lr=0.0003)
     optimizer.zero_grad()
     loss_fn = pt.nn.CrossEntropyLoss()
 
-    for batch in dataset.batch(batch_size).take(num_batches):
+    for batch in batch_iter:
         # create batched input_ids
         input_ids = pt.cat(batch["input_ids"])
         assert input_ids.shape[1] == context_len
@@ -32,6 +34,17 @@ def train(model, dataset, loss_sign, num_batches, batch_size=8):
         loss *= loss_sign
         # backpropagate
         loss.backward()
+
+        if only_mlp_value:
+            # don't update attention and the "key" layer of mlp
+            for layer in model.model.layers:
+                layer.mlp.gate_proj.weight.grad = None
+                layer.mlp.up_proj.weight.grad = None
+                layer.self_attn.q_proj.weight.grad = None
+                layer.self_attn.k_proj.weight.grad = None
+                layer.self_attn.v_proj.weight.grad = None
+                layer.self_attn.o_proj.weight.grad = None
+
         optimizer.step()
         # print stats
         res = dict(
@@ -51,7 +64,8 @@ model = AutoModelForCausalLM.from_pretrained(
     torch_dtype=pt.bfloat16,
 ).to(device)
 
-# %%
+
+# %% install gradient scaling hooks
 def scale_grad_hook(module, grad_input, grad_output):
     grad = list(grad_input)
     grad[0] *= f
@@ -59,21 +73,24 @@ def scale_grad_hook(module, grad_input, grad_output):
 
 
 for layer in model.model.layers:
-    # layer.mlp._backward_hooks.clear()
-    # layer.mlp.register_full_backward_hook(scale_grad_hook)
-    # layer.self_attn._backward_hooks.clear()
-    # layer.self_attn.register_full_backward_hook(scale_grad_hook)
     layer.pre_feedforward_layernorm._backward_hooks.clear()
-    # layer.pre_feedforward_layernorm.register_full_backward_hook(scale_grad_hook)
+    layer.pre_feedforward_layernorm.register_full_backward_hook(scale_grad_hook)
     layer.input_layernorm._backward_hooks.clear()
-    # layer.input_layernorm.register_full_backward_hook(scale_grad_hook)
+    layer.input_layernorm.register_full_backward_hook(scale_grad_hook)
 
 
 # %%
+print("unlearning")
+batch_iter = iter(pl_dataset["unlearn"].batch(8))
+# %%
 f = 0
-train(model, pl_dataset["unlearn"], loss_sign=-1, num_batches=10)
+train(model, islice(batch_iter, 10), loss_sign=-1, only_mlp_value=True)
+
+# %%
 print("relearning")
+batch_iter = iter(pl_dataset["relearn"].batch(8))
+# %%
 f = 1
-train(model, pl_dataset["unlearn"], loss_sign=1, num_batches=10)
+train(model, islice(batch_iter, 10), loss_sign=1)
 
 # %%

@@ -49,9 +49,9 @@ def load_one_oscar_shard(lang, tokenizer):
     return dataset
 
 
-def get_perplexity(model, dataset):
+def get_perplexity(model, dataset, batch_size=1):
     metric = Perplexity(device=device)
-    batch = next(iter(dataset["validation"].batch(8)))
+    batch = next(iter(dataset["validation"].batch(batch_size)))
     input_ids = pt.cat(batch["input_ids"])
     with pt.no_grad():
         outputs = model(input_ids)
