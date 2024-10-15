@@ -10,14 +10,15 @@ from utils import device, forward, get_perplexity, load_one_oscar_shard
 # model_id = "google/gemma-2-2b"
 model_id = "Qwen/Qwen2.5-0.5B"
 tokenizer = AutoTokenizer.from_pretrained(model_id)
+batch_size = 32
 
 # %% load dataset
 pl_dataset = load_one_oscar_shard("pl", tokenizer)
 en_dataset = load_one_oscar_shard("en", tokenizer)
 
-pl_unlearn_iter = iter(pl_dataset["unlearn"].batch(8))
-pl_relearn_iter = iter(pl_dataset["relearn"].batch(8))
-en_relearn_iter = iter(en_dataset["relearn"].batch(8))
+pl_unlearn_iter = iter(pl_dataset["unlearn"].batch(batch_size))
+pl_relearn_iter = iter(pl_dataset["relearn"].batch(batch_size))
+en_relearn_iter = iter(en_dataset["relearn"].batch(batch_size))
 
 # %% load model
 model = AutoModelForCausalLM.from_pretrained(
@@ -77,7 +78,7 @@ en_threshold = 33
 
 
 def unlearn(model, batch_iter):
-    optimizer = pt.optim.SGD(model.parameters(), lr=0.5)
+    optimizer = pt.optim.SGD(model.parameters(), lr=1)
     f = 0
     for batch in batch_iter:
         loss = forward(model, batch)
@@ -117,21 +118,21 @@ def unlearn(model, batch_iter):
 # %%
 while True:
     print("unlearning")
-    f = 0
+    f = 0.1
     res = unlearn(model, islice(pl_unlearn_iter, 10))
     while res["en"] > en_threshold:
         print("relearning en")
         f = 1
-        res = train(model, islice(en_relearn_iter, 10))
+        res = train(model, islice(en_relearn_iter, 10), lr=0.001)
     while res["pl"] > pl_threshold:
         print("relearning pl")
         f = 1
-        res = train(model, islice(pl_relearn_iter, 10))
+        res = train(model, islice(pl_relearn_iter, 10), lr=0.0003)
 
 # %%
 print("relearning pl")
 f = 1
-res = train(model, islice(pl_relearn_iter, 10))
+res = train(model, islice(pl_relearn_iter, 100))
 
 # %%
 print("relearning en")
