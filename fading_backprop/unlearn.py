@@ -9,42 +9,11 @@ from utils import device, forward, get_perplexity, load_one_oscar_shard
 
 # model_id = "google/gemma-2-2b"
 model_id = "Qwen/Qwen2.5-0.5B"
-tokenizer = AutoTokenizer.from_pretrained(model_id)
 
 # %% load dataset
+tokenizer = AutoTokenizer.from_pretrained(model_id)
 pl_dataset = load_one_oscar_shard("pl", tokenizer)
 en_dataset = load_one_oscar_shard("en", tokenizer)
-
-# %% load model
-model = AutoModelForCausalLM.from_pretrained(
-    model_id,
-    torch_dtype=pt.bfloat16,
-).to(device)
-
-
-# %% save mlp output grads
-def save_output_grad_hook(module, grad_input, grad_output):
-    module.output_grad = grad_output[0]
-
-
-for layer in model.model.layers:
-    # layer.mlp.down_proj._backward_hooks.clear()
-    layer.mlp.down_proj.register_full_backward_hook(save_output_grad_hook)
-
-
-# %% install gradient scaling hooks
-def scale_grad_hook(module, grad_input, grad_output):
-    grad = list(grad_input)
-    grad[0] *= module.fade_factor
-    return grad
-
-
-# works for gemma-2-2b and Qwen2.5-0.5B
-for layer in model.model.layers:
-    # layer.mlp._backward_hooks.clear()
-    layer.mlp.register_full_backward_hook(scale_grad_hook)
-    # layer.input_layernorm._backward_hooks.clear()
-    layer.input_layernorm.register_full_backward_hook(scale_grad_hook)
 
 
 # %%
@@ -59,7 +28,6 @@ def normal_train_step(model, batch, lr):
     optimizer.zero_grad(set_to_none=True)  # unneeded, but clean up just to be sure
 
 
-# %% unlearning
 def unlearn_step(model, batch, lr):
     optimizer = pt.optim.SGD(model.parameters(), lr=lr)
 
@@ -98,8 +66,8 @@ def unlearn_and_relearn(
     target_dataset,
     retain_dataset,
     f_schedule=lambda step: 0.0,
-    num_unlearning_steps=30,
-    num_relearning_steps=30,
+    num_unlearning_steps=10,
+    num_relearning_steps=10,
     eval_every_n_steps=2,
     relearn_lr=0.0003,
     unlearn_lr=1,
@@ -107,6 +75,27 @@ def unlearn_and_relearn(
     batch_size=32,
 ):
     # todo test for f=0
+
+    # install hooks for saving gradients
+    def save_output_grad_hook(module, grad_input, grad_output):
+        module.output_grad = grad_output[0]
+
+    for layer in model.model.layers:
+        assert not layer.mlp.down_proj._backward_hooks
+        layer.mlp.down_proj.register_full_backward_hook(save_output_grad_hook)
+
+    # install hooks for fading the backprop
+    # (tested for gemma-2-2b and Qwen2.5-0.5B)
+    def scale_grad_hook(module, grad_input, grad_output):
+        grad = list(grad_input)
+        grad[0] *= module.fade_factor
+        return grad
+
+    for layer in model.model.layers:
+        assert not layer.mlp._backward_hooks
+        layer.mlp.register_full_backward_hook(scale_grad_hook)
+        assert not layer.input_layernorm._backward_hooks
+        layer.input_layernorm.register_full_backward_hook(scale_grad_hook)
 
     # create dataset iterators
     target_unlearn_iter = iter(target_dataset["unlearn"].batch(batch_size))
@@ -168,15 +157,27 @@ def unlearn_and_relearn(
             }
             print({k: f"{v:.2f}" for k, v in perplexities.items()}, end="  ")
 
+    return perplexities
+
 
 # %%
-unlearn_and_relearn(
-    model,
-    pl_dataset,
-    en_dataset,
-)
+criterion = min
+param_name = "relearn_lr"
+param_starting_value = 0.001
+param_value_and_ppl = []
+
+def get_final_target_perplexity(**kwargs):
+    # load model
+    model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
+    model.to(device)
+
+    final_perplexities = unlearn_and_relearn(model, pl_dataset, en_dataset, **kwargs)
+    return final_perplexities["target"]
+
+
 # %%
-model.fade_factor = 3
-# %%
-model.fade_factor
+ppl = get_final_target_perplexity(**{param_name: param_starting_value})
+param_value_and_ppl.append((param_starting_value, ppl))
+ppl = get_final_target_perplexity(**{param_name: param_starting_value * 2})
+param_value_and_ppl.append((param_starting_value * 2, ppl))
 # %%
