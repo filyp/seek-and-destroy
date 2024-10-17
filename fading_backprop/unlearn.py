@@ -10,15 +10,10 @@ from utils import device, forward, get_perplexity, load_one_oscar_shard
 # model_id = "google/gemma-2-2b"
 model_id = "Qwen/Qwen2.5-0.5B"
 tokenizer = AutoTokenizer.from_pretrained(model_id)
-batch_size = 32
 
 # %% load dataset
 pl_dataset = load_one_oscar_shard("pl", tokenizer)
 en_dataset = load_one_oscar_shard("en", tokenizer)
-
-pl_unlearn_iter = iter(pl_dataset["unlearn"].batch(batch_size))
-pl_relearn_iter = iter(pl_dataset["relearn"].batch(batch_size))
-en_relearn_iter = iter(en_dataset["relearn"].batch(batch_size))
 
 # %% load model
 model = AutoModelForCausalLM.from_pretrained(
@@ -45,6 +40,7 @@ def scale_grad_hook(module, grad_input, grad_output):
     grad[0] *= f
     return grad
 
+
 # works for gemma-2-2b and Qwen2.5-0.5B
 for layer in model.model.layers:
     layer.mlp._backward_hooks.clear()
@@ -54,87 +50,124 @@ for layer in model.model.layers:
 
 
 # %%
-def train(model, batch_iter, lr=0.0003):
+def normal_train_step(model, batch, lr):
     optimizer = pt.optim.SGD(model.parameters(), lr=lr)
     optimizer.zero_grad(set_to_none=True)
-    for batch in batch_iter:
-        loss = forward(model, batch)
-        loss.backward()
 
-        optimizer.step()
-        optimizer.zero_grad(set_to_none=True)
-        # print stats
-        res = dict(
-            pl=get_perplexity(model, pl_dataset).item(),
-            en=get_perplexity(model, en_dataset).item(),
-        )
-        print({k: f"{v:.2f}" for k, v in res.items()})
-    return res
+    loss = forward(model, batch)
+    loss.backward()
+
+    optimizer.step()
+    optimizer.zero_grad(set_to_none=True)  # unneeded, but clean up just to be sure
 
 
 # %% unlearning
-pl_threshold = 70
-en_threshold = 33
+def unlearn_step(model, batch, lr):
+    optimizer = pt.optim.SGD(model.parameters(), lr=lr)
 
+    loss = forward(model, batch)
+    loss.backward()
+    # get rid of the normal grad
+    optimizer.zero_grad(set_to_none=True)
 
-def unlearn(model, batch_iter):
-    optimizer = pt.optim.SGD(model.parameters(), lr=1)
-    f = 0
-    for batch in batch_iter:
-        loss = forward(model, batch)
-        loss.backward()
-        # get rid of the normal grad
-        optimizer.zero_grad(set_to_none=True)
+    # calculate custom grads
+    for layer in model.model.layers:
+        module = layer.mlp.down_proj
+        # get the grad
+        output_grad = mlp_output_grads[module]
+        output_grad = output_grad[:, :-1, :]  # last token position has no gradient
+        assert output_grad.norm(dim=-1).all()
 
-        # calculate custom grads
-        for layer in model.model.layers:
-            module = layer.mlp.down_proj
-            # get the grad
-            output_grad = mlp_output_grads[module]
-            output_grad = output_grad[:, :-1, :]  # last token position has no gradient
-            # assert output_grad.norm(dim=-1).all()
+        # calculate the projection
+        projection_amps = pt.einsum("oi,bto->bti", module.weight, output_grad)
+        projection_amps /= output_grad.norm(dim=-1, keepdim=True)
+        update = pt.einsum("bto,bti->oi", output_grad, projection_amps)
+        module.weight.grad = update
 
-            # calculate the projection
-            projection_amps = pt.einsum("oi,bto->bti", module.weight, output_grad)
-            projection_amps /= output_grad.norm(dim=-1, keepdim=True)
-            update = pt.einsum("bto,bti->oi", output_grad, projection_amps)
-            module.weight.grad = update
-
-        optimizer.step()
-        optimizer.zero_grad(set_to_none=True)
-
-        # print stats
-        res = dict(
-            pl=get_perplexity(model, pl_dataset).item(),
-            en=get_perplexity(model, en_dataset).item(),
-        )
-        print({k: f"{v:.2f}" for k, v in res.items()})
-
-        if res["pl"] > pl_threshold or res["en"] > en_threshold:
-            break
-    return res
+    optimizer.step()
+    optimizer.zero_grad(set_to_none=True)  # unneeded, but clean up just to be sure
 
 
 # %%
-while True:
-    print("unlearning")
-    f = 0.1
-    res = unlearn(model, islice(pl_unlearn_iter, 10))
-    while res["en"] > en_threshold:
-        print("relearning en")
-        f = 1
-        res = train(model, islice(en_relearn_iter, 10), lr=0.001)
-    while res["pl"] > pl_threshold:
-        print("relearning pl")
-        f = 1
-        res = train(model, islice(pl_relearn_iter, 10), lr=0.0003)
+def unlearn_and_relearn(
+    model,
+    target_dataset,
+    retain_dataset,
+    f_schedule=lambda step: 0.0,
+    num_unlearning_steps=30,
+    num_relearning_steps=30,
+    eval_every_n_steps=2,
+    relearn_lr=0.0003,
+    unlearn_lr=1,
+    pl_ppl_threshold=float("inf"),
+    batch_size=32,
+):
+    global f
+    # todo test for f=0
+
+    # create dataset iterators
+    target_unlearn_iter = iter(target_dataset["unlearn"].batch(batch_size))
+    target_relearn_iter = iter(target_dataset["relearn"].batch(batch_size))
+    retain_relearn_iter = iter(retain_dataset["relearn"].batch(batch_size))
+
+    # initial perplexities
+    perplexities = {
+        "target": get_perplexity(model, target_dataset),
+        "retain": get_perplexity(model, retain_dataset),
+    }
+    print("initial perplexity: ", {k: f"{v:.2f}" for k, v in perplexities.items()})
+
+    # perplexity on retain set is not allowed to raise above this value
+    # - this triggers relearning on retain set
+    allowed_retain_perplexity = perplexities["retain"] * 1.2
+    print(f"{allowed_retain_perplexity=:.2f}")
+
+    # unlearning loop
+    for step_num in range(num_unlearning_steps):
+        print(f"\nstep {step_num + 1:3}", end="  ")
+        if perplexities["retain"] > allowed_retain_perplexity:
+            print("> relearning retain", end="  ")
+            f = 1
+            normal_train_step(model, next(retain_relearn_iter), relearn_lr)
+        elif perplexities["target"] > pl_ppl_threshold:
+            print("**relearning target", end="  ")
+            f = 1
+            # we intentionally use target_UNlean_iter, to not affect relearn split here
+            normal_train_step(model, next(target_unlearn_iter), relearn_lr)
+        else:
+            print("  unlearning target", end="  ")
+            f = f_schedule(step_num)
+            unlearn_step(model, next(target_unlearn_iter), unlearn_lr)
+
+        if (step_num + 1) % eval_every_n_steps == 0:
+            perplexities = {
+                "target": get_perplexity(model, target_dataset),
+                "retain": get_perplexity(model, retain_dataset),
+            }
+            print({k: f"{v:.2f}" for k, v in perplexities.items()}, end="  ")
+
+    # relearning loop
+    print("\n### relearning pl started ###")
+    f = 1
+    for step_num in range(num_relearning_steps):
+        print(f"\nstep {step_num + 1:3}", end="  ")
+        if perplexities["retain"] > allowed_retain_perplexity:
+            print("> relearning retain", end="  ")
+            normal_train_step(model, next(retain_relearn_iter), relearn_lr)
+        else:
+            print("  relearning target", end="  ")
+            normal_train_step(model, next(target_relearn_iter), relearn_lr)
+
+        if (step_num + 1) % eval_every_n_steps == 0:
+            perplexities = {
+                "target": get_perplexity(model, target_dataset),
+                "retain": get_perplexity(model, retain_dataset),
+            }
+            print({k: f"{v:.2f}" for k, v in perplexities.items()}, end="  ")
 
 # %%
-print("relearning pl")
-f = 1
-res = train(model, islice(pl_relearn_iter, 100))
-
-# %%
-print("relearning en")
-f = 1
-res = train(model, islice(en_relearn_iter, 10))
+unlearn_and_relearn(
+    model,
+    pl_dataset,
+    en_dataset,
+)
