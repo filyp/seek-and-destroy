@@ -21,31 +21,29 @@ model = AutoModelForCausalLM.from_pretrained(
     torch_dtype=pt.bfloat16,
 ).to(device)
 
+
 # %% save mlp output grads
-mlp_output_grads = dict()
-
-
 def save_output_grad_hook(module, grad_input, grad_output):
-    mlp_output_grads[module] = grad_output[0]
+    module.output_grad = grad_output[0]
 
 
 for layer in model.model.layers:
-    layer.mlp.down_proj._backward_hooks.clear()
+    # layer.mlp.down_proj._backward_hooks.clear()
     layer.mlp.down_proj.register_full_backward_hook(save_output_grad_hook)
 
 
 # %% install gradient scaling hooks
 def scale_grad_hook(module, grad_input, grad_output):
     grad = list(grad_input)
-    grad[0] *= f
+    grad[0] *= module.fade_factor
     return grad
 
 
 # works for gemma-2-2b and Qwen2.5-0.5B
 for layer in model.model.layers:
-    layer.mlp._backward_hooks.clear()
+    # layer.mlp._backward_hooks.clear()
     layer.mlp.register_full_backward_hook(scale_grad_hook)
-    layer.input_layernorm._backward_hooks.clear()
+    # layer.input_layernorm._backward_hooks.clear()
     layer.input_layernorm.register_full_backward_hook(scale_grad_hook)
 
 
@@ -74,7 +72,7 @@ def unlearn_step(model, batch, lr):
     for layer in model.model.layers:
         module = layer.mlp.down_proj
         # get the grad
-        output_grad = mlp_output_grads[module]
+        output_grad = module.output_grad
         output_grad = output_grad[:, :-1, :]  # last token position has no gradient
         assert output_grad.norm(dim=-1).all()
 
@@ -86,6 +84,12 @@ def unlearn_step(model, batch, lr):
 
     optimizer.step()
     optimizer.zero_grad(set_to_none=True)  # unneeded, but clean up just to be sure
+
+
+def set_fade_factor(model, fade_factor):
+    for layer in model.model.layers:
+        layer.mlp.fade_factor = fade_factor
+        layer.input_layernorm.fade_factor = fade_factor
 
 
 # %%
@@ -102,7 +106,6 @@ def unlearn_and_relearn(
     pl_ppl_threshold=float("inf"),
     batch_size=32,
 ):
-    global f
     # todo test for f=0
 
     # create dataset iterators
@@ -127,16 +130,16 @@ def unlearn_and_relearn(
         print(f"\nstep {step_num + 1:3}", end="  ")
         if perplexities["retain"] > allowed_retain_perplexity:
             print("> relearning retain", end="  ")
-            f = 1
+            set_fade_factor(model, 1)
             normal_train_step(model, next(retain_relearn_iter), relearn_lr)
         elif perplexities["target"] > pl_ppl_threshold:
             print("**relearning target", end="  ")
-            f = 1
+            set_fade_factor(model, 1)
             # we intentionally use target_UNlean_iter, to not affect relearn split here
             normal_train_step(model, next(target_unlearn_iter), relearn_lr)
         else:
             print("  unlearning target", end="  ")
-            f = f_schedule(step_num)
+            set_fade_factor(model, f_schedule(step_num))
             unlearn_step(model, next(target_unlearn_iter), unlearn_lr)
 
         if (step_num + 1) % eval_every_n_steps == 0:
@@ -148,7 +151,7 @@ def unlearn_and_relearn(
 
     # relearning loop
     print("\n### relearning pl started ###")
-    f = 1
+    set_fade_factor(model, 1)
     for step_num in range(num_relearning_steps):
         print(f"\nstep {step_num + 1:3}", end="  ")
         if perplexities["retain"] > allowed_retain_perplexity:
@@ -165,9 +168,15 @@ def unlearn_and_relearn(
             }
             print({k: f"{v:.2f}" for k, v in perplexities.items()}, end="  ")
 
+
 # %%
 unlearn_and_relearn(
     model,
     pl_dataset,
     en_dataset,
 )
+# %%
+model.fade_factor = 3
+# %%
+model.fade_factor
+# %%
