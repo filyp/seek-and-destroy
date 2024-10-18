@@ -4,6 +4,7 @@ import time
 import torch as pt
 import wandb
 from utils import forward, get_perplexity
+from unlearning_functions import name_to_function
 
 
 # %%
@@ -50,38 +51,13 @@ def normal_train_step(model, batch, lr):
     optimizer.step()
 
 
-def unlearn_step(model, batch, lr, fade_factor):
-    set_fade_factor(model, fade_factor)
-    optimizer = pt.optim.SGD(model.parameters(), lr=lr)
-
-    loss = forward(model, batch)
-    loss.backward()
-    # get rid of the normal grad
-    optimizer.zero_grad(set_to_none=True)
-
-    # calculate custom grads
-    for layer in model.model.layers:
-        module = layer.mlp.down_proj
-        # get the downstream gradient saved by the hook
-        output_grad = module.output_grad
-        output_grad = output_grad[:, :-1, :]  # last token position has no gradient
-        assert output_grad.norm(dim=-1).all()
-
-        # calculate the projection
-        projection_amps = pt.einsum("oi,bto->bti", module.weight, output_grad)
-        projection_amps /= output_grad.norm(dim=-1, keepdim=True)
-        update = pt.einsum("bto,bti->oi", output_grad, projection_amps)
-        module.weight.grad = update
-
-    optimizer.step()
-
-
 # %%
 def unlearn_and_relearn(
     model,
     target_dataset,
     retain_dataset,
     wandb_group="default",
+    unlearning_function="activation_agnostic",
     f_schedule="lambda step: 0",
     num_unlearning_steps=20,
     num_relearning_steps=10,
@@ -95,9 +71,10 @@ def unlearn_and_relearn(
     wandb.init(
         project="fading_backprop",
         config={k: v for k, v in locals().items() if isinstance(v, (int, float, str))},
-        group=wandb_group + time.strftime("_%Y-%m-%d_%H-%M-%S"),
+        group=wandb_group,
     )
     f_schedule = eval(f_schedule)
+    unlearning_function = name_to_function[unlearning_function]
 
     install_hooks_for_saving_gradients(model)
     install_hooks_for_fading_backprop(model)
@@ -134,8 +111,8 @@ def unlearn_and_relearn(
         # unlearn target
         else:
             print("  unlearning target", end="  ")
-            fade_factor = f_schedule(step_num)
-            unlearn_step(model, next(target_unlearn_iter), unlearn_lr, fade_factor)
+            set_fade_factor(model, f_schedule(step_num))
+            unlearning_function(model, next(target_unlearn_iter), unlearn_lr)
 
         # evaluate
         if (step_num + 1) % eval_every_n_steps == 0:

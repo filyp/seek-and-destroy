@@ -1,4 +1,5 @@
 # %%
+import time
 import matplotlib.pyplot as plt
 import torch as pt
 import wandb
@@ -51,17 +52,19 @@ best_value = abstract_search_for_optimal_value(lambda x: (x - 123) ** 2, 1, min,
 assert int(best_value) == 123
 
 
-# %% load dataset
-# model_id = "google/gemma-2-2b"
-model_id = "Qwen/Qwen2.5-0.5B"
-
-tokenizer = AutoTokenizer.from_pretrained(model_id)
-pl_dataset = load_one_oscar_shard("pl", tokenizer)
-en_dataset = load_one_oscar_shard("en", tokenizer)
-
-
 # %%
-def search_for_optimal_value(param_name, param_starting_value, criterion, **kwargs):
+def search_for_optimal_value(
+    model_id,
+    target_dataset,
+    retain_dataset,
+    param_name,
+    param_starting_value,
+    criterion,
+    wandb_group,
+    **kwargs,
+):
+    wandb_group += time.strftime("_%Y-%m-%d_%H-%M-%S")
+
     def get_final_target_perplexity(param_value):
         print(f"Trying {param_name}={param_value}")
         # load model
@@ -70,7 +73,7 @@ def search_for_optimal_value(param_name, param_starting_value, criterion, **kwar
 
         kwargs[param_name] = param_value
         final_perplexities = unlearn_and_relearn(
-            model, pl_dataset, en_dataset, **kwargs
+            model, target_dataset, retain_dataset, wandb_group, **kwargs
         )
         if final_perplexities["retain"] > 100:
             print("Unacceptable final perplexity on the retain set! Discarding...")
@@ -86,12 +89,21 @@ def search_for_optimal_value(param_name, param_starting_value, criterion, **kwar
     )
 
 
+# %% load dataset
+# model_id = "google/gemma-2-2b"
+model_id = "Qwen/Qwen2.5-0.5B"
+
+tokenizer = AutoTokenizer.from_pretrained(model_id)
+pl_dataset = load_one_oscar_shard("pl", tokenizer)
+en_dataset = load_one_oscar_shard("en", tokenizer)
+
+
 # %% find optimal relearning rate
 # it only needs to be done once per model and dataset
 # after finding the best value, just reuse it
 
 best_relearn_lr, _all_pairs = search_for_optimal_value(
-    "relearn_lr", 0.001, min, wandb_group="relearn_lr_search"
+    model_id, pl_dataset, en_dataset, "relearn_lr", 0.001, min, "relearn_lr_search"
 )
+print(f"{best_relearn_lr=}")
 # best_relearn_lr = 0.0006625
-
