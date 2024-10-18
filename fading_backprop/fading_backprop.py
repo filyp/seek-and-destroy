@@ -78,15 +78,14 @@ def unlearn_and_relearn(
     target_dataset,
     retain_dataset,
     f_schedule=lambda step: 0.0,
-    num_unlearning_steps=10,
-    num_relearning_steps=10,
+    num_unlearning_steps=20,
+    num_relearning_steps=20,
     eval_every_n_steps=2,
     relearn_lr=0.0003,
     unlearn_lr=1,
     pl_ppl_threshold=float("inf"),
     batch_size=32,
 ):
-    # todo test for f=0
     install_hooks_for_saving_gradients(model)
     install_hooks_for_fading_backprop(model)
 
