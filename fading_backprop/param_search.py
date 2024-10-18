@@ -10,6 +10,8 @@ from fading_backprop import unlearn_and_relearn
 
 # %%
 def abstract_search_for_optimal_value(f, starting_value, criterion, zoom_in_steps=4):
+    assert starting_value > 0
+    assert criterion in (min, max)
     value = starting_value
     values_and_outputs = []
 
@@ -70,6 +72,13 @@ def search_for_optimal_value(param_name, param_starting_value, criterion, **kwar
         final_perplexities = unlearn_and_relearn(
             model, pl_dataset, en_dataset, **kwargs
         )
+        if final_perplexities["retain"] > 100:
+            print("Unacceptable final perplexity on the retain set! Discarding...")
+            if criterion == min:
+                return float("inf")
+            elif criterion == max:
+                return float("-inf")
+
         return final_perplexities["target"]
 
     return abstract_search_for_optimal_value(
@@ -80,4 +89,9 @@ def search_for_optimal_value(param_name, param_starting_value, criterion, **kwar
 # %% find optimal relearning rate
 # it only needs to be done once per model and dataset
 # after finding the best value, just reuse it
-best_value, all_pairs = search_for_optimal_value("relearn_lr", 0.001, min)
+
+best_relearn_lr, _all_pairs = search_for_optimal_value(
+    "relearn_lr", 0.001, min, wandb_group="relearn_lr_search"
+)
+# best_relearn_lr = 0.0006625
+

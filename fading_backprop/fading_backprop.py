@@ -1,4 +1,6 @@
 # %%
+import time
+
 import torch as pt
 import wandb
 from utils import forward, get_perplexity
@@ -41,8 +43,10 @@ def normal_train_step(model, batch, lr):
     set_fade_factor(model, 1)
     optimizer = pt.optim.SGD(model.parameters(), lr=lr)
     optimizer.zero_grad(set_to_none=True)
+
     loss = forward(model, batch)
     loss.backward()
+
     optimizer.step()
 
 
@@ -77,15 +81,24 @@ def unlearn_and_relearn(
     model,
     target_dataset,
     retain_dataset,
-    f_schedule=lambda step: 0.0,
+    wandb_group="default",
+    f_schedule="lambda step: 0",
     num_unlearning_steps=20,
-    num_relearning_steps=20,
+    num_relearning_steps=10,
     eval_every_n_steps=2,
     relearn_lr=0.0003,
     unlearn_lr=1,
     pl_ppl_threshold=float("inf"),
     batch_size=32,
 ):
+    # prepare wandb run
+    wandb.init(
+        project="fading_backprop",
+        config={k: v for k, v in locals().items() if isinstance(v, (int, float, str))},
+        group=wandb_group + time.strftime("_%Y-%m-%d_%H-%M-%S"),
+    )
+    f_schedule = eval(f_schedule)
+
     install_hooks_for_saving_gradients(model)
     install_hooks_for_fading_backprop(model)
 
@@ -131,6 +144,7 @@ def unlearn_and_relearn(
                 "retain": get_perplexity(model, retain_dataset),
             }
             print({k: f"{v:.2f}" for k, v in ppl.items()}, end="  ")
+            wandb.log(ppl)
 
     # relearning loop
     print("\n### relearning started ###", end="  ")
@@ -150,6 +164,8 @@ def unlearn_and_relearn(
                 "retain": get_perplexity(model, retain_dataset),
             }
             print({k: f"{v:.2f}" for k, v in ppl.items()}, end="  ")
-    print("\n###### relearning finished ######")
+            wandb.log(ppl)
 
+    print("\n###### relearning finished ######")
+    wandb.finish()
     return ppl
