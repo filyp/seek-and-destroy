@@ -68,7 +68,7 @@ def search_for_optimal_value(
     wandb_group += time.strftime("_%Y-%m-%d_%H-%M-%S")
 
     def get_final_target_perplexity(param_value):
-        print(f"Trying {param_name}={param_value}")
+        print(f"\n\n\nTrying {param_name}={param_value}")
         # load model
         model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
         model.to(device)
@@ -125,3 +125,21 @@ best_unlearn_lr, _all_pairs = search_for_optimal_value(
     unlearning_function="activation_agnostic",
 )
 print(f"{best_unlearn_lr=}")
+# 11.54
+
+# %% find optimal AA, fade_factor=1 unlearning rate
+
+best_unlearn_lr, _all_pairs = search_for_optimal_value(
+    model_id,
+    pl_dataset,
+    en_dataset,
+    "unlearn_lr",
+    1,
+    max,
+    "1_AA_search",
+    relearn_lr=best_relearn_lr,
+    f_schedule="lambda step: 1",
+    unlearning_function="activation_agnostic",
+)
+print(f"{best_unlearn_lr=}")
+# 1.54
