@@ -1,58 +1,55 @@
 # %%
-from itertools import islice
+# just execute this file to run the tests for fading backprop on a specified model
 
-import matplotlib.pyplot as plt
 import torch as pt
-import wandb
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from utils import device, forward, get_perplexity, load_one_oscar_shard
+from utils import device, forward, load_one_oscar_shard
 
-model_id = "google/gemma-2-2b"
-# model_id = "Qwen/Qwen2.5-0.5B"
+from fading_backprop import install_hooks_for_fading_backprop, set_fade_factor
+
+# model_id = "google/gemma-2-2b"
+model_id = "Qwen/Qwen2.5-0.5B"
+
 tokenizer = AutoTokenizer.from_pretrained(model_id)
-
-# %% load dataset
 pl_dataset = load_one_oscar_shard("pl", tokenizer)
+en_dataset = load_one_oscar_shard("en", tokenizer)
 
-# %% load model
-model = AutoModelForCausalLM.from_pretrained(
-    model_id,
-    torch_dtype=pt.bfloat16,
-).to(device)
+model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
+model.to(device)
 
-# %% save residual stream activations
-grads = dict()
+install_hooks_for_fading_backprop(model)
 
 
-def save_grad_hook(module, grad_input, grad_output):
-    grads[module] = grad_output[0]
+# %%
+# save the gradients downstream of each layer
+# note: it's layer, not mlp as in the other file, because gradients after mlp
+# can be different between layers, due to layernorm
+def save_output_grad_hook(module, grad_input, grad_output):
+    module.output_grad = grad_output[0]
 
 
 for layer in model.model.layers:
-    # clear hooks
-    layer._backward_hooks.clear()
-    # register hook
-    layer.register_full_backward_hook(save_grad_hook)
+    layer.register_full_backward_hook(save_output_grad_hook)
 
+# %% test normal operation
+set_fade_factor(model, 0.01)
 
-# %% install gradient scaling hooks
-f = 0
-def scale_grad_hook(module, grad_input, grad_output):
-    grad = list(grad_input)
-    grad[0] *= f
-    return grad
-
-for layer in model.model.layers:
-    layer.mlp.register_full_backward_hook(scale_grad_hook)
-    layer.input_layernorm.register_full_backward_hook(scale_grad_hook)
-
-
-# %% plot grads
 batch = next(iter(pl_dataset["unlearn"].batch(1)))
 loss = forward(model, batch)
 loss.backward()
 
-# ! for f=0, the line should be completely flat
-one_val_from_each_layer = [grads[layer][0, -2, 0].item() for layer in model.model.layers]
-plt.plot(one_val_from_each_layer)
-# %%
+output_grads = [layer.output_grad for layer in model.model.layers]
+reference = output_grads[0]
+assert not all(output_grad.allclose(reference) for output_grad in output_grads)
+
+# %% test completely vanishing gradient additions
+# ! here, we want to ensure that gradient on each layer looks the same
+set_fade_factor(model, 0)
+
+batch = next(iter(pl_dataset["unlearn"].batch(1)))
+loss = forward(model, batch)
+loss.backward()
+
+output_grads = [layer.output_grad for layer in model.model.layers]
+reference = output_grads[0]
+assert all(output_grad.allclose(reference) for output_grad in output_grads)

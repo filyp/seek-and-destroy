@@ -1,8 +1,7 @@
 # %%
 import torch as pt
 import wandb
-from transformers import AutoModelForCausalLM, AutoTokenizer
-from utils import device, forward, get_perplexity, load_one_oscar_shard
+from utils import forward, get_perplexity
 
 
 # %%
@@ -155,4 +154,3 @@ def unlearn_and_relearn(
     print("\n###### relearning finished ######")
 
     return ppl
-

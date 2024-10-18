@@ -1,4 +1,4 @@
-
+# %%
 import matplotlib.pyplot as plt
 import torch as pt
 import wandb
