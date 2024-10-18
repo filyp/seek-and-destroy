@@ -1,5 +1,6 @@
 # %%
 import time
+
 import matplotlib.pyplot as plt
 import torch as pt
 import wandb
@@ -35,8 +36,9 @@ def abstract_search_for_optimal_value(f, starting_value, criterion, zoom_in_step
     for _ in range(zoom_in_steps):
         neighbor1 = values_and_outputs[best_index - 1]
         neighbor2 = values_and_outputs[best_index + 1]
-        new_value1 = (best_pair[0] + neighbor1[0]) / 2
-        new_value2 = (best_pair[0] + neighbor2[0]) / 2
+        # use geometric mean instead of arithmetic mean
+        new_value1 = (best_pair[0] * neighbor1[0]) ** 0.5
+        new_value2 = (best_pair[0] * neighbor2[0]) ** 0.5
         # print(new_value1, new_value2)
         values_and_outputs.append((new_value1, f(new_value1)))
         values_and_outputs.append((new_value2, f(new_value2)))
@@ -49,7 +51,7 @@ def abstract_search_for_optimal_value(f, starting_value, criterion, zoom_in_step
 
 
 best_value = abstract_search_for_optimal_value(lambda x: (x - 123) ** 2, 1, min, 20)[0]
-assert int(best_value) == 123
+assert round(best_value) == 123
 
 
 # %%
@@ -102,8 +104,24 @@ en_dataset = load_one_oscar_shard("en", tokenizer)
 # it only needs to be done once per model and dataset
 # after finding the best value, just reuse it
 
-best_relearn_lr, _all_pairs = search_for_optimal_value(
-    model_id, pl_dataset, en_dataset, "relearn_lr", 0.001, min, "relearn_lr_search"
+# best_relearn_lr, _all_pairs = search_for_optimal_value(
+#     model_id, pl_dataset, en_dataset, "relearn_lr", 0.1, min, "relearn_lr_search"
+# )
+# print(f"{best_relearn_lr=}")
+best_relearn_lr = 0.000649
+
+# %% find optimal AA, fade_factor=0 unlearning rate
+
+best_unlearn_lr, _all_pairs = search_for_optimal_value(
+    model_id,
+    pl_dataset,
+    en_dataset,
+    "unlearn_lr",
+    1,
+    max,
+    "0_AA_search",
+    relearn_lr=best_relearn_lr,
+    f_schedule="lambda step: 0",
+    unlearning_function="activation_agnostic",
 )
-print(f"{best_relearn_lr=}")
-# best_relearn_lr = 0.0006625
+print(f"{best_unlearn_lr=}")
