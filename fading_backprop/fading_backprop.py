@@ -1,4 +1,5 @@
 # %%
+from copy import deepcopy
 import time
 
 import torch as pt
@@ -65,7 +66,6 @@ def get_norm_of_weights_change(model, original_state_dict):
 
 
 def scale_perturbation(model, original_state_dict, scaling_factor):
-    # FYI using model.named_parameters() instead, would throw a runtime error
     for module_name, current_weights in model.state_dict().items():
         original_weights = original_state_dict[module_name]
         # modification need to be done in-place so it's a bit awkward:
@@ -89,6 +89,7 @@ def unlearn_and_relearn(
     unlearn_lr=1,
     pl_ppl_threshold=float("inf"),
     batch_size=32,
+    allowed_retain_ppl_multiplier=1.2,
 ):
     # prepare wandb run
     wandb.init(
@@ -98,6 +99,8 @@ def unlearn_and_relearn(
     )
     f_schedule = eval(f_schedule)
     unlearning_function = name_to_function[unlearning_function]
+
+    original_state_dict = deepcopy(model.state_dict())
 
     install_hooks_for_saving_gradients(model)
     install_hooks_for_fading_backprop(model)
@@ -116,7 +119,7 @@ def unlearn_and_relearn(
 
     # perplexity on retain set is not allowed to raise above this value
     # - this triggers relearning on retain set
-    allowed_retain_perplexity = ppl["retain"] * 1.2
+    allowed_retain_perplexity = ppl["retain"] * allowed_retain_ppl_multiplier
     print(f"{allowed_retain_perplexity=:.2f}")
 
     # unlearning loop
@@ -142,6 +145,7 @@ def unlearn_and_relearn(
             ppl = {
                 "target": get_perplexity(model, target_dataset),
                 "retain": get_perplexity(model, retain_dataset),
+                "w_delta": get_norm_of_weights_change(model, original_state_dict),
             }
             print({k: f"{v:.2f}" for k, v in ppl.items()}, end="  ")
             wandb.log(ppl)
@@ -162,6 +166,7 @@ def unlearn_and_relearn(
             ppl = {
                 "target": get_perplexity(model, target_dataset),
                 "retain": get_perplexity(model, retain_dataset),
+                "w_delta": get_norm_of_weights_change(model, original_state_dict),
             }
             print({k: f"{v:.2f}" for k, v in ppl.items()}, end="  ")
             wandb.log(ppl)

@@ -102,3 +102,23 @@ assert pt.einsum("bti,btj->ij", grad, act).allclose(module.weight.grad)
 model.model.layers = model.model.layers[:2]
 pt.cuda.empty_cache()
 
+
+# unlearn_and_relearn(
+#     model,
+#     target_dataset,
+#     retain_dataset,
+#     num_unlearning_steps=30,
+#     num_relearning_steps=30,
+#     allowed_retain_ppl_multiplier=float("inf"),
+# )
+# # %%
+# # get the latest wandb run
+# import wandb
+
+# runs = wandb.Api().runs("filyp/fading_backprop")
+# latest_run = sorted(runs, key=lambda run: run.created_at, reverse=True)[0]
+# hist = latest_run.history()
+# plt.scatter(hist["w_delta"], hist["retain"])
+
+# # %%
+# plt.scatter(hist["w_delta"], hist["target"])
