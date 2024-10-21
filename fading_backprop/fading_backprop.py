@@ -3,8 +3,8 @@ import time
 
 import torch as pt
 import wandb
-from utils import forward, get_perplexity
 from unlearning_functions import name_to_function
+from utils import forward, get_perplexity
 
 
 # %%
@@ -24,7 +24,7 @@ def install_hooks_for_fading_backprop(model):
         grad = list(grad_input)
         if grad[0] is None:
             # this happens on layer 0, with requires_grad=False on 1st MLP layer
-            return 
+            return
         # we rely on fade_factor set with set_fade_factor
         grad[0] *= module.fade_factor
         return grad
@@ -52,6 +52,26 @@ def normal_train_step(model, batch, lr):
     loss.backward()
 
     optimizer.step()
+
+
+# %%
+def get_norm_of_weights_change(model, original_state_dict):
+    partial_norms = []
+    for module_name, current_weights in model.named_parameters():
+        original_weights = original_state_dict[module_name]
+        norm = (original_weights - current_weights).norm()
+        partial_norms.append(norm)
+    return pt.Tensor(partial_norms).norm()
+
+
+def scale_perturbation(model, original_state_dict, scaling_factor):
+    # FYI using model.named_parameters() instead, would throw a runtime error
+    for module_name, current_weights in model.state_dict().items():
+        original_weights = original_state_dict[module_name]
+        # modification need to be done in-place so it's a bit awkward:
+        current_weights -= original_weights
+        current_weights *= scaling_factor
+        current_weights += original_weights
 
 
 # %%

@@ -1,8 +1,16 @@
 # %%
 # just execute this file to run the tests for fading backprop on a specified model
 
+import sys
+from pathlib import Path
+
 import torch as pt
 from transformers import AutoModelForCausalLM, AutoTokenizer
+
+# Add the main directory to sys.path
+sys.path.append(str(Path(__file__).resolve().parent.parent))
+
+
 from utils import device, forward, load_one_oscar_shard
 
 from fading_backprop import install_hooks_for_fading_backprop, set_fade_factor
