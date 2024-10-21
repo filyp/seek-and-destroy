@@ -56,8 +56,6 @@ assert eval_pert_impact(0, module_name) == orig_ppl
 # test ppl for non-0 perturbation
 assert not eval_pert_impact(0.1, module_name) == orig_ppl
 
-# %%
-
 # %% check the norms of the weights on each layer
 for l in range(24):
     module_name = f"model.layers.{l}.mlp.down_proj.weight"
@@ -114,4 +112,48 @@ plt.title(f"Perplexity vs perturbation norm\n{module_name}")
 plt.xlabel("Perturbation norm")
 plt.ylabel("Perplexity")
 
+# %% now, try for just one perturbation, scaled differently
+
+module_name = "model.layers.10.mlp.down_proj.weight"
+original_tensor = original_state_dict[module_name]
+perturbation = pt.rand_like(original_tensor)
+perturbation /= perturbation.norm()
+
+perplexities = []
+pert_norms = pt.linspace(0, 20, 21)
+# pert_norms = pt.linspace(0, 0.0001, 31)
+for pert_norm in pert_norms:
+    scaled_perturbation = perturbation * pert_norm 
+    # apply perturbation
+    model.state_dict()[module_name] += scaled_perturbation
+    # eval
+    perplexity = get_perplexity(model, dataset, batch_size=ppl_batch_size)
+    perplexities.append(perplexity)
+    # revert - note: must be done in-place
+    model.state_dict()[module_name] *= 0
+    model.state_dict()[module_name] += original_tensor
+
+# fit a quadratic curve to the data
+pert_norms_np = pert_norms.numpy()
+perplexities_np = pt.tensor(perplexities).numpy()
+popt, pcov = curve_fit(quadratic, pert_norms_np, perplexities_np)
+popt, pcov
+
+# plot
+# light theme
+plt.style.use("default")
+# plot the fitted curve
+x = np.linspace(0, 20, 100)
+# x = np.linspace(0, 0.0001, 100)
+y = quadratic(x, *popt)
+plt.plot(x, y)
+# plot the points
+plt.plot(pert_norms, perplexities, "o")
+# also plot the original perplexity as grey horizontal line
+plt.axhline(original_ppl, color="grey", linestyle="-")
+# title
+plt.title(f"Perplexity vs perturbation norm for one perturbation\n{module_name}")
+# labels
+plt.xlabel("Perturbation norm")
+plt.ylabel("Perplexity")
 # %%
