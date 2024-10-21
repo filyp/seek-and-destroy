@@ -31,25 +31,37 @@ def save_output_grad_hook(module, grad_input, grad_output):
 for layer in model.model.layers:
     layer.register_full_backward_hook(save_output_grad_hook)
 
+
+def activations_on_all_layers_equal():
+    batch = next(iter(pl_dataset["unlearn"].batch(1)))
+    loss = forward(model, batch)
+    loss.backward()
+
+    output_grads = [layer.output_grad for layer in model.model.layers]
+    reference = output_grads[0]
+    return all(output_grad.allclose(reference) for output_grad in output_grads)
+
+
 # %% test normal operation
 set_fade_factor(model, 0.01)
-
-batch = next(iter(pl_dataset["unlearn"].batch(1)))
-loss = forward(model, batch)
-loss.backward()
-
-output_grads = [layer.output_grad for layer in model.model.layers]
-reference = output_grads[0]
-assert not all(output_grad.allclose(reference) for output_grad in output_grads)
+assert not activations_on_all_layers_equal()
 
 # %% test completely vanishing gradient additions
 # ! here, we want to ensure that gradient on each layer looks the same
 set_fade_factor(model, 0)
+assert activations_on_all_layers_equal()
 
-batch = next(iter(pl_dataset["unlearn"].batch(1)))
-loss = forward(model, batch)
-loss.backward()
+# %% # freeze all but mlp down_proj
+for param in model.parameters():
+    param.requires_grad = False
+for layer in model.model.layers:
+    layer.mlp.down_proj.weight.requires_grad = True
 
-output_grads = [layer.output_grad for layer in model.model.layers]
-reference = output_grads[0]
-assert all(output_grad.allclose(reference) for output_grad in output_grads)
+# %% test normal operation again
+set_fade_factor(model, 0.01)
+assert not activations_on_all_layers_equal()
+
+# %% test completely vanishing gradient additions again
+# ! here, we want to ensure that gradient on each layer looks the same
+set_fade_factor(model, 0)
+assert activations_on_all_layers_equal()

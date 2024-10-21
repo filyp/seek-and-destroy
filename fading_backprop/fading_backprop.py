@@ -22,6 +22,9 @@ def install_hooks_for_fading_backprop(model):
     # (tested for gemma-2-2b and Qwen2.5-0.5B)
     def scale_grad_hook(module, grad_input, grad_output):
         grad = list(grad_input)
+        if grad[0] is None:
+            # this happens on layer 0, with requires_grad=False on 1st MLP layer
+            return 
         # we rely on fade_factor set with set_fade_factor
         grad[0] *= module.fade_factor
         return grad
