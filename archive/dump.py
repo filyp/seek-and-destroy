@@ -133,3 +133,11 @@ pt.cuda.empty_cache()
 
 # for g in optimizer.param_groups:
 #     g["lr"] = 1000000
+
+# %%
+# inputs = tokenizer(["Litwo, czemu"], return_tensors="pt").to(device)
+# # outputs = model.generate(**inputs, max_new_tokens=5, return_dict_in_generate=True, output_scores=True, do_sample=True )
+# outputs = original_model.generate(**inputs, max_new_tokens=60, return_dict_in_generate=True, output_scores=True)
+# for seq in outputs.sequences:
+#     print(tokenizer.decode(seq))
+
