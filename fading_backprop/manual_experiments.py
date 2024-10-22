@@ -4,15 +4,19 @@ from copy import deepcopy
 import matplotlib.pyplot as plt
 import torch as pt
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from utils import device, forward, get_perplexity, load_one_oscar_shard
+from utils import (
+    device,
+    get_perplexity,
+    load_one_oscar_shard,
+    get_norm_of_weights_change,
+    scale_perturbation,
+    normal_train_step,
+)
 
 from fading_backprop import (
     activation_agnostic,
-    get_norm_of_weights_change,
     install_hooks_for_fading_backprop,
     install_hooks_for_saving_gradients,
-    normal_train_step,
-    scale_perturbation,
     set_fade_factor,
     unlearn_and_relearn,
 )
@@ -53,10 +57,11 @@ print("init_target_ppl", init_target_ppl)
 print("init_retain_ppl", init_retain_ppl)
 
 # %%
-set_fade_factor(model, 0)
 
 for i in range(10):
+    set_fade_factor(model, 0)
     # activation_agnostic(model, next(target_unlearn_iter), lr=0.4)
+    set_fade_factor(model, 1)
 
     # normal_train_step(model, next(target_unlearn_iter), 0.0003, loss_sign=-1)
     normal_train_step(model, next(target_relearn_iter), 0.0003)

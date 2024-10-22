@@ -4,7 +4,7 @@ from copy import deepcopy
 
 import torch as pt
 import wandb
-from utils import forward, get_perplexity
+from utils import forward, get_perplexity, get_norm_of_weights_change, normal_train_step
 
 
 # %%
@@ -44,37 +44,7 @@ def set_fade_factor(model, fade_factor):
         layer.input_layernorm.fade_factor = fade_factor
 
 
-def normal_train_step(model, batch, lr, loss_sign=1):
-    set_fade_factor(model, 1)
-    optimizer = pt.optim.SGD(model.parameters(), lr=lr)
-    optimizer.zero_grad(set_to_none=True)
-
-    loss = forward(model, batch)
-    loss *= loss_sign
-    loss.backward()
-
-    optimizer.step()
-
-
 # %%
-def get_norm_of_weights_change(model, original_state_dict):
-    partial_norms = []
-    for module_name, current_weights in model.named_parameters():
-        original_weights = original_state_dict[module_name]
-        norm = (original_weights - current_weights).norm()
-        partial_norms.append(norm)
-    return pt.Tensor(partial_norms).norm()
-
-
-def scale_perturbation(model, original_state_dict, scaling_factor):
-    for module_name, current_weights in model.state_dict().items():
-        original_weights = original_state_dict[module_name]
-        # modification need to be done in-place so it's a bit awkward:
-        current_weights -= original_weights
-        current_weights *= scaling_factor
-        current_weights += original_weights
-
-
 def activation_agnostic(model, batch, lr):
     optimizer = pt.optim.SGD(model.parameters(), lr=lr)
 
@@ -159,11 +129,13 @@ def unlearn_and_relearn(
         # retain set perplexity too high, so relearn it
         if ppl["retain"] > allowed_retain_perplexity:
             print("> relearning retain", end="  ")
+            set_fade_factor(model, 1)
             normal_train_step(model, next(retain_relearn_iter), relearn_lr)
         # do a bit of target relearning, to make unlearning more relevant
         elif ppl["target"] > pl_ppl_threshold:
             print("**relearning target", end="  ")
             # we intentionally use target_UNlean_iter, to not affect relearn split here
+            set_fade_factor(model, 1)
             normal_train_step(model, next(target_unlearn_iter), relearn_lr)
         # unlearn target
         else:
@@ -187,9 +159,11 @@ def unlearn_and_relearn(
         print(f"\nstep {step_num + 1:3}", end="  ")
         if ppl["retain"] > allowed_retain_perplexity:
             print("> relearning retain", end="  ")
+            set_fade_factor(model, 1)
             normal_train_step(model, next(retain_relearn_iter), relearn_lr)
         else:
             print("  relearning target", end="  ")
+            set_fade_factor(model, 1)
             normal_train_step(model, next(target_relearn_iter), relearn_lr)
 
         # evaluate

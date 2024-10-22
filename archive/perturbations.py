@@ -12,7 +12,6 @@ from utils import device, forward, get_perplexity, load_one_oscar_shard
 from fading_backprop import (
     install_hooks_for_fading_backprop,
     install_hooks_for_saving_gradients,
-    normal_train_step,
     set_fade_factor,
 )
 

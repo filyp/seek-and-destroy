@@ -70,3 +70,31 @@ def forward(model, batch):
     # compute loss
     return loss_fn(logits[:, :-1, :].flatten(end_dim=1), input_ids[:, 1:].flatten())
 
+
+def get_norm_of_weights_change(model, original_state_dict):
+    partial_norms = []
+    for module_name, current_weights in model.named_parameters():
+        original_weights = original_state_dict[module_name]
+        norm = (original_weights - current_weights).norm()
+        partial_norms.append(norm)
+    return pt.Tensor(partial_norms).norm()
+
+
+def scale_perturbation(model, original_state_dict, scaling_factor):
+    for module_name, current_weights in model.state_dict().items():
+        original_weights = original_state_dict[module_name]
+        # modification need to be done in-place so it's a bit awkward:
+        current_weights -= original_weights
+        current_weights *= scaling_factor
+        current_weights += original_weights
+
+
+def normal_train_step(model, batch, lr, loss_sign=1):
+    optimizer = pt.optim.SGD(model.parameters(), lr=lr)
+    optimizer.zero_grad(set_to_none=True)
+
+    loss = forward(model, batch)
+    loss *= loss_sign
+    loss.backward()
+
+    optimizer.step()

@@ -9,15 +9,18 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 # Add the main directory to sys.path
 sys.path.append(str(Path(__file__).resolve().parent.parent))
 
-from utils import device, forward, load_one_oscar_shard
+from utils import (
+    device,
+    forward,
+    load_one_oscar_shard,
+    get_norm_of_weights_change,
+    scale_perturbation,
+    normal_train_step,
+)
 
 from fading_backprop import (
-    get_norm_of_weights_change,
     install_hooks_for_fading_backprop,
     install_hooks_for_saving_gradients,
-    scale_perturbation,
-    set_fade_factor,
-    normal_train_step,
 )
 
 # model_id = "google/gemma-2-2b"
