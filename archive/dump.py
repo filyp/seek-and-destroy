@@ -129,3 +129,7 @@ pt.cuda.empty_cache()
     #     scale_perturbation(model, original_state_dict, scale_factor)
     #     lr *= scale_factor
     #     norm = get_norm_of_weights_change(model, original_state_dict)
+
+
+# for g in optimizer.param_groups:
+#     g["lr"] = 1000000

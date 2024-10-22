@@ -4,7 +4,6 @@ from copy import deepcopy
 
 import torch as pt
 import wandb
-from unlearning_functions import name_to_function
 from utils import forward, get_perplexity
 
 
@@ -13,6 +12,7 @@ def install_hooks_for_saving_gradients(model):
     # save the gradients downstream of each mlp, to be used in custom unlearning
     def save_output_grad_hook(module, grad_input, grad_output):
         module.output_grad = grad_output[0]
+        # ! note that .detach().clone() may be needed too
 
     for layer in model.model.layers:
         assert not layer.mlp.down_proj._backward_hooks

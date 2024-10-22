@@ -1,6 +1,4 @@
 # %%
-# for g in optimizer.param_groups:
-#     g["lr"] = 1000000
 from copy import deepcopy
 
 import matplotlib.pyplot as plt
