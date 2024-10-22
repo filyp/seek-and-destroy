@@ -6,10 +6,10 @@ from copy import deepcopy
 import matplotlib.pyplot as plt
 import torch as pt
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from unlearning_functions import activation_agnostic, name_to_function
 from utils import device, forward, get_perplexity, load_one_oscar_shard
 
 from fading_backprop import (
+    activation_agnostic,
     get_norm_of_weights_change,
     install_hooks_for_fading_backprop,
     install_hooks_for_saving_gradients,
@@ -51,33 +51,30 @@ install_hooks_for_fading_backprop(model)
 
 init_target_ppl = get_perplexity(model, target_dataset)
 init_retain_ppl = get_perplexity(model, retain_dataset)
+print("init_target_ppl", init_target_ppl)
+print("init_retain_ppl", init_retain_ppl)
 
 # %%
-set_fade_factor(model, 1)
-norm_lim = 5
-lr = 0.1
+set_fade_factor(model, 0)
 
-for i in range(20):
-    # activation_agnostic(model, next(target_unlearn_iter), lr=lr)
+for i in range(10):
+    # activation_agnostic(model, next(target_unlearn_iter), lr=0.4)
+
+    # normal_train_step(model, next(target_unlearn_iter), 0.0003, loss_sign=-1)
     normal_train_step(model, next(target_relearn_iter), 0.0003)
-    # normal_train_step(model, next(retain_relearn_iter), 0.0003)
-
-    norm = get_norm_of_weights_change(model, original_state_dict)
-
-    # if norm > norm_lim:
-    #     scale_factor = norm_lim / norm
-    #     print(f"scaling from {norm:.2f} to {norm_lim:.2f}")
-    #     scale_perturbation(model, original_state_dict, scale_factor)
-    #     lr *= scale_factor
-    #     norm = get_norm_of_weights_change(model, original_state_dict)
+    normal_train_step(model, next(retain_relearn_iter), 0.0005)
+    # scale_perturbation(model, original_state_dict, 0.99)
 
     res = {
         "target": get_perplexity(model, target_dataset) - init_target_ppl,
         "retain": get_perplexity(model, retain_dataset) - init_retain_ppl,
-        "norm": norm,
+        "norm": get_norm_of_weights_change(model, original_state_dict),
     }
     print({k: f"{v:.2f}" for k, v in res.items()})
-    
+    if i == 0:
+        first_res = res
+
+print("change: ", {k: f"{v - first_res[k]:.2f}" for k, v in res.items()})
 
 
 # %%

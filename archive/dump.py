@@ -122,3 +122,10 @@ pt.cuda.empty_cache()
 
 # # %%
 # plt.scatter(hist["w_delta"], hist["target"])
+
+    # if norm > norm_lim:
+    #     scale_factor = norm_lim / norm
+    #     print(f"scaling from {norm:.2f} to {norm_lim:.2f}")
+    #     scale_perturbation(model, original_state_dict, scale_factor)
+    #     lr *= scale_factor
+    #     norm = get_norm_of_weights_change(model, original_state_dict)
