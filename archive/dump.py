@@ -105,7 +105,7 @@ pt.cuda.empty_cache()
 
 # unlearn_and_relearn(
 #     model,
-#     target_dataset,
+#     forget_dataset,
 #     retain_dataset,
 #     num_unlearning_steps=30,
 #     num_relearning_steps=30,
@@ -121,7 +121,7 @@ pt.cuda.empty_cache()
 # plt.scatter(hist["w_delta"], hist["retain"])
 
 # # %%
-# plt.scatter(hist["w_delta"], hist["target"])
+# plt.scatter(hist["w_delta"], hist["forget"])
 
     # if norm > norm_lim:
     #     scale_factor = norm_lim / norm

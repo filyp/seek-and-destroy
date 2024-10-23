@@ -50,7 +50,7 @@ def load_one_oscar_shard(lang, tokenizer):
     return dataset
 
 
-def get_perplexity(model, dataset, batch_size=32, num_batches=1):
+def get_perplexity(model, dataset, num_batches=1, batch_size=32):
     metric = Perplexity(device=device)
     for batch in islice(dataset["validation"].batch(batch_size), num_batches):
         input_ids = pt.cat(batch["input_ids"])

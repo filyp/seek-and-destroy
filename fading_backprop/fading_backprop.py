@@ -78,7 +78,7 @@ name_to_function = dict(
 # %%
 def unlearn_and_relearn(
     model,
-    target_dataset,
+    forget_dataset,
     retain_dataset,
     wandb_group="default",
     unlearning_function="activation_agnostic",
@@ -107,13 +107,13 @@ def unlearn_and_relearn(
     install_hooks_for_fading_backprop(model)
 
     # create dataset iterators
-    target_unlearn_iter = iter(target_dataset["unlearn"].batch(batch_size))
-    target_relearn_iter = iter(target_dataset["relearn"].batch(batch_size))
+    forget_unlearn_iter = iter(forget_dataset["unlearn"].batch(batch_size))
+    forget_relearn_iter = iter(forget_dataset["relearn"].batch(batch_size))
     retain_relearn_iter = iter(retain_dataset["relearn"].batch(batch_size))
 
     # initial perplexities
     ppl = {
-        "target": get_perplexity(model, target_dataset),
+        "forget": get_perplexity(model, forget_dataset),
         "retain": get_perplexity(model, retain_dataset),
     }
     print("initial perplexity: ", {k: f"{v:.2f}" for k, v in ppl.items()})
@@ -131,22 +131,22 @@ def unlearn_and_relearn(
             print("> relearning retain", end="  ")
             set_fade_factor(model, 1)
             normal_train_step(model, next(retain_relearn_iter), relearn_lr)
-        # do a bit of target relearning, to make unlearning more relevant
-        elif ppl["target"] > pl_ppl_threshold:
-            print("**relearning target", end="  ")
-            # we intentionally use target_UNlean_iter, to not affect relearn split here
+        # do a bit of forget relearning, to make unlearning more relevant
+        elif ppl["forget"] > pl_ppl_threshold:
+            print("**relearning forget", end="  ")
+            # we intentionally use forget_UNlean_iter, to not affect relearn split here
             set_fade_factor(model, 1)
-            normal_train_step(model, next(target_unlearn_iter), relearn_lr)
-        # unlearn target
+            normal_train_step(model, next(forget_unlearn_iter), relearn_lr)
+        # unlearn forget
         else:
-            print("  unlearning target", end="  ")
+            print("  unlearning forget", end="  ")
             set_fade_factor(model, f_schedule(step_num))
-            unlearning_function(model, next(target_unlearn_iter), unlearn_lr)
+            unlearning_function(model, next(forget_unlearn_iter), unlearn_lr)
 
         # evaluate
         if (step_num + 1) % eval_every_n_steps == 0:
             ppl = {
-                "target": get_perplexity(model, target_dataset),
+                "forget": get_perplexity(model, forget_dataset),
                 "retain": get_perplexity(model, retain_dataset),
                 "w_delta": get_norm_of_weights_change(model, original_state_dict),
             }
@@ -162,14 +162,14 @@ def unlearn_and_relearn(
             set_fade_factor(model, 1)
             normal_train_step(model, next(retain_relearn_iter), relearn_lr)
         else:
-            print("  relearning target", end="  ")
+            print("  relearning forget", end="  ")
             set_fade_factor(model, 1)
-            normal_train_step(model, next(target_relearn_iter), relearn_lr)
+            normal_train_step(model, next(forget_relearn_iter), relearn_lr)
 
         # evaluate
         if (step_num + 1) % eval_every_n_steps == 0:
             ppl = {
-                "target": get_perplexity(model, target_dataset),
+                "forget": get_perplexity(model, forget_dataset),
                 "retain": get_perplexity(model, retain_dataset),
                 "w_delta": get_norm_of_weights_change(model, original_state_dict),
             }

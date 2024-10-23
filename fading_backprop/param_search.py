@@ -57,7 +57,7 @@ assert round(best_value) == 123
 # %%
 def search_for_optimal_value(
     model_id,
-    target_dataset,
+    forget_dataset,
     retain_dataset,
     param_name,
     param_starting_value,
@@ -67,7 +67,7 @@ def search_for_optimal_value(
 ):
     wandb_group += time.strftime("_%Y-%m-%d_%H-%M-%S")
 
-    def get_final_target_perplexity(param_value):
+    def get_final_forget_perplexity(param_value):
         print(f"\n\n\nTrying {param_name}={param_value}")
         # load model
         model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
@@ -75,7 +75,7 @@ def search_for_optimal_value(
 
         kwargs[param_name] = param_value
         final_perplexities = unlearn_and_relearn(
-            model, target_dataset, retain_dataset, wandb_group, **kwargs
+            model, forget_dataset, retain_dataset, wandb_group, **kwargs
         )
         if final_perplexities["retain"] > 100:
             print("Unacceptable final perplexity on the retain set! Discarding...")
@@ -84,10 +84,10 @@ def search_for_optimal_value(
             elif criterion == max:
                 return float("-inf")
 
-        return final_perplexities["target"]
+        return final_perplexities["forget"]
 
     return abstract_search_for_optimal_value(
-        get_final_target_perplexity, param_starting_value, criterion
+        get_final_forget_perplexity, param_starting_value, criterion
     )
 
 

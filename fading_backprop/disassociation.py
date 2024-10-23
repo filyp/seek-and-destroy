@@ -17,10 +17,10 @@ model.to(device)
 
 # create dataset iterators
 tokenizer = AutoTokenizer.from_pretrained(model_id)
-target_dataset = load_one_oscar_shard("pl", tokenizer)
+forget_dataset = load_one_oscar_shard("pl", tokenizer)
 retain_dataset = load_one_oscar_shard("en", tokenizer)
-target_unlearn_iter = iter(target_dataset["unlearn"].batch(batch_size))
-target_relearn_iter = iter(target_dataset["relearn"].batch(batch_size))
+forget_unlearn_iter = iter(forget_dataset["unlearn"].batch(batch_size))
+forget_relearn_iter = iter(forget_dataset["relearn"].batch(batch_size))
 retain_relearn_iter = iter(retain_dataset["relearn"].batch(batch_size))
 
 
@@ -33,7 +33,7 @@ for layer in original_model.model.layers:
     layer.mlp.act_fn.register_forward_hook(save_post_activations)
 
 # %%
-batch = next(target_unlearn_iter)
+batch = next(forget_unlearn_iter)
 forward(original_model, batch)
 
 # %%

@@ -18,7 +18,7 @@ model_id = "Qwen/Qwen2.5-0.5B"
 
 # load datasets
 tokenizer = AutoTokenizer.from_pretrained(model_id)
-target_dataset = load_one_oscar_shard("pl", tokenizer)
+forget_dataset = load_one_oscar_shard("pl", tokenizer)
 retain_dataset = load_one_oscar_shard("en", tokenizer)
 
 # %%
@@ -27,8 +27,8 @@ model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
 model.to(device)
 
 # create dataset iterators
-target_unlearn_iter = iter(target_dataset["unlearn"].batch(batch_size))
-target_relearn_iter = iter(target_dataset["relearn"].batch(batch_size))
+forget_unlearn_iter = iter(forget_dataset["unlearn"].batch(batch_size))
+forget_relearn_iter = iter(forget_dataset["relearn"].batch(batch_size))
 retain_relearn_iter = iter(retain_dataset["relearn"].batch(batch_size))
 
 
@@ -48,29 +48,29 @@ for module_name, module in get_modules(model):
 
 
 # prepare activation importance tensors
-target_act_imps = {}
+forget_act_imps = {}
 retain_act_imps = {}
-target_counter = 0
+forget_counter = 0
 retain_counter = 0
 for module_name, module in get_modules(model):
     input_size = module.weight.shape[1]
-    target_act_imps[module_name] = pt.zeros(input_size).to(device)
+    forget_act_imps[module_name] = pt.zeros(input_size).to(device)
     retain_act_imps[module_name] = pt.zeros(input_size).to(device)
 
 # %%
-for i in range(30):
+for i in range(1):
     print(".", end="")
     with pt.no_grad():
-        forward(model, next(target_unlearn_iter))
+        forward(model, next(forget_unlearn_iter))
     for module_name, module in get_modules(model):
         act = module.last_pre_activations
         act = act ** 2
         act = act.mean(axis=[0, 1])
-        target_act_imps[module_name] += act
-    target_counter += 1
+        forget_act_imps[module_name] += act
+    forget_counter += 1
 
 # %%
-for i in range(30):
+for i in range(1):
     print(".", end="")
     with pt.no_grad():
         forward(model, next(retain_relearn_iter))
@@ -87,11 +87,12 @@ def apply_decay(percentile, mult):
     model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
     model.to(device)
     for module_name, module in get_modules(model):
-        target_imp = target_act_imps[module_name] / target_counter
+        forget_imp = forget_act_imps[module_name] / forget_counter
         retain_imp = retain_act_imps[module_name] / retain_counter
 
-        rel_imp = target_imp / retain_imp
+        rel_imp = forget_imp / retain_imp
         cutoff = rel_imp.quantile(1 - percentile / 100)
+        # print(module.weight[:, rel_imp > cutoff].shape)
         with pt.no_grad():
             module.weight[:, rel_imp > cutoff] *= mult
 
@@ -99,59 +100,37 @@ def apply_decay(percentile, mult):
 
 
 # %%
-model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
-model.to(device)
+original_model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
+original_model.to(device)
 
-ppl_batch = 32
-
-init_target_ppl = get_perplexity(model, target_dataset, ppl_batch)
-init_retain_ppl = get_perplexity(model, retain_dataset, ppl_batch)
-print(f"{init_retain_ppl=:6.1f} {init_target_ppl=:6.1f}\n")
-
-
-def eval_vals(percentile, mult):
-    model = apply_decay(percentile, mult)
-    diff_target = get_perplexity(model, target_dataset, ppl_batch) - init_target_ppl
-    diff_retain = get_perplexity(model, retain_dataset, ppl_batch) - init_retain_ppl
-    ratio = diff_target / diff_retain
-    print(f"{percentile=:.2f}  {mult=:.1f}  {diff_retain=:4.1f}  {diff_target=:6.1f}  {ratio=:10.0f}")  # fmt: skip
-
-# %%
-eval_vals(0.1, 0.0)
-
-# %% grid search
-# for percentile in [0.01, 0.03, 0.1, 0.3, 1]:
-# for percentile in [0.1 ]:
-for percentile in [0.08, 0.09, 0.10, 0.11, 0.12]:
-    # for mult in [0.5, 0, -0.5, -1, -1.5]:
-    # for mult in [-0.5, -0.4, -0.3, -0.2, -0.1, 0, 0.1, 0.2]:
-    for mult in [0.1]:
-        eval_vals(percentile, mult)
-    print()
-
-# %%
-
-# # %%
 # # calculate initial perplexities
-# pt.cuda.empty_cache()
-# original_model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
-# original_model.to(device)
+init_forget_ppl = get_perplexity(original_model, forget_dataset)
+init_retain_ppl = get_perplexity(original_model, retain_dataset)
+print(f"{init_retain_ppl=:6.1f} {init_forget_ppl=:6.1f}\n")
 
-# init_target_ppl = get_perplexity(original_model, target_dataset)
-# init_retain_ppl = get_perplexity(original_model, retain_dataset)
-# print("init_target_ppl", init_target_ppl)
-# print("init_retain_ppl", init_retain_ppl)
 
-# # %%
+def eval_vals(model):
+    diff_forget = get_perplexity(model, forget_dataset) - init_forget_ppl
+    diff_retain = get_perplexity(model, retain_dataset) - init_retain_ppl
+    ratio = diff_forget / diff_retain
+    print(f"{diff_retain=:4.1f}  {diff_forget=:6.1f}  {ratio=:10.0f}")
+
+
+# %%
+model = apply_decay(0.1, -1)
+eval_vals(model)
+
+# %%
+
 # for i in range(10):
 
 #     normal_train_step(model, next(retain_relearn_iter), 0.0003)
 #     # scale_perturbation(model, original_model.state_dict(), 0.99)
 
-#     normal_train_step(model, next(target_relearn_iter), 0.0003)
+#     normal_train_step(model, next(forget_relearn_iter), 0.0003)
 
 #     res = {
-#         "target": get_perplexity(model, target_dataset) - init_target_ppl,
+#         "forget": get_perplexity(model, forget_dataset) - init_forget_ppl,
 #         "retain": get_perplexity(model, retain_dataset) - init_retain_ppl,
 #         "norm": get_norm_of_weights_change(model, original_model.state_dict()),
 #     }
@@ -161,4 +140,4 @@ for percentile in [0.08, 0.09, 0.10, 0.11, 0.12]:
 #         first_res = res
 # print("change: ", {k: f"{v - first_res[k]:.2f}" for k, v in res.items()})
 
-# %%
+# # %%
