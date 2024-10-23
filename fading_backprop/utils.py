@@ -1,3 +1,4 @@
+from itertools import islice
 import json
 
 import torch as pt
@@ -49,14 +50,13 @@ def load_one_oscar_shard(lang, tokenizer):
     return dataset
 
 
-def get_perplexity(model, dataset, batch_size=8):
-    # get perplexity on one batch of the validation set
+def get_perplexity(model, dataset, batch_size=32, num_batches=1):
     metric = Perplexity(device=device)
-    batch = next(iter(dataset["validation"].batch(batch_size)))
-    input_ids = pt.cat(batch["input_ids"])
-    with pt.no_grad():
-        outputs = model(input_ids)
-    metric.update(outputs.logits[:, :-1], input_ids[:, 1:])
+    for batch in islice(dataset["validation"].batch(batch_size), num_batches):
+        input_ids = pt.cat(batch["input_ids"])
+        with pt.no_grad():
+            outputs = model(input_ids)
+        metric.update(outputs.logits[:, :-1], input_ids[:, 1:])
     return metric.compute().item()
 
 

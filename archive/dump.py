@@ -141,3 +141,22 @@ pt.cuda.empty_cache()
 # for seq in outputs.sequences:
 #     print(tokenizer.decode(seq))
 
+
+# %%
+batch = b1
+input_ids = pt.cat(batch["input_ids"])
+
+with pt.no_grad():
+    outputs = model(input_ids)
+
+ids = input_ids[:, 1:].flatten()
+logits = outputs.logits[:, :-1].flatten(end_dim=1)
+probs = pt.nn.functional.softmax(logits, dim=-1)
+chosen_probs = probs[pt.arange(len(ids)), ids]
+# %%
+
+# %%
+m1 = pt.log(1 / chosen_probs).mean()
+m1.exp()
+# %%
+((m1 + m2) / 2).exp()
