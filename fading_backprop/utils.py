@@ -1,5 +1,5 @@
-from itertools import islice
 import json
+from itertools import islice
 
 import torch as pt
 import wandb
@@ -77,7 +77,7 @@ def get_norm_of_weights_change(model, original_state_dict):
         original_weights = original_state_dict[module_name]
         norm = (original_weights - current_weights).norm()
         partial_norms.append(norm)
-    return pt.Tensor(partial_norms).norm()
+    return pt.tensor(partial_norms).norm()
 
 
 def scale_perturbation(model, original_state_dict, scaling_factor):
@@ -98,3 +98,15 @@ def normal_train_step(model, batch, lr, loss_sign=1):
     loss.backward()
 
     optimizer.step()
+
+
+def get_stats(model, og_model, forget_set, retain_set):
+    return pt.tensor([
+        get_perplexity(model, forget_set),
+        get_perplexity(model, retain_set),
+        get_norm_of_weights_change(model, og_model.state_dict()),
+    ])
+
+
+def print_stats(stats):
+    print(f"forget: {stats[0]:4.0f}  retain: {stats[1]:5.2f}  norm: {stats[2]:5.2f}  ratio: {stats[0] / stats[1]:.0f}")  # fmt: skip

@@ -11,17 +11,13 @@ sys.path.append(str(Path(__file__).resolve().parent.parent))
 
 from utils import (
     device,
-    forward,
     load_one_oscar_shard,
     get_norm_of_weights_change,
     scale_perturbation,
     normal_train_step,
 )
 
-from fading_backprop import (
-    install_hooks_for_fading_backprop,
-    install_hooks_for_saving_gradients,
-)
+from fading_backprop import install_hooks_for_saving_gradients
 
 # model_id = "google/gemma-2-2b"
 model_id = "Qwen/Qwen2.5-0.5B"
@@ -33,7 +29,6 @@ model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
 model.to(device)
 
 install_hooks_for_saving_gradients(model)
-install_hooks_for_fading_backprop(model)
 
 # freeze all but mlp down_proj
 for param in model.parameters():
@@ -45,8 +40,8 @@ for layer in model.model.layers:
 original_state_dict = deepcopy(model.state_dict())
 
 # %% test that partial_norm calculation is valid
-l = pt.Tensor([1, 2, 3, 4, 5, 6])
-assert l.norm() == pt.Tensor([l[:3].norm(), l[3:].norm()]).norm()
+l = pt.tensor([1, 2, 3, 4, 5, 6])
+assert l.norm() == pt.tensor([l[:3].norm(), l[3:].norm()]).norm()
 
 # %% at the beginning, the norm of the weights change should be 0
 assert 0 == get_norm_of_weights_change(model, original_state_dict)
