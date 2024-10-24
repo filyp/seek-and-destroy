@@ -2,7 +2,6 @@ import json
 from itertools import islice
 
 import torch as pt
-import wandb
 from datasets import IterableDataset, IterableDatasetDict, load_dataset
 from torcheval.metrics.text import Perplexity
 
