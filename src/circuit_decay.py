@@ -34,15 +34,15 @@ for batch in islice(retain_set["unlearn"].batch(forward_batch_size), 10):
         forward(og_model, batch)
 
 mode = "dump"  # stop saving activations beyond this point
-# %% load a fresh model, and apply the intervention based on the activation stats
-weight_multiplier = 0
-percentile = 0.2
-# turns out ablating just one of them is enough
-ablate_down_proj = True
-ablate_up_proj = False
-ablate_gate_proj = False
 
-model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16).to(device)  # fmt: skip
+# %% load a fresh model, and apply the intervention based on the activation stats
+percentile_to_mult = OrderedDict({
+    # 0.02: -1,
+    # 0.1: -0.5,
+    0.2: 0.0,
+    # 1: 0.5,
+})
+assert sorted(percentile_to_mult.keys()) == list(percentile_to_mult.keys())
 
 # calculate cutoff, based on relative importance
 rel_imps = []
@@ -54,25 +54,27 @@ for module_name, og_module in og_model.named_modules():
     rel_imp = forget_imp / retain_imp
     og_module.rel_imp = rel_imp
     rel_imps.append(rel_imp)
-cutoff = pt.cat(rel_imps).quantile(1 - percentile / 100)
+rel_imps = pt.cat(rel_imps)
 
+cutoffs = [
+    rel_imps.quantile(1 - percentile / 100).item()
+    for percentile in percentile_to_mult.keys()
+]
+low_bounds = cutoffs
+high_bounds = [float("inf")] + cutoffs[:-1]
+mults = list(percentile_to_mult.values())
+
+model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16).to(device)  # fmt: skip
 for module_name, og_module in og_model.named_modules():
     if "down_proj" not in module_name:
         continue
-    weight_name = module_name + ".weight"
-    intervention_mask = og_module.rel_imp > cutoff
+    weight = model.state_dict()[module_name + ".weight"]
     with pt.no_grad():
-        if ablate_down_proj:
-            weight = model.state_dict()[weight_name]
-            weight[:, intervention_mask] *= weight_multiplier
-        if ablate_up_proj:
-            weight = model.state_dict()[weight_name.replace("down_", "up_")]
-            weight[intervention_mask, :] *= weight_multiplier
-        if ablate_gate_proj:
-            weight = model.state_dict()[weight_name.replace("down_", "gate_")]
-            weight[intervention_mask, :] *= weight_multiplier
+        for low, high, mult in zip(low_bounds, high_bounds, mults):
+            mask = pt.logical_and(low <= og_module.rel_imp, og_module.rel_imp < high)
+            weight[:, mask] *= mult
 
-retrain_and_eval(model, og_model, forget_set, retain_set)
+stats = retrain_and_eval(model, og_model, forget_set, retain_set)
 
 # weight_multiplier = -0.4
 # percentile = 0.2
@@ -83,3 +85,10 @@ retrain_and_eval(model, og_model, forget_set, retain_set)
 # percentile = 0.2
 # forget:  736  retain:  0.06  norm:  9.00  ratio: 11456
 # forget:  389  retain:  0.32  norm:  9.00  ratio: 1230
+
+# %%
+import matplotlib.pyplot as plt
+
+_rel_imps = pt.cat(rel_imps).cpu().float()
+plt.hist(pt.log10(_rel_imps), bins=100)
+plt.title("log10(relative importance)")

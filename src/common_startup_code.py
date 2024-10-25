@@ -1,13 +1,10 @@
+from collections import OrderedDict
 from itertools import islice
 
 import torch as pt
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from utils import (
-    device,
-    forward,
-    load_one_oscar_shard,
-    retrain_and_eval,
-)
+
+from utils import device, forward, load_one_oscar_shard, retrain_and_eval
 
 # params
 model_id = "Qwen/Qwen2.5-0.5B"
