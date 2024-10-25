@@ -8,12 +8,11 @@ import torch as pt
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 # Add the main directory to sys.path
-sys.path.append(str(Path(__file__).resolve().parent.parent))
+sys.path.append(str(Path(__file__).resolve().parent.parent / "src"))
 
-
-from utils import device, forward, load_one_oscar_shard
 
 from fading_backprop import install_hooks_for_fading_backprop, set_fade_factor
+from utils import device, forward, load_one_oscar_shard
 
 # model_id = "google/gemma-2-2b"
 model_id = "Qwen/Qwen2.5-0.5B"

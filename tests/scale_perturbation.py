@@ -1,23 +1,22 @@
 # %%
-from copy import deepcopy
 import sys
+from copy import deepcopy
 from pathlib import Path
 
 import torch as pt
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 # Add the main directory to sys.path
-sys.path.append(str(Path(__file__).resolve().parent.parent))
-
-from utils import (
-    device,
-    load_one_oscar_shard,
-    get_norm_of_weights_change,
-    scale_perturbation,
-    normal_train_step,
-)
+sys.path.append(str(Path(__file__).resolve().parent.parent / "src"))
 
 from fading_backprop import install_hooks_for_saving_gradients
+from utils import (
+    device,
+    get_norm_of_weights_change,
+    load_one_oscar_shard,
+    normal_train_step,
+    scale_perturbation,
+)
 
 # model_id = "google/gemma-2-2b"
 model_id = "Qwen/Qwen2.5-0.5B"
@@ -40,7 +39,7 @@ for layer in model.model.layers:
 original_state_dict = deepcopy(model.state_dict())
 
 # %% test that partial_norm calculation is valid
-l = pt.tensor([1, 2, 3, 4, 5, 6])
+l = pt.tensor([1, 2, 3, 4, 5, 6], dtype=pt.float32)
 assert l.norm() == pt.tensor([l[:3].norm(), l[3:].norm()]).norm()
 
 # %% at the beginning, the norm of the weights change should be 0
