@@ -111,19 +111,19 @@ def print_stats(stats):
     print(f"forget: {stats[0]:4.0f}  retain: {stats[1]:5.2f}  norm: {stats[2]:5.2f}  ratio: {stats[0] / stats[1]:.0f}")  # fmt: skip
 
 
-def eval_and_retrain(model, og_model, forget, retain, num_batches=10, b_size=32):
+def eval_and_retrain(
+    model, og_model, forget, retain, num_batches=10, b_size=32, lr=0.0003
+):
     """takes a model after an intervention and evals it before and after retraining"""
     initial_stats = get_stats(og_model, og_model, forget, retain)
     pre_retrain_diff = get_stats(model, og_model, forget, retain) - initial_stats
+    print_stats(pre_retrain_diff)
 
     f_r = zip(forget["relearn"].batch(b_size), retain["relearn"].batch(b_size))
     for forget_batch, retain_batch in islice(f_r, num_batches):
-        print(".", end="")
-        normal_train_step(model, forget_batch, 0.0003)
-        normal_train_step(model, retain_batch, 0.0003)
+        normal_train_step(model, forget_batch, lr)
+        normal_train_step(model, retain_batch, lr)
 
     post_retrain_diff = get_stats(model, og_model, forget, retain) - initial_stats
-
-    print_stats(pre_retrain_diff)
     print_stats(post_retrain_diff)
     return pre_retrain_diff, post_retrain_diff

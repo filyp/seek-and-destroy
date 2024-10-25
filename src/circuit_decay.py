@@ -34,20 +34,31 @@ for batch in islice(retain_set["unlearn"].batch(forward_batch_size), 10):
         forward(og_model, batch)
 
 # %% load a fresh model, and apply the intervention based on the activation stats
-percentile = 0.1
+percentile = 0.2
 weight_multiplier = 0
 
+model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16).to(device)  # fmt: skip
+
+# calculate cutoff, based on relative importance
+rel_imps = []
 for module_name, og_module in og_model.named_modules():
     if "down_proj" not in module_name:
         continue
     forget_imp = og_module.act_imps["forget"]
     retain_imp = og_module.act_imps["retain"]
     rel_imp = forget_imp / retain_imp
-    cutoff = rel_imp.quantile(1 - percentile / 100)
+    og_module.rel_imp = rel_imp
+    rel_imps.append(rel_imp)
+cutoff = pt.cat(rel_imps).quantile(1 - percentile / 100)
 
+for module_name, og_module in og_model.named_modules():
+    if "down_proj" not in module_name:
+        continue
     weight = model.state_dict()[module_name + ".weight"]
     with pt.no_grad():
-        weight[:, rel_imp > cutoff] *= weight_multiplier
+        weight[:, og_module.rel_imp > cutoff] *= weight_multiplier
+
+
+eval_and_retrain(model, og_model, forget_set, retain_set)
 
 # %%
-eval_and_retrain(model, og_model, forget_set, retain_set)
