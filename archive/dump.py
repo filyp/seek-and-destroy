@@ -160,3 +160,32 @@ m1 = pt.log(1 / chosen_probs).mean()
 m1.exp()
 # %%
 ((m1 + m2) / 2).exp()
+
+
+# training code
+set_fade_factor(model, 0)
+# activation_agnostic(model, next(forget_unlearn_iter), lr=0.4)
+set_fade_factor(model, 1)
+
+# normal_train_step(model, next(forget_unlearn_iter), 0.0003, loss_sign=-1)
+normal_train_step(model, next(forget_relearn_iter), 0.0003)
+normal_train_step(model, next(retain_relearn_iter), 0.0005)
+# scale_perturbation(model, original_state_dict, 0.99)
+
+
+# disassociation
+effect_activations = original_model.model.layers[10].mlp.act_fn.last_post_activations
+cause_activations = original_model.model.layers[8].mlp.act_fn.last_post_activations
+# %%
+cause_activations = cause_activations[0, 0]
+effect_activations = effect_activations[0, 0]
+# %%
+cutoff = effect_activations.to(pt.float).quantile(0.99)
+cutoff
+# %%
+effect_indexes = pt.where(effect_activations > cutoff)
+effect_indexes = effect_indexes[0]
+effect_indexes
+# %%
+effect_activations[effect_indexes]
+# %%
