@@ -6,7 +6,7 @@ from utils import (
     device,
     forward,
     load_one_oscar_shard,
-    eval_and_retrain,
+    retrain_and_eval,
 )
 
 # params

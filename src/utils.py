@@ -111,7 +111,7 @@ def print_stats(stats):
     print(f"forget: {stats[0]:4.0f}  retain: {stats[1]:5.2f}  norm: {stats[2]:5.2f}  ratio: {stats[0] / stats[1]:.0f}")  # fmt: skip
 
 
-def eval_and_retrain(
+def retrain_and_eval(
     model, og_model, forget, retain, num_batches=10, b_size=32, lr=0.0003
 ):
     """takes a model after an intervention and evals it before and after retraining"""
