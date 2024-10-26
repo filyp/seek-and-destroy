@@ -4,26 +4,12 @@
 import sys
 from pathlib import Path
 
-import torch as pt
-from transformers import AutoModelForCausalLM, AutoTokenizer
-
 # Add the main directory to sys.path
 sys.path.append(str(Path(__file__).resolve().parent.parent / "src"))
-
-
+from common_startup_code import *
 from fading_backprop import install_hooks_for_fading_backprop, set_fade_factor
-from utils import device, forward, load_one_oscar_shard
 
-# model_id = "google/gemma-2-2b"
-model_id = "Qwen/Qwen2.5-0.5B"
-
-tokenizer = AutoTokenizer.from_pretrained(model_id)
-pl_dataset = load_one_oscar_shard("pl", tokenizer)
-en_dataset = load_one_oscar_shard("en", tokenizer)
-
-model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
-model.to(device)
-
+model = og_model
 install_hooks_for_fading_backprop(model)
 
 
@@ -40,7 +26,7 @@ for layer in model.model.layers:
 
 
 def activations_on_all_layers_equal():
-    batch = next(iter(pl_dataset["unlearn"].batch(1)))
+    batch = next(iter(forget_set["unlearn"].batch(1)))
     loss = forward(model, batch)
     loss.backward()
 

@@ -6,14 +6,16 @@ import numpy as np
 import torch as pt
 from scipy.optimize import curve_fit
 from transformers import AutoModelForCausalLM, AutoTokenizer
+
+pt.set_default_device("cuda")
 from unlearning_functions import name_to_function
-from utils import device, forward, get_perplexity, load_one_oscar_shard
 
 from fading_backprop import (
     install_hooks_for_fading_backprop,
     install_hooks_for_saving_gradients,
     set_fade_factor,
 )
+from utils import forward, get_perplexity, load_one_oscar_shard
 
 model_id = "Qwen/Qwen2.5-0.5B"
 
@@ -22,7 +24,6 @@ dataset = load_one_oscar_shard("en", tokenizer)
 
 # load model
 model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
-model.to(device)
 
 original_state_dict = deepcopy(model.state_dict())
 
@@ -122,7 +123,7 @@ perplexities = []
 pert_norms = pt.linspace(0, 20, 21)
 # pert_norms = pt.linspace(0, 0.0001, 31)
 for pert_norm in pert_norms:
-    scaled_perturbation = perturbation * pert_norm 
+    scaled_perturbation = perturbation * pert_norm
     # apply perturbation
     model.state_dict()[module_name] += scaled_perturbation
     # eval

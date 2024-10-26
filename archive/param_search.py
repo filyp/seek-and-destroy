@@ -5,9 +5,10 @@ import matplotlib.pyplot as plt
 import torch as pt
 import wandb
 from transformers import AutoModelForCausalLM, AutoTokenizer
-from utils import device, load_one_oscar_shard
 
+pt.set_default_device("cuda")
 from fading_backprop import unlearn_and_relearn
+from utils import load_one_oscar_shard
 
 
 # %%
@@ -71,7 +72,6 @@ def search_for_optimal_value(
         print(f"\n\n\nTrying {param_name}={param_value}")
         # load model
         model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
-        model.to(device)
 
         kwargs[param_name] = param_value
         final_perplexities = unlearn_and_relearn(

@@ -6,7 +6,6 @@ from datasets import IterableDataset, IterableDatasetDict, load_dataset
 from torcheval.metrics.text import Perplexity
 
 context_len = 100
-device = "cuda"
 
 
 def load_one_oscar_shard(lang, tokenizer):
@@ -40,7 +39,7 @@ def load_one_oscar_shard(lang, tokenizer):
                 return_tensors="pt",
                 max_length=context_len,
                 truncation=True,
-            ).to(device),
+            ),
         )
         # filter out the short ones
         .filter(lambda ex: ex["input_ids"].shape[-1] >= context_len)
@@ -50,7 +49,7 @@ def load_one_oscar_shard(lang, tokenizer):
 
 
 def get_perplexity(model, dataset, num_batches=1, batch_size=32):
-    metric = Perplexity(device=device)
+    metric = Perplexity()
     for batch in islice(dataset["validation"].batch(batch_size), num_batches):
         input_ids = pt.cat(batch["input_ids"])
         with pt.no_grad():

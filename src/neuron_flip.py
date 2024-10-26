@@ -5,7 +5,7 @@ from common_startup_code import *
 # %%
 def record_activation_importance_stats(module, args, output):
     if mode not in module.act_imps:
-        module.act_imps[mode] = pt.zeros(module.weight.shape[1]).to(device)
+        module.act_imps[mode] = pt.zeros(module.weight.shape[1])
 
     act = args[0].detach().clone()
     act = act**2
@@ -64,7 +64,7 @@ low_bounds = cutoffs
 high_bounds = [float("inf")] + cutoffs[:-1]
 mults = list(percentile_to_mult.values())
 
-model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16).to(device)  # fmt: skip
+model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
 for module_name, og_module in og_model.named_modules():
     if "down_proj" not in module_name:
         continue
