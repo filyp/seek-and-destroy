@@ -49,7 +49,7 @@ def load_one_oscar_shard(lang, tokenizer):
 
 
 def get_perplexity(model, dataset, num_batches=1, batch_size=32):
-    metric = Perplexity()
+    metric = Perplexity(device="cuda")
     for batch in islice(dataset["validation"].batch(batch_size), num_batches):
         input_ids = pt.cat(batch["input_ids"])
         with pt.no_grad():

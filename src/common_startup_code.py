@@ -1,6 +1,7 @@
 from collections import OrderedDict
 from itertools import islice
 
+import matplotlib.pyplot as plt
 import torch as pt
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -19,4 +20,3 @@ retain_set = load_one_oscar_shard("en", tokenizer)
 
 # load model; no interventions will be done on the original model
 og_model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
- 
