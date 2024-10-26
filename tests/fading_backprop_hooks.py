@@ -9,7 +9,6 @@ sys.path.append(str(Path(__file__).resolve().parent.parent / "src"))
 from common_startup_code import *
 from fading_backprop import install_hooks_for_fading_backprop, set_fade_factor
 
-model = og_model
 install_hooks_for_fading_backprop(model)
 
 

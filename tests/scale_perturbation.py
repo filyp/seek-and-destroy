@@ -9,7 +9,6 @@ from common_startup_code import *
 from fading_backprop import install_hooks_for_saving_gradients
 from utils import get_norm_of_weights_change, normal_train_step, scale_perturbation
 
-model = og_model
 install_hooks_for_saving_gradients(model)
 
 # freeze all but mlp down_proj
