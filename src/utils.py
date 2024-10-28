@@ -111,7 +111,7 @@ def print_stats(stats):
 
 
 def retrain_and_eval(
-    model, og_model, forget, retain, num_batches=10, b_size=32, lr=0.0003
+    model, og_model, forget, retain, num_batches=10, b_size=16, lr=0.0003
 ):
     """takes a model after an intervention and evals it before and after retraining"""
     initial_stats = get_stats(og_model, og_model, forget, retain)

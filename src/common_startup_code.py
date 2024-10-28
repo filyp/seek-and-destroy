@@ -5,7 +5,13 @@ import matplotlib.pyplot as plt
 import torch as pt
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from utils import forward, load_one_oscar_shard, retrain_and_eval
+from utils import (
+    forward,
+    get_stats,
+    load_one_oscar_shard,
+    print_stats,
+    retrain_and_eval,
+)
 
 pt.set_default_device("cuda")
 
@@ -18,6 +24,6 @@ tokenizer = AutoTokenizer.from_pretrained(model_id)
 forget_set = load_one_oscar_shard("pl", tokenizer)
 retain_set = load_one_oscar_shard("en", tokenizer)
 
-# load model; no interventions will be done on the original model
+# load model
 model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
 og_model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
