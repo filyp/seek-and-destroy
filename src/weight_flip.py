@@ -17,7 +17,7 @@ peft_config = LoraConfig(
     # target_modules=["gate_proj", "up_proj", "q_proj", "v_proj"],
     target_modules="all-linear",
 )
-model = get_peft_model(model, peft_config).model
+model.add_adapter(peft_config)
 
 
 def save_output_hook(module, args, output):
@@ -78,8 +78,8 @@ for l in model.model.layers:
 
 forget_unlearn_iter = iter(forget_set["unlearn"].batch(32))
 retain_unlearn_iter = iter(retain_set["unlearn"].batch(32))
-forget_relearn_iter = iter(forget_set["relearn"].batch(16))
-retain_relearn_iter = iter(retain_set["relearn"].batch(4))
+forget_relearn_iter = iter(forget_set["relearn"].batch(24))
+retain_relearn_iter = iter(retain_set["relearn"].batch(8))
 
 
 # get the retain set weight importance
@@ -92,12 +92,12 @@ mode = "off"
 initial_stats = get_stats(model, forget_set, retain_set)
 
 
-# %% forward passes on forget and retain sets, to get activation stats
+# %% intervene
 for l in model.model.layers:
     if "forget" in l.mlp.up_proj.imp:
         del l.mlp.up_proj.imp["forget"]
         del l.mlp.gate_proj.imp["forget"]
-        del l.mlp.down_proj.imp["forget"]
+        # del l.mlp.down_proj.imp["forget"]
 
 mode = "forget"
 for batch in islice(forget_unlearn_iter, 5):
@@ -132,7 +132,7 @@ print_stats(get_stats(model, forget_set, retain_set) - initial_stats)
 # %% retrain and evaluate
 pt.cuda.empty_cache()
 
-num_batches = 20
+num_batches = 10
 optimizer = pt.optim.Adam(model.parameters(), lr=0.001, betas=(0.9, 0.999))
 
 for i in range(num_batches):
@@ -150,4 +150,18 @@ for i in range(num_batches):
         model.eval()
         print_stats(get_stats(model, forget_set, retain_set) - initial_stats)
 
-# %%
+# %% temporarily disable lora
+# model.disable_adapters()
+# model.eval()
+# print_stats(get_stats(model, forget_set, retain_set) - initial_stats)
+# model.enable_adapters()
+
+# %% remove lora
+# sd = {
+#     k.replace("base_layer.", ""): v
+#     for k, v in model.state_dict().items()
+#     if "lora" not in k
+# }
+# model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
+# model.load_state_dict(sd)
+# print_stats(get_stats(model, forget_set, retain_set) - initial_stats)
