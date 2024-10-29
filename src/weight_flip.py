@@ -1,5 +1,10 @@
 # %%
-from common_startup_code import *
+if "pt" not in locals():
+    from common_startup_code import *
+
+# load model
+set_seeds(42)
+model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
 
 # for regression tests:
 # intervene(model, "up_proj", mult=-1, cutoff=100)  # forget_b=5, retain_b=10
@@ -11,7 +16,7 @@ from common_startup_code import *
 peft_config = LoraConfig(
     task_type=TaskType.SEQ_2_SEQ_LM,
     inference_mode=False,
-    r=4,
+    r=2,
     lora_alpha=32,
     lora_dropout=0.1,
     # target_modules=["gate_proj", "up_proj", "q_proj", "v_proj"],

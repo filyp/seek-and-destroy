@@ -1,4 +1,5 @@
 import json
+import random
 from itertools import islice
 
 import torch as pt
@@ -88,3 +89,11 @@ def get_stats(model, forget_set, retain_set):
 
 def print_stats(stats):
     print(f"forget: {stats[0]:4.0f}  retain: {stats[1]:5.2f}  ratio: {stats[0] / stats[1]:.0f}")  # fmt: skip
+
+
+def set_seeds(seed):
+    pt.manual_seed(seed)
+    pt.cuda.manual_seed_all(seed)
+    pt.backends.cudnn.deterministic = True
+    pt.backends.cudnn.benchmark = False
+    random.seed(seed)
