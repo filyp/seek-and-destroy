@@ -1,22 +1,38 @@
 # %%
 from common_startup_code import *
 
+# for regression tests:
+# intervene(model, "up_proj", mult=-1, cutoff=100)  # forget_b=5, retain_b=10
+# forget: 1279  retain:  0.09  ratio: 14753
 
 # %% init things, which need to be run once
+
+# initialize LoRA
+peft_config = LoraConfig(
+    task_type=TaskType.SEQ_2_SEQ_LM,
+    inference_mode=False,
+    r=4,
+    lora_alpha=32,
+    lora_dropout=0.1,
+    # target_modules=["gate_proj", "up_proj", "q_proj", "v_proj"],
+    target_modules="all-linear",
+)
+model = get_peft_model(model, peft_config).model
+
+
 def save_output_hook(module, args, output):
     module.last_output = output.detach().clone()
 
 
-def record_imps_down_proj(module, args, output):
-    if mode not in ["forget", "retain"]:
-        return
-    if mode not in module.imp:
-        module.imp[mode] = pt.zeros(module.weight.shape[1])
-
-    act = args[0].detach().clone()
-    act = act**2
-    act = act.mean(axis=[0, 1])
-    module.imp[mode] += act
+# def record_imps_down_proj(module, args, output):
+#     if mode not in ["forget", "retain"]:
+#         return
+#     if mode not in module.imp:
+#         module.imp[mode] = pt.zeros(module.weight.shape[1])
+#     act = args[0].detach().clone()
+#     act = act**2
+#     act = act.mean(axis=[0, 1])
+#     module.imp[mode] += act
 
 
 def record_imps_up_and_gate_proj(module, args, output):
@@ -48,40 +64,22 @@ for l in model.model.layers:
     assert isinstance(l.mlp.act_fn, pt.nn.SiLU)
     l.mlp.up_proj.register_forward_hook(save_output_hook)
     l.mlp.gate_proj.register_forward_hook(save_output_hook)
-    l.mlp.down_proj.register_forward_hook(record_imps_down_proj)
+    # l.mlp.down_proj.register_forward_hook(record_imps_down_proj)
     l.mlp.register_forward_hook(record_imps_up_and_gate_proj)
     l.mlp.up_proj.imp = {}
     l.mlp.gate_proj.imp = {}
-    l.mlp.down_proj.imp = {}
+    # l.mlp.down_proj.imp = {}
+    # for recording which indices were already flipped
+    l.mlp.up_proj.xs = []
+    l.mlp.up_proj.ys = []
+    l.mlp.gate_proj.xs = []
+    l.mlp.gate_proj.ys = []
 
 
-# intervene, based on relative importance
-def intervene(model, module_name, percentile, mult, cutoff=None):
-    modules = [getattr(l.mlp, module_name) for l in model.model.layers]
-
-    # calculate cutoff
-    if cutoff is None:
-        rel_imps = [m.imp["forget"] / m.imp["retain"] for m in modules]
-        rel_imps = pt.cat(rel_imps).flatten()
-        k = int(len(rel_imps) * (1 - percentile / 100))
-        cutoff = rel_imps.kthvalue(k).values.item()
-
-    # apply intervention
-    for m in modules:
-        rel_imp = m.imp["forget"] / m.imp["retain"]
-        if module_name == "down_proj":
-            m.weight.data[:, rel_imp > cutoff] *= mult
-        else:
-            m.weight.data[rel_imp > cutoff] *= mult
-    print(f"{module_name=}  {percentile=}  {mult=}  {cutoff=}")
-
-
-unlearn_batch_size = 32
-forget_unlearn_iter = iter(forget_set["unlearn"].batch(unlearn_batch_size))
-retain_unlearn_iter = iter(retain_set["unlearn"].batch(unlearn_batch_size))
-relearn_batch_size = 16
-forget_relearn_iter = iter(forget_set["relearn"].batch(relearn_batch_size))
-retain_relearn_iter = iter(retain_set["relearn"].batch(relearn_batch_size))
+forget_unlearn_iter = iter(forget_set["unlearn"].batch(32))
+retain_unlearn_iter = iter(retain_set["unlearn"].batch(32))
+forget_relearn_iter = iter(forget_set["relearn"].batch(16))
+retain_relearn_iter = iter(retain_set["relearn"].batch(4))
 
 
 # get the retain set weight importance
@@ -93,16 +91,6 @@ mode = "off"
 
 initial_stats = get_stats(model, forget_set, retain_set)
 
-# initialize LoRA
-# note: there is no way to set init seed, so it is not deterministic
-peft_config = LoraConfig(
-    task_type=TaskType.SEQ_2_SEQ_LM,
-    inference_mode=False,
-    r=8,
-    lora_alpha=32,
-    lora_dropout=0.1,
-)
-model = get_peft_model(model, peft_config).model
 
 # %% forward passes on forget and retain sets, to get activation stats
 for l in model.model.layers:
@@ -117,23 +105,35 @@ for batch in islice(forget_unlearn_iter, 5):
         forward(model, batch)
 mode = "off"
 
-# %
-intervene(model, "up_proj", percentile=0.02, mult=-1, cutoff=100)
-# intervene(model, "gate_proj", percentile=0.01, mult=0)
-# intervene(model, "down_proj", percentile=0.01, mult=0)
+module_name = "up_proj"
+# module_name = "gate_proj"
+cutoff = 50
+mult = -3
+for m in [getattr(l.mlp, module_name) for l in model.model.layers]:
+    rel_imp = m.imp["forget"] / m.imp["retain"]
+    mask = rel_imp > cutoff
+
+    pre_sum = mask.sum()
+    mask[m.xs, m.ys] = False
+    print(f"to flip before filtering: {pre_sum:4}  after: {mask.sum():4}")
+    x, y = pt.where(mask)
+
+    m.xs.extend(x.tolist())
+    m.ys.extend(y.tolist())
+
+    m.weight.data[mask] *= mult
+    # note: for down_proj it needs to be the code below, also the indices calc differently
+    # m.weight.data[:, rel_imp > cutoff] *= mult
+    # but don't care rn, just using one is enough
 
 model.eval()
 print_stats(get_stats(model, forget_set, retain_set) - initial_stats)
 
-# for regression tests:
-# intervene(model, "up_proj", percentile=0.02, mult=-1)  # forget_b=5, retain_b=10
-# forget: 1048  retain:  0.01  ratio: 182620
-
 # %% retrain and evaluate
 pt.cuda.empty_cache()
 
-num_batches = 10
-optimizer = pt.optim.SGD(model.parameters(), lr=0.02)
+num_batches = 20
+optimizer = pt.optim.Adam(model.parameters(), lr=0.001, betas=(0.9, 0.999))
 
 for i in range(num_batches):
     model.train()
@@ -149,4 +149,5 @@ for i in range(num_batches):
     if (i + 1) % 10 == 0:
         model.eval()
         print_stats(get_stats(model, forget_set, retain_set) - initial_stats)
+
 # %%

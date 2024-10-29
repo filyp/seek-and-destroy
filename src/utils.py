@@ -50,16 +50,6 @@ def load_one_oscar_shard(lang, tokenizer):
     return dataset
 
 
-def get_perplexity(model, dataset, num_batches=1, batch_size=32):
-    metric = Perplexity(device="cuda")
-    for batch in islice(dataset["validation"].batch(batch_size), num_batches):
-        input_ids = pt.cat(batch["input_ids"])
-        with pt.no_grad():
-            outputs = model(input_ids)
-        metric.update(outputs.logits[:, :-1], input_ids[:, 1:])
-    return metric.compute().item()
-
-
 def forward(model, batch):
     loss_fn = pt.nn.CrossEntropyLoss()
     # create batched input_ids
@@ -71,6 +61,14 @@ def forward(model, batch):
     return loss_fn(logits[:, :-1, :].flatten(end_dim=1), input_ids[:, 1:].flatten())
 
 
+def get_perplexity(model, dataset, num_batches=1, batch_size=32):
+    total_loss = 0
+    for batch in islice(dataset["validation"].batch(batch_size), num_batches):
+        with pt.no_grad():
+            total_loss += forward(model, batch)
+    return (total_loss / num_batches).exp()
+
+
 def get_norm_of_weights_change(model, original_state_dict):
     partial_norms = []
     for module_name, current_weights in model.named_parameters():
@@ -78,17 +76,6 @@ def get_norm_of_weights_change(model, original_state_dict):
         norm = (original_weights - current_weights).norm()
         partial_norms.append(norm)
     return pt.tensor(partial_norms).norm()
-
-
-def normal_train_step(model, batch, lr, loss_sign=1):
-    optimizer = pt.optim.SGD(model.parameters(), lr=lr)
-    optimizer.zero_grad(set_to_none=True)
-
-    loss = forward(model, batch)
-    loss *= loss_sign
-    loss.backward()
-
-    optimizer.step()
 
 
 def get_stats(model, forget_set, retain_set):
