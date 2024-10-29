@@ -21,14 +21,16 @@ def load_one_oscar_shard(lang, tokenizer):
     half1, half2 = raw_dataset.train_test_split(test_size=0.5, seed=42).values()
     quarter1, quarter2 = half1.train_test_split(test_size=0.5, seed=42).values()
     quarter3, quarter4 = half2.train_test_split(test_size=0.5, seed=42).values()
+    eigth1, eigth2 = quarter4.train_test_split(test_size=0.5, seed=42).values()
 
     dataset = (
         # define splits; make it iterable so that it can be processed on demand
         IterableDatasetDict(
             unlearn=IterableDataset.from_generator(lambda: (ex for ex in quarter1)),
-            relearn=IterableDataset.from_generator(lambda: (ex for ex in quarter2)),
-            validation=IterableDataset.from_generator(lambda: (ex for ex in quarter3)),
-            test=IterableDataset.from_generator(lambda: (ex for ex in quarter4)),
+            adapt=IterableDataset.from_generator(lambda: (ex for ex in quarter2)),
+            relearn=IterableDataset.from_generator(lambda: (ex for ex in quarter3)),
+            validation=IterableDataset.from_generator(lambda: (ex for ex in eigth1)),
+            test=IterableDataset.from_generator(lambda: (ex for ex in eigth2)),
         )
         # process the raw data, following OSCAR-2301.py
         .map(lambda ex: {"text": json.loads(ex["text"])["content"]})
@@ -78,15 +80,6 @@ def get_norm_of_weights_change(model, original_state_dict):
     return pt.tensor(partial_norms).norm()
 
 
-def scale_perturbation(model, original_state_dict, scaling_factor):
-    for module_name, current_weights in model.state_dict().items():
-        original_weights = original_state_dict[module_name]
-        # modification need to be done in-place so it's a bit awkward:
-        current_weights -= original_weights
-        current_weights *= scaling_factor
-        current_weights += original_weights
-
-
 def normal_train_step(model, batch, lr, loss_sign=1):
     optimizer = pt.optim.SGD(model.parameters(), lr=lr)
     optimizer.zero_grad(set_to_none=True)
@@ -98,31 +91,13 @@ def normal_train_step(model, batch, lr, loss_sign=1):
     optimizer.step()
 
 
-def get_stats(model, og_model, forget_set, retain_set):
+def get_stats(model, forget_set, retain_set):
     return pt.tensor([
         get_perplexity(model, forget_set),
         get_perplexity(model, retain_set),
-        get_norm_of_weights_change(model, og_model.state_dict()),
+        # get_norm_of_weights_change(model, og_model.state_dict()),
     ])
 
 
 def print_stats(stats):
-    print(f"forget: {stats[0]:4.0f}  retain: {stats[1]:5.2f}  norm: {stats[2]:5.2f}  ratio: {stats[0] / stats[1]:.0f}")  # fmt: skip
-
-
-def retrain_and_eval(
-    model, og_model, forget, retain, num_batches=10, b_size=16, lr=0.0003
-):
-    """takes a model after an intervention and evals it before and after retraining"""
-    initial_stats = get_stats(og_model, og_model, forget, retain)
-    pre_retrain_diff = get_stats(model, og_model, forget, retain) - initial_stats
-    print_stats(pre_retrain_diff)
-
-    f_r = zip(forget["relearn"].batch(b_size), retain["relearn"].batch(b_size))
-    for forget_batch, retain_batch in islice(f_r, num_batches):
-        normal_train_step(model, forget_batch, lr)
-        normal_train_step(model, retain_batch, lr)
-
-    post_retrain_diff = get_stats(model, og_model, forget, retain) - initial_stats
-    print_stats(post_retrain_diff)
-    return pre_retrain_diff, post_retrain_diff
+    print(f"forget: {stats[0]:4.0f}  retain: {stats[1]:5.2f}  ratio: {stats[0] / stats[1]:.0f}")  # fmt: skip

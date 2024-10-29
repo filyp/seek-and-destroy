@@ -202,3 +202,7 @@ og_model = AutoModelForCausalLM.from_pretrained(
 # !!
 # plt.hist(pt.log10(rel_imps).cpu().float(), bins=100)
 # plt.title("log10(relative importance on neurons)")
+
+
+# og_model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
+# model.load_state_dict(og_model.state_dict())

@@ -7,4 +7,5 @@ datasets==3.0
 torcheval==0.0.7
 bitsandbytes==0.43
 wandb==0.18
-scipy
+peft==0.13
+scipy==1.14

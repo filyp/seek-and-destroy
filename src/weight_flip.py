@@ -2,7 +2,7 @@
 from common_startup_code import *
 
 
-# %%
+# %% init things, which need to be run once
 def save_output_hook(module, args, output):
     module.last_output = output.detach().clone()
 
@@ -55,15 +55,16 @@ for l in model.model.layers:
     l.mlp.down_proj.imp = {}
 
 
-# %% intervene, based on relative importance
-def intervene(model, module_name, percentile, mult):
+# intervene, based on relative importance
+def intervene(model, module_name, percentile, mult, cutoff=None):
     modules = [getattr(l.mlp, module_name) for l in model.model.layers]
 
     # calculate cutoff
-    rel_imps = [m.imp["forget"] / m.imp["retain"] for m in modules]
-    rel_imps = pt.cat(rel_imps).flatten()
-    cutoff = rel_imps.kthvalue(int(len(rel_imps) * (1 - percentile / 100))).values
-    print(f"{module_name=}  {percentile=}  {mult=}  {cutoff.item()=}")
+    if cutoff is None:
+        rel_imps = [m.imp["forget"] / m.imp["retain"] for m in modules]
+        rel_imps = pt.cat(rel_imps).flatten()
+        k = int(len(rel_imps) * (1 - percentile / 100))
+        cutoff = rel_imps.kthvalue(k).values.item()
 
     # apply intervention
     for m in modules:
@@ -72,15 +73,36 @@ def intervene(model, module_name, percentile, mult):
             m.weight.data[:, rel_imp > cutoff] *= mult
         else:
             m.weight.data[rel_imp > cutoff] *= mult
+    print(f"{module_name=}  {percentile=}  {mult=}  {cutoff=}")
 
 
-forward_batch_size = 32
+unlearn_batch_size = 32
+forget_unlearn_iter = iter(forget_set["unlearn"].batch(unlearn_batch_size))
+retain_unlearn_iter = iter(retain_set["unlearn"].batch(unlearn_batch_size))
+relearn_batch_size = 16
+forget_relearn_iter = iter(forget_set["relearn"].batch(relearn_batch_size))
+retain_relearn_iter = iter(retain_set["relearn"].batch(relearn_batch_size))
 
+
+# get the retain set weight importance
 mode = "retain"
-for batch in islice(retain_set["unlearn"].batch(forward_batch_size), 10):
+for batch in islice(retain_unlearn_iter, 10):
     with pt.no_grad():
         forward(model, batch)
 mode = "off"
+
+initial_stats = get_stats(model, forget_set, retain_set)
+
+# initialize LoRA
+# note: there is no way to set init seed, so it is not deterministic
+peft_config = LoraConfig(
+    task_type=TaskType.SEQ_2_SEQ_LM,
+    inference_mode=False,
+    r=8,
+    lora_alpha=32,
+    lora_dropout=0.1,
+)
+model = get_peft_model(model, peft_config).model
 
 # %% forward passes on forget and retain sets, to get activation stats
 for l in model.model.layers:
@@ -90,28 +112,41 @@ for l in model.model.layers:
         del l.mlp.down_proj.imp["forget"]
 
 mode = "forget"
-for batch in islice(forget_set["unlearn"].batch(forward_batch_size), 10):
+for batch in islice(forget_unlearn_iter, 5):
     with pt.no_grad():
         forward(model, batch)
 mode = "off"
 
-# %%
-model.load_state_dict(og_model.state_dict())
-initial_stats = get_stats(model, og_model, forget_set, retain_set)
-
-intervene(model, "up_proj", percentile=0.01, mult=-1)
-# intervene(model, "gate_proj", percentile=0.01, mult=-1)
+# %
+intervene(model, "up_proj", percentile=0.02, mult=-1, cutoff=100)
+# intervene(model, "gate_proj", percentile=0.01, mult=0)
 # intervene(model, "down_proj", percentile=0.01, mult=0)
 
-# stats = get_stats(model, og_model, forget_set, retain_set)
-# print_stats(stats - initial_stats)
+model.eval()
+print_stats(get_stats(model, forget_set, retain_set) - initial_stats)
+
+# for regression tests:
+# intervene(model, "up_proj", percentile=0.02, mult=-1)  # forget_b=5, retain_b=10
+# forget: 1048  retain:  0.01  ratio: 182620
 
 # %% retrain and evaluate
 pt.cuda.empty_cache()
-stats = retrain_and_eval(model, og_model, forget_set, retain_set)
 
-# for regression tests:
-# intervene(model, "up_proj", percentile=2.0, mult=0)  # forget_b=1, retain_b=1
-# forget: 1898  retain:  2.36  norm: 30.25  ratio: 806
+num_batches = 10
+optimizer = pt.optim.SGD(model.parameters(), lr=0.02)
 
+for i in range(num_batches):
+    model.train()
+    optimizer.zero_grad(set_to_none=True)
+    forget_loss = forward(model, next(forget_relearn_iter))
+    retain_loss = forward(model, next(retain_relearn_iter))
+    (forget_loss + retain_loss).backward()
+    optimizer.step()
+    print(
+        f"forget: {forget_loss.exp() - initial_stats[0]:4.0f}  "
+        f"retain: {retain_loss.exp() - initial_stats[1]:5.2f}"
+    )
+    if (i + 1) % 10 == 0:
+        model.eval()
+        print_stats(get_stats(model, forget_set, retain_set) - initial_stats)
 # %%
