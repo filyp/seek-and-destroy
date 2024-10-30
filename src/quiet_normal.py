@@ -36,28 +36,26 @@ with pt.no_grad():
     initial_retain_ppl = forward(model, retain_eval_batch).exp()
 
 # initialize LoRAs
-model.add_adapter(
-    LoraConfig(
-        task_type=TaskType.SEQ_2_SEQ_LM,
-        inference_mode=False,
-        r=2,
-        lora_alpha=32,
-        lora_dropout=0.1,
-        target_modules=["up_proj", "down_proj", "gate_proj", "q_proj", "k_proj", "v_proj", "o_proj"],  # fmt: skip
-    ),
-    adapter_name="forget_lora"
+lora_config = LoraConfig(
+    task_type=TaskType.SEQ_2_SEQ_LM,
+    inference_mode=False,
+    r=2,
+    lora_alpha=32,
+    lora_dropout=0.1,
+    target_modules=["up_proj", "down_proj", "gate_proj", "q_proj", "k_proj", "v_proj", "o_proj"],  # fmt: skip
 )
-model.add_adapter(
-    LoraConfig(
-        task_type=TaskType.SEQ_2_SEQ_LM,
-        inference_mode=False,
-        r=8,  # larger rank
-        lora_alpha=32,
-        lora_dropout=0.1,
-        target_modules=["up_proj", "down_proj", "gate_proj", "q_proj", "k_proj", "v_proj", "o_proj"],  # fmt: skip
-    ),
-    adapter_name="retain_lora"
+model.add_adapter(lora_config, adapter_name="forget_lora")
+
+lora_config = LoraConfig(
+    task_type=TaskType.SEQ_2_SEQ_LM,
+    inference_mode=False,
+    r=8,  # larger rank
+    lora_alpha=32,
+    lora_dropout=0.1,
+    target_modules=["up_proj", "down_proj", "gate_proj", "q_proj", "k_proj", "v_proj", "o_proj"],  # fmt: skip
 )
+model.add_adapter(lora_config, adapter_name="retain_lora")
+
 
 def forward_and_get_quietness_loss(model, batch):
     input_ids = pt.cat(batch["input_ids"])
@@ -75,10 +73,10 @@ optimizer = pt.optim.SGD(model.parameters(), lr=0.0001)
 
 # %%
 lr = SimpleNamespace(
-    forget=0.02,
+    loudness=0.01,
     retain=10,
-    adv_forget=1,
-    adv_retain=0.1,
+    adv_forget=4,
+    adv_retain=1,
 )
 
 start_time = time.time()
@@ -86,36 +84,38 @@ for i in range(10):
     optimizer.zero_grad(set_to_none=True)
     model.train()
     loss = SimpleNamespace()
+    loss.forget = pt.tensor(pt.nan)
+    # note: only_grad_on must come after set_adapter
 
+    model.set_adapter(["retain_lora", "forget_lora"])
     only_grad_on(model, ".base_layer.")
-    model.set_adapter(["retain_lora", "forget_lora"])
-    loss.forget = forward_and_get_quietness_loss(model, next(smol_forget_iter))
+    loss.loudness = forward_and_get_quietness_loss(model, next(smol_forget_iter))
+    (loss.loudness * lr.loudness).backward()
 
-    only_grad_on(model, ".retain_lora.")
     model.set_adapter(["retain_lora"])
+    only_grad_on(model, ".retain_lora.")
     loss.retain = forward(model, next(retain_iter))
+    (loss.retain * lr.retain).backward()
 
-    only_grad_on(model, ".forget_lora.")
     model.set_adapter(["retain_lora", "forget_lora"])
+    only_grad_on(model, ".forget_lora.")
     loss.adv_forget = forward(model, next(smol_forget_iter))
+    (loss.adv_forget * lr.adv_forget).backward()
 
-    only_grad_on(model, ".forget_lora.")
     model.set_adapter(["retain_lora", "forget_lora"])
+    only_grad_on(model, ".forget_lora.")
     loss.adv_retain = forward(model, next(smol_retain_iter))
+    (loss.adv_retain * lr.adv_retain).backward()
 
-    (
-        loss.forget * lr.forget
-        + loss.retain * lr.retain
-        + loss.adv_forget * lr.adv_forget
-        + loss.adv_retain * lr.adv_retain
-    ).backward()
     optimizer.step()
 
     if (i + 1) % 10 == 0:
         model.eval()
         with pt.no_grad():
             model.set_adapter(["retain_lora", "forget_lora"])
-            loss.forget = forward_and_get_quietness_loss(model, forget_eval_batch)
+            loss.loudness = forward_and_get_quietness_loss(model, forget_eval_batch)
+            model.set_adapter(["retain_lora"])
+            loss.forget = forward(model, forget_eval_batch)
             model.set_adapter(["retain_lora"])
             loss.retain = forward(model, retain_eval_batch)
             model.set_adapter(["retain_lora", "forget_lora"])
@@ -125,11 +125,11 @@ for i in range(10):
 
     print(
         f"{i + 1:4d}  "
-        f"forget: {loss.forget.item():5.2f}  "
-        f"retain: {loss.retain.exp() - initial_retain_ppl:5.2f}  "
-        f"adv_forget: {loss.adv_forget.exp() - initial_forget_ppl:5.2f}  "
-        f"adv_retain: {loss.adv_retain.exp() - initial_retain_ppl:5.2f} "
+        f"loudness: {loss.loudness.item():4.0f}  "
+        f"forget: {loss.forget.exp() - initial_forget_ppl:6.2f}  "
+        f"retain: {loss.retain.exp() - initial_retain_ppl:6.2f}  "
+        f"adv_forget: {loss.adv_forget.exp() - initial_forget_ppl:6.2f}  "
+        f"adv_retain: {loss.adv_retain.exp() - initial_retain_ppl:6.2f} "
         f"{'< EVAL\n' if (i + 1) % 10 == 0 else ''}"
     )
 print(f"time: {time.time() - start_time:.2f}s")
-# %%

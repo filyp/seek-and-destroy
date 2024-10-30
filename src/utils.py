@@ -62,6 +62,17 @@ def forward(model, batch):
     return loss_fn(logits[:, :-1, :].flatten(end_dim=1), input_ids[:, 1:].flatten())
 
 
+def set_seeds(seed):
+    pt.manual_seed(seed)
+    pt.cuda.manual_seed_all(seed)
+    pt.backends.cudnn.deterministic = True
+    pt.backends.cudnn.benchmark = False
+    random.seed(seed)
+
+
+# all below are DEPRECATED
+
+
 def get_perplexity(model, dataset, num_batches=1, batch_size=32):
     total_loss = 0
     for batch in islice(dataset["validation"].batch(batch_size), num_batches):
@@ -89,11 +100,3 @@ def get_stats(model, forget_set, retain_set):
 
 def print_stats(stats):
     print(f"forget: {stats[0]:4.0f}  retain: {stats[1]:5.2f}  ratio: {stats[0] / stats[1]:.0f}")  # fmt: skip
-
-
-def set_seeds(seed):
-    pt.manual_seed(seed)
-    pt.cuda.manual_seed_all(seed)
-    pt.backends.cudnn.deterministic = True
-    pt.backends.cudnn.benchmark = False
-    random.seed(seed)
