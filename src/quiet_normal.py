@@ -25,7 +25,9 @@ retain_iter = iter(retain_set["unlearn"].batch(b_size))
 forget_eval_batch = next(iter(forget_set["validation"].batch(b_size)))
 retain_eval_batch = next(iter(retain_set["validation"].batch(b_size)))
 
-initial_stats = get_stats(model, forget_set, retain_set)
+with pt.no_grad():
+    initial_forget_ppl = forward(model, forget_eval_batch).exp()
+    initial_retain_ppl = forward(model, retain_eval_batch).exp()
 
 
 def forward_and_get_quietness_loss(model, batch):
@@ -44,35 +46,47 @@ optimizer = pt.optim.SGD(model.parameters(), lr=0.001)
 
 # %%
 lr = dict(
-    unlearn=0.003,
-    retain=2,
-    adv_forget=2,
-    adv_retain=1,
+    unlearn=0.005,
+    retain=1,
+    adv_forget=1,
+    adv_retain=0,
 )
 
-for i in range(20):
+for i in range(10):
     optimizer.zero_grad(set_to_none=True)
     model.train()
 
-    model.set_adapter(["retain_lora", "forget_lora"])
-    only_require_grad_on(model, ".base_layer.")
-    quietness_loss = forward_and_get_quietness_loss(model, next(forget_iter))
-    (quietness_loss * lr["unlearn"]).backward()
+    if lr["unlearn"] > 0:
+        model.set_adapter(["retain_lora", "forget_lora"])
+        only_require_grad_on(model, ".base_layer.")
+        quietness_loss = forward_and_get_quietness_loss(model, next(forget_iter))
+        (quietness_loss * lr["unlearn"]).backward()
+    else:
+        quietness_loss = pt.tensor(pt.nan)
 
-    model.set_adapter(["retain_lora"])
-    only_require_grad_on(model, ".retain_lora.")
-    retain_loss = forward(model, next(retain_iter))
-    (retain_loss * lr["retain"]).backward()
+    if lr["retain"] > 0:
+        model.set_adapter(["retain_lora"])
+        only_require_grad_on(model, ".retain_lora.")
+        retain_loss = forward(model, next(retain_iter))
+        (retain_loss * lr["retain"]).backward()
+    else:
+        retain_loss = pt.tensor(pt.nan)
 
-    model.set_adapter(["retain_lora", "forget_lora"])
-    only_require_grad_on(model, ".forget_lora.")
-    adv_forget_loss = forward(model, next(forget_iter))
-    (adv_forget_loss * lr["adv_forget"]).backward()
+    if lr["adv_forget"] > 0:        
+        model.set_adapter(["retain_lora", "forget_lora"])
+        only_require_grad_on(model, ".forget_lora.")
+        adv_forget_loss = forward(model, next(forget_iter))
+        (adv_forget_loss * lr["adv_forget"]).backward()
+    else:
+        adv_forget_loss = pt.tensor(pt.nan)
 
-    # # note: this actually could be much weaker, smaller batch
-    # adv_retain_loss = forward(model, next(retain_iter))
-    # (adv_retain_loss * lr["adv_retain"]).backward()
-    adv_retain_loss = pt.tensor(pt.nan)
+    if lr["adv_retain"] > 0:
+        model.set_adapter(["retain_lora", "forget_lora"])
+        only_require_grad_on(model, ".forget_lora.")
+        adv_retain_loss = forward(model, next(retain_iter))
+        (adv_retain_loss * lr["adv_retain"]).backward()
+    else:
+        adv_retain_loss = pt.tensor(pt.nan)
 
     optimizer.step()
 
@@ -90,9 +104,9 @@ for i in range(20):
     print(
         f"{i + 1:4d}  "
         f"quietness: {quietness_loss.item():5.2f}  "
-        f"bare_retain: {retain_loss.exp() - initial_stats[1]:5.2f}  "
-        f"adv_forget: {adv_forget_loss.exp() - initial_stats[0]:5.2f}  "
-        f"adv_retain: {adv_retain_loss.exp() - initial_stats[1]:5.2f} "
+        f"bare_retain: {retain_loss.exp() - initial_retain_ppl:5.2f}  "
+        f"adv_forget: {adv_forget_loss.exp() - initial_forget_ppl:5.2f}  "
+        f"adv_retain: {adv_retain_loss.exp() - initial_retain_ppl:5.2f} "
         f"{'< EVAL\n' if (i + 1) % 10 == 0 else ''}"
     )
 
