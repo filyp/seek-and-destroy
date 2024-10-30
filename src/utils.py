@@ -28,7 +28,7 @@ def load_one_oscar_shard(lang, tokenizer):
         # define splits; make it iterable so that it can be processed on demand
         IterableDatasetDict(
             unlearn=IterableDataset.from_generator(lambda: (ex for ex in quarter1)),
-            adapt=IterableDataset.from_generator(lambda: (ex for ex in quarter2)),
+            alt_unlearn=IterableDataset.from_generator(lambda: (ex for ex in quarter2)),
             relearn=IterableDataset.from_generator(lambda: (ex for ex in quarter3)),
             validation=IterableDataset.from_generator(lambda: (ex for ex in eigth1)),
             test=IterableDataset.from_generator(lambda: (ex for ex in eigth2)),
