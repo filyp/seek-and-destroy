@@ -23,6 +23,7 @@ forget_set = load_one_oscar_shard("pl", tokenizer)
 retain_set = load_one_oscar_shard("en", tokenizer)
 batch_size = 32
 assert batch_size // 8 > 0
+forget_iter = iter(forget_set["unlearn"].batch(batch_size))
 retain_iter = iter(retain_set["unlearn"].batch(batch_size))
 smol_forget_iter = iter(forget_set["alt_unlearn"].batch(batch_size // 8))
 smol_retain_iter = iter(retain_set["alt_unlearn"].batch(batch_size // 8))
@@ -38,7 +39,7 @@ with pt.no_grad():
 lora_config = LoraConfig(
     task_type=TaskType.SEQ_2_SEQ_LM,
     inference_mode=False,
-    r=1,
+    r=8,
     lora_alpha=32,
     lora_dropout=0.1,
     target_modules=["up_proj", "down_proj", "gate_proj", "q_proj", "k_proj", "v_proj", "o_proj"],  # fmt: skip
@@ -46,10 +47,13 @@ lora_config = LoraConfig(
 model.add_adapter(lora_config, adapter_name="adversarial_lora")
 
 
-def forward_and_get_quietness_loss(model, batch):
+def forward_and_get_clipped_logit_mean(model, batch):
     input_ids = pt.cat(batch["input_ids"])
-    out = model(input_ids, output_hidden_states=True)
-    return out.hidden_states[-1].norm(dim=-1).mean()
+    out = model(input_ids)
+    all_logits = out.logits[:, :-1, :].flatten(end_dim=1)
+    ids = input_ids[:, 1:].flatten()
+    logits = all_logits[pt.arange(len(ids)), ids]
+    return logits.clip(0).mean()
 
 
 def only_grad_on(model, name_part):
@@ -57,19 +61,23 @@ def only_grad_on(model, name_part):
         param.requires_grad = name_part in name
 
 
-# optimizer = pt.optim.Adam(model.parameters(), lr=0.001, betas=(0.9, 0.999))
-optimizer = pt.optim.SGD(model.parameters(), lr=0.0001)
+# todo a separate optimizer for the lora - it can have a higher LR
+optimizer = pt.optim.Adam(model.parameters(), lr=0.0001, betas=(0.9, 0.999))
+# optimizer = pt.optim.SGD(model.parameters(), lr=0.0003)
 
 # %%
 lr = SimpleNamespace(
-    loudness=0.04,
-    retain=20,
+    # because of how Adam adapts itself, the only thing that matters is the ratios:
+    # loudness / retain
+    # adv_forget / adv_retain
+    loudness=1,
+    retain=200,
     adv_forget=5,
     adv_retain=1,
 )
 
 start_time = time.time()
-for i in range(20):
+for i in range(300):
     optimizer.zero_grad(set_to_none=True)
     model.train()
     loss = SimpleNamespace()
@@ -78,7 +86,7 @@ for i in range(20):
 
     model.set_adapter(["adversarial_lora"])
     only_grad_on(model, ".base_layer.")
-    loss.loudness = forward_and_get_quietness_loss(model, next(smol_forget_iter))
+    loss.loudness = forward_and_get_clipped_logit_mean(model, next(smol_forget_iter))
     (loss.loudness * lr.loudness).backward()
 
     model.set_adapter([])
@@ -88,7 +96,7 @@ for i in range(20):
 
     model.set_adapter(["adversarial_lora"])
     only_grad_on(model, ".adversarial_lora.")
-    loss.adv_forget = forward(model, next(smol_forget_iter))
+    loss.adv_forget = forward(model, next(forget_iter))
     (loss.adv_forget * lr.adv_forget).backward()
 
     model.set_adapter(["adversarial_lora"])
@@ -103,7 +111,7 @@ for i in range(20):
         model.eval()
         with pt.no_grad():
             model.set_adapter(["adversarial_lora"])
-            loss.loudness = forward_and_get_quietness_loss(model, forget_eval_batch)
+            loss.loudness = forward_and_get_clipped_logit_mean(model, forget_eval_batch)
             model.set_adapter([])
             loss.forget = forward(model, forget_eval_batch)
             model.set_adapter([])
@@ -115,11 +123,16 @@ for i in range(20):
 
     print(
         f"{i + 1:4d}  "
-        f"loudness: {loss.loudness.item():4.0f}  "
-        f"forget: {loss.forget.exp() - initial_forget_ppl:6.0f}  "
+        f"loudness: {loss.loudness.item():6.2f}  "
+        f"forget: {loss.forget.exp() - initial_forget_ppl:7.0f}  "
         f"retain: {loss.retain.exp() - initial_retain_ppl:6.2f}  "
         f"adv_forget: {loss.adv_forget.exp() - initial_forget_ppl:6.2f}  "
         f"adv_retain: {loss.adv_retain.exp() - initial_retain_ppl:6.2f} "
         f"{'< EVAL\n' if (i + 1) % 10 == 0 else ''}"
     )
 print(f"time: {time.time() - start_time:.2f}s")
+
+# %%
+# p = optimizer.param_groups[0]["params"][3]
+# state = optimizer.state[p]
+# state["exp_avg_sq"].mean()

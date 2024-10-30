@@ -56,6 +56,7 @@ lora_config = LoraConfig(
 model.add_adapter(lora_config, adapter_name="helping_lora")
 
 
+# ! note that this is different from the one in quiet_normal_wo_helping_lora.py
 def forward_and_get_quietness_loss(model, batch):
     input_ids = pt.cat(batch["input_ids"])
     out = model(input_ids, output_hidden_states=True)

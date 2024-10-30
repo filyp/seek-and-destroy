@@ -100,3 +100,9 @@ def get_stats(model, forget_set, retain_set):
 
 def print_stats(stats):
     print(f"forget: {stats[0]:4.0f}  retain: {stats[1]:5.2f}  ratio: {stats[0] / stats[1]:.0f}")  # fmt: skip
+
+
+# def forward_and_get_quietness_loss(model, batch):
+#     input_ids = pt.cat(batch["input_ids"])
+#     out = model(input_ids, output_hidden_states=True)
+#     return out.hidden_states[-1].norm(dim=-1).mean()
