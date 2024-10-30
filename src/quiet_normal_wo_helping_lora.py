@@ -45,16 +45,6 @@ lora_config = LoraConfig(
 )
 model.add_adapter(lora_config, adapter_name="adversarial_lora")
 
-lora_config = LoraConfig(
-    task_type=TaskType.SEQ_2_SEQ_LM,
-    inference_mode=False,
-    r=16,  # larger rank
-    lora_alpha=32,
-    lora_dropout=0.1,
-    target_modules=["up_proj", "down_proj", "gate_proj", "q_proj", "k_proj", "v_proj", "o_proj"],  # fmt: skip
-)
-model.add_adapter(lora_config, adapter_name="helping_lora")
-
 
 def forward_and_get_quietness_loss(model, batch):
     input_ids = pt.cat(batch["input_ids"])
@@ -86,22 +76,22 @@ for i in range(20):
     loss.forget = pt.tensor(pt.nan)
     # note: only_grad_on must come after set_adapter
 
-    model.set_adapter(["helping_lora", "adversarial_lora"])
+    model.set_adapter(["adversarial_lora"])
     only_grad_on(model, ".base_layer.")
     loss.loudness = forward_and_get_quietness_loss(model, next(smol_forget_iter))
     (loss.loudness * lr.loudness).backward()
 
-    model.set_adapter(["helping_lora"])
-    only_grad_on(model, ".helping_lora.")
+    model.set_adapter([])
+    only_grad_on(model, ".base_layer.")
     loss.retain = forward(model, next(retain_iter))
     (loss.retain * lr.retain).backward()
 
-    model.set_adapter(["helping_lora", "adversarial_lora"])
+    model.set_adapter(["adversarial_lora"])
     only_grad_on(model, ".adversarial_lora.")
     loss.adv_forget = forward(model, next(smol_forget_iter))
     (loss.adv_forget * lr.adv_forget).backward()
 
-    model.set_adapter(["helping_lora", "adversarial_lora"])
+    model.set_adapter(["adversarial_lora"])
     only_grad_on(model, ".adversarial_lora.")
     loss.adv_retain = forward(model, next(smol_retain_iter))
     (loss.adv_retain * lr.adv_retain).backward()
@@ -112,15 +102,15 @@ for i in range(20):
     if (i + 1) % 10 == 0:
         model.eval()
         with pt.no_grad():
-            model.set_adapter(["helping_lora", "adversarial_lora"])
+            model.set_adapter(["adversarial_lora"])
             loss.loudness = forward_and_get_quietness_loss(model, forget_eval_batch)
-            model.set_adapter(["helping_lora"])
+            model.set_adapter([])
             loss.forget = forward(model, forget_eval_batch)
-            model.set_adapter(["helping_lora"])
+            model.set_adapter([])
             loss.retain = forward(model, retain_eval_batch)
-            model.set_adapter(["helping_lora", "adversarial_lora"])
+            model.set_adapter(["adversarial_lora"])
             loss.adv_forget = forward(model, forget_eval_batch)
-            model.set_adapter(["helping_lora", "adversarial_lora"])
+            model.set_adapter(["adversarial_lora"])
             loss.adv_retain = forward(model, retain_eval_batch)
 
     print(
@@ -133,16 +123,3 @@ for i in range(20):
         f"{'< EVAL\n' if (i + 1) % 10 == 0 else ''}"
     )
 print(f"time: {time.time() - start_time:.2f}s")
-
-
-# %% also show completely bare model (unrealistic)
-model.set_adapter([])
-with pt.no_grad():
-    bare_loss_forget = forward(model, forget_eval_batch)
-    bare_loss_retain = forward(model, retain_eval_batch)
-    print(
-        f"forget: {bare_loss_forget.exp() - initial_forget_ppl:6.2f}  "
-        f"retain: {bare_loss_retain.exp() - initial_retain_ppl:6.2f}"
-    )
-
-
