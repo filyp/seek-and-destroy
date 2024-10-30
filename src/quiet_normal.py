@@ -17,15 +17,17 @@ peft_config = LoraConfig(
     target_modules=["up_proj", "down_proj", "gate_proj", "q_proj", "k_proj", "v_proj", "o_proj"],  # fmt: skip
 )
 model.add_adapter(peft_config, adapter_name="forget_lora")
-# model.add_adapter(peft_config, adapter_name="retain_lora")
+model.add_adapter(peft_config, adapter_name="retain_lora")
 
-forget_iter = iter(forget_set["unlearn"].batch(16))
-retain_iter = iter(retain_set["unlearn"].batch(16))
+b_size = 32
+forget_iter = iter(forget_set["unlearn"].batch(b_size))
+retain_iter = iter(retain_set["unlearn"].batch(b_size))
+forget_eval_batch = next(iter(forget_set["validation"].batch(b_size)))
+retain_eval_batch = next(iter(retain_set["validation"].batch(b_size)))
 
 initial_stats = get_stats(model, forget_set, retain_set)
 
 
-# %%
 def forward_and_get_quietness_loss(model, batch):
     input_ids = pt.cat(batch["input_ids"])
     out = model(input_ids, output_hidden_states=True)
@@ -41,38 +43,59 @@ def only_require_grad_on(model, name_part):
 optimizer = pt.optim.SGD(model.parameters(), lr=0.001)
 
 # %%
-for i in range(100):
-    optimizer.zero_grad(set_to_none=True)
+lr = dict(
+    unlearn=0.003,
+    retain=2,
+    adv_forget=2,
+    adv_retain=1,
+)
 
+for i in range(20):
+    optimizer.zero_grad(set_to_none=True)
+    model.train()
+
+    model.set_adapter(["retain_lora", "forget_lora"])
     only_require_grad_on(model, ".base_layer.")
     quietness_loss = forward_and_get_quietness_loss(model, next(forget_iter))
-    (quietness_loss * 0.01).backward()
+    (quietness_loss * lr["unlearn"]).backward()
 
-    # todo this could be an adapter, that's always on! needs testing
-    # todo before each block, just set active_adapters list
-    model.disable_adapters()
-    only_require_grad_on(model, ".base_layer.")
-    bare_retain_loss = forward(model, next(retain_iter))
-    bare_retain_loss.backward()
-    model.enable_adapters()
-
-    only_require_grad_on(model, ".forget_lora.")
-    forget_loss = forward(model, next(forget_iter))
-    forget_loss.backward()
+    model.set_adapter(["retain_lora"])
+    only_require_grad_on(model, ".retain_lora.")
     retain_loss = forward(model, next(retain_iter))
-    retain_loss.backward()
+    (retain_loss * lr["retain"]).backward()
+
+    model.set_adapter(["retain_lora", "forget_lora"])
+    only_require_grad_on(model, ".forget_lora.")
+    adv_forget_loss = forward(model, next(forget_iter))
+    (adv_forget_loss * lr["adv_forget"]).backward()
+
+    # # note: this actually could be much weaker, smaller batch
+    # adv_retain_loss = forward(model, next(retain_iter))
+    # (adv_retain_loss * lr["adv_retain"]).backward()
+    adv_retain_loss = pt.tensor(pt.nan)
 
     optimizer.step()
 
-    print(
-        f"quietness: {quietness_loss.item():5.2f}  "
-        f"bare_retain: {bare_retain_loss.exp() - initial_stats[1]:5.2f}  "
-        f"forget: {forget_loss.exp() - initial_stats[0]:4.0f}  "
-        f"retain: {retain_loss.exp() - initial_stats[1]:5.2f}  "
-    )
     if (i + 1) % 10 == 0:
         model.eval()
-        print_stats(get_stats(model, forget_set, retain_set) - initial_stats)
+        with pt.no_grad():
+            model.set_adapter(["retain_lora", "forget_lora"])
+            quietness_loss = forward_and_get_quietness_loss(model, forget_eval_batch)
+            model.set_adapter(["retain_lora"])
+            retain_loss = forward(model, retain_eval_batch)
+            model.set_adapter(["retain_lora", "forget_lora"])
+            adv_forget_loss = forward(model, forget_eval_batch)
+            adv_retain_loss = forward(model, retain_eval_batch)
+
+    print(
+        f"{i + 1:4d}  "
+        f"quietness: {quietness_loss.item():5.2f}  "
+        f"bare_retain: {retain_loss.exp() - initial_stats[1]:5.2f}  "
+        f"adv_forget: {adv_forget_loss.exp() - initial_stats[0]:5.2f}  "
+        f"adv_retain: {adv_retain_loss.exp() - initial_stats[1]:5.2f} "
+        f"{'< EVAL\n' if (i + 1) % 10 == 0 else ''}"
+    )
 
 # %%
-# model.active_adapters()
+# model.set_adapter(["retain_lora"])
+# print(forward(model, forget_eval_batch).exp() - initial_stats[0])
