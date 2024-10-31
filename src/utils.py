@@ -21,16 +21,16 @@ def load_one_oscar_shard(lang, tokenizer):
 
     # split into 4 quarters
     half1, half2 = raw_dataset.train_test_split(test_size=0.5, seed=42).values()
-    quarter1, quarter2 = half1.train_test_split(test_size=0.5, seed=42).values()
     quarter3, quarter4 = half2.train_test_split(test_size=0.5, seed=42).values()
+    eigth7, eigth8 = quarter4.train_test_split(test_size=0.5, seed=42).values()
 
     dataset = (
         # define splits; make it iterable so that it can be processed on demand
         IterableDatasetDict(
-            unlearn=IterableDataset.from_generator(lambda: (ex for ex in quarter1)),
-            relearn=IterableDataset.from_generator(lambda: (ex for ex in quarter2)),
-            validation=IterableDataset.from_generator(lambda: (ex for ex in quarter3)),
-            test=IterableDataset.from_generator(lambda: (ex for ex in quarter4)),
+            unlearn=IterableDataset.from_generator(lambda: (ex for ex in half1)),
+            relearn=IterableDataset.from_generator(lambda: (ex for ex in quarter3)),
+            validation=IterableDataset.from_generator(lambda: (ex for ex in eigth7)),
+            test=IterableDataset.from_generator(lambda: (ex for ex in eigth8)),
         )
         # process the raw data, following OSCAR-2301.py
         .map(lambda ex: {"text": json.loads(ex["text"])["content"]})

@@ -52,28 +52,29 @@ forget_eval_batch = get_batch(iter(forget_set["validation"]), 32)
 retain_eval_batch = get_batch(iter(retain_set["validation"]), 32)
 
 
-# initialize LoRAs
-lora_config = LoraConfig(
-    task_type=TaskType.SEQ_2_SEQ_LM,
-    inference_mode=False,
-    r=8,
-    lora_alpha=32,
-    lora_dropout=0.1,
-    target_modules=["up_proj", "down_proj", "gate_proj", "q_proj", "k_proj", "v_proj", "o_proj"],  # fmt: skip
-)
-model.add_adapter(lora_config, adapter_name="adversarial_lora")
-
 # get initial perplexities
 model.eval()
 with pt.no_grad():
     initial_forget_ppl = forward(model, forget_eval_batch).exp()
     initial_retain_ppl = forward(model, retain_eval_batch).exp()
 
+# %%
+# initialize LoRAs
+lora_config = LoraConfig(
+    task_type=TaskType.SEQ_2_SEQ_LM,
+    inference_mode=False,
+    r=1,
+    lora_alpha=32,
+    lora_dropout=0.1,
+    target_modules=["up_proj", "down_proj", "gate_proj", "q_proj", "k_proj", "v_proj", "o_proj"],  # fmt: skip
+)
+model.add_adapter(lora_config, adapter_name="adversarial_lora")
+
 # Replace the single optimizer with two separate ones
 base_optimizer = pt.optim.Adam(
     # [p for n, p in model.named_parameters() if ".base_layer." in n],
     [p for n, p in model.named_parameters() if ".adversarial_lora." not in n],
-    lr=0.0001,
+    lr=0.00005,
     betas=(0.9, 0.999),
 )
 lora_optimizer = pt.optim.Adam(
@@ -87,13 +88,13 @@ lora_optimizer = pt.optim.Adam(
 #     only the proportions of the loss components:
 # loudness and retain
 # adv_forget and adv_retain
-loudness_vs_retain = 0.02
+loudness_vs_retain = 0.2
 adv_forget_vs_adv_retain = 0.66
 assert 0 <= loudness_vs_retain <= 1
 assert 0 <= adv_forget_vs_adv_retain <= 1
 
 train_base = True
-train_lora = False
+train_lora = True
 
 start_time = time.time()
 for i in range(10):
@@ -114,12 +115,12 @@ for i in range(10):
 
         model.set_adapter(["adversarial_lora"])
         only_grad_on(model, ".base_layer.")
-        loss.loudness = forward_with_clipped_logit(model, get_batch(forget_iter, 4))
+        loss.loudness = forward_with_clipped_logit(model, get_batch(forget_iter, 8))
         (loss.loudness * loudness_vs_retain).backward()
 
         model.set_adapter([])
         only_grad_on(model, ".base_layer.")
-        loss.retain = forward(model, get_batch(retain_iter, 32))
+        loss.retain = forward(model, get_batch(retain_iter, 16))
         (loss.retain * (1 - loudness_vs_retain)).backward()
 
         base_optimizer.step()
@@ -166,13 +167,17 @@ for i in range(10):
         print("\n      " + "   ".join(f"{k:>10}" for k in stats.keys()))
     print(f"{i + 1:4d}  " + "   ".join(f"{v:10.2f}" for v in stats.values()))
 
+    # if stats["adv_forget"] > 1000:
+    #     break
+
 print(f"time: {time.time() - start_time:.2f}s")
 
 # %% save model
 model_path = get_repo_root() / "models" / "no_lora_200_steps.pt"
 pt.save(model.state_dict(), model_path)
 
-# %% load model
+# %% load model and remove LoRA
+model_path = get_repo_root() / "models" / "no_lora_200_steps.pt"
 model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
 state_dict = pt.load(model_path, weights_only=True)
 remove_lora(state_dict)
