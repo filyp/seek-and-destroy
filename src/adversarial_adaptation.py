@@ -3,6 +3,7 @@ import time
 
 import matplotlib.pyplot as plt
 import torch as pt
+import wandb
 from peft import LoraConfig, TaskType
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -46,8 +47,8 @@ model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
 tokenizer = AutoTokenizer.from_pretrained(model_id)
 forget_set = load_one_oscar_shard("pl", tokenizer)
 retain_set = load_one_oscar_shard("en", tokenizer)
-forget_iter = iter(forget_set["unlearn"])
-retain_iter = iter(retain_set["unlearn"])
+forget_iter = looping_iter(forget_set["unlearn"])
+retain_iter = looping_iter(retain_set["unlearn"])
 forget_eval_batch = get_batch(iter(forget_set["validation"]), 32)
 retain_eval_batch = get_batch(iter(retain_set["validation"]), 32)
 
@@ -58,7 +59,7 @@ with pt.no_grad():
     initial_forget_ppl = forward(model, forget_eval_batch).exp()
     initial_retain_ppl = forward(model, retain_eval_batch).exp()
 
-# %% initialize LoRAs
+# %% initialize LoRA
 lora_config = LoraConfig(
     task_type=TaskType.SEQ_2_SEQ_LM,
     inference_mode=False,
@@ -69,11 +70,11 @@ lora_config = LoraConfig(
 )
 model.add_adapter(lora_config, adapter_name="adversarial_lora")
 
-# %%
+# %% initialize optimizers
 base_optimizer = pt.optim.Adam(
     # [p for n, p in model.named_parameters() if ".base_layer." in n],
     [p for n, p in model.named_parameters() if ".adversarial_lora." not in n],
-    lr=0.00003,
+    lr=0.00002,
     betas=(0.9, 0.999),
 )
 lora_optimizer = pt.optim.Adam(
@@ -82,21 +83,33 @@ lora_optimizer = pt.optim.Adam(
     betas=(0.9, 0.999),
 )
 
-# %%
+# %% config
+wandb.init(
+    project="adversarial_adaptation",
+    group="unlearning",
+    config=dict(
+        model_id=model_id,
+        base_lr=base_optimizer.param_groups[0]["lr"],
+        lora_lr=lora_optimizer.param_groups[0]["lr"],
+        loudness_vs_retain=0.2,
+        adv_forget_vs_adv_retain=0.66,
+        train_base=True,
+        train_lora=True,
+        lora_config=lora_config.to_dict(),
+    ),
+)
+c = wandb.config
 # because of how Adam adapts itself, loss scale doesn't matter,
 #     only the proportions of the loss components:
 # loudness and retain
 # adv_forget and adv_retain
-loudness_vs_retain = 0.2
-adv_forget_vs_adv_retain = 0.66
-assert 0 <= loudness_vs_retain <= 1
-assert 0 <= adv_forget_vs_adv_retain <= 1
+assert 0 <= c.loudness_vs_retain <= 1
+assert 0 <= c.adv_forget_vs_adv_retain <= 1
 
-train_base = True
-train_lora = True
+# %% training loop
 
 start_time = time.time()
-for i in range(10000):
+for i in range(1000000):
     # For base model updates
     model.train()
     loss = DefaultNamespace()
@@ -107,36 +120,36 @@ for i in range(10000):
     #     before setting new requires_grad in the new chunk
     # even the forward pass seems to depend on which requires_grad are set
     # ! TLDR: just don't mess with the order in these 4-line blocks
-    
+
     # todo: we currently don't train layer norm params, maybe we should
 
-    if train_base:
+    if c.train_base:
         base_optimizer.zero_grad(set_to_none=True)
 
         model.set_adapter(["adversarial_lora"])
         only_grad_on(model, ".base_layer.")
         loss.adv_loudness = forward_with_clipped_logit(model, get_batch(forget_iter, 8))
-        (loss.adv_loudness * loudness_vs_retain).backward()
+        (loss.adv_loudness * c.loudness_vs_retain).backward()
 
         model.set_adapter([])
         only_grad_on(model, ".base_layer.")
         loss.retain = forward(model, get_batch(retain_iter, 16))
-        (loss.retain * (1 - loudness_vs_retain)).backward()
+        (loss.retain * (1 - c.loudness_vs_retain)).backward()
 
         base_optimizer.step()
 
-    if train_lora:
+    if c.train_lora:
         lora_optimizer.zero_grad(set_to_none=True)
 
         model.set_adapter(["adversarial_lora"])
         only_grad_on(model, ".adversarial_lora.")
         loss.adv_forget = forward(model, get_batch(forget_iter, 16))
-        (loss.adv_forget * adv_forget_vs_adv_retain).backward()
+        (loss.adv_forget * c.adv_forget_vs_adv_retain).backward()
 
         model.set_adapter(["adversarial_lora"])
         only_grad_on(model, ".adversarial_lora.")
         loss.adv_retain = forward(model, get_batch(retain_iter, 8))
-        (loss.adv_retain * (1 - adv_forget_vs_adv_retain)).backward()
+        (loss.adv_retain * (1 - c.adv_forget_vs_adv_retain)).backward()
 
         lora_optimizer.step()
 
@@ -162,14 +175,20 @@ for i in range(10000):
         adv_forget=loss.adv_forget.exp() - initial_forget_ppl,
         adv_retain=loss.adv_retain.exp() - initial_retain_ppl,
     )
+
+    if (i + 1) % 10 == 0:
+        wandb.log(stats)
+
     if i % 10 == 0:
         print("\n      " + "   ".join(f"{k:>10}" for k in stats.keys()))
     print(f"{i + 1:4d}  " + "   ".join(f"{v:10.2f}" for v in stats.values()))
 
-    if stats["adv_forget"] > 500 and (i + 1) % 10 == 0:
+    # stop if we broke through the LoRA
+    if stats["adv_forget"] > 2000 and (i + 1) % 10 == 0:
         break
 
 print(f"time: {time.time() - start_time:.2f}s")
+wandb.finish()
 
 # %%
 
