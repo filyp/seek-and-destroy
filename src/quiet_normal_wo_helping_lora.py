@@ -1,35 +1,19 @@
 # %% init things, which need to be run once
 import time
-from types import SimpleNamespace
 
 import matplotlib.pyplot as plt
 import torch as pt
 from peft import LoraConfig, TaskType
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from utils import load_one_oscar_shard, set_seeds
+from utils import DefaultNamespace, load_one_oscar_shard, set_seeds
 
 pt.set_default_device("cuda")
 set_seeds(42)
 
-# load model
-# model_id = "google/gemma-2-2b"
-model_id = "Qwen/Qwen2.5-0.5B"
-model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
-
 
 def get_batch(iter, n):
     return pt.cat([next(iter)["input_ids"] for _ in range(n)])
-
-
-# load datasets
-tokenizer = AutoTokenizer.from_pretrained(model_id)
-forget_set = load_one_oscar_shard("pl", tokenizer)
-retain_set = load_one_oscar_shard("en", tokenizer)
-forget_iter = iter(forget_set["unlearn"])
-retain_iter = iter(retain_set["unlearn"])
-forget_eval_batch = get_batch(iter(forget_set["validation"]), 32)
-retain_eval_batch = get_batch(iter(retain_set["validation"]), 32)
 
 
 def forward(model, batch):
@@ -53,11 +37,27 @@ def only_grad_on(model, name_part):
         param.requires_grad = name_part in name
 
 
+# load model
+# model_id = "google/gemma-2-2b"
+model_id = "Qwen/Qwen2.5-0.5B"
+model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
+
+
+# load datasets
+tokenizer = AutoTokenizer.from_pretrained(model_id)
+forget_set = load_one_oscar_shard("pl", tokenizer)
+retain_set = load_one_oscar_shard("en", tokenizer)
+forget_iter = iter(forget_set["unlearn"])
+retain_iter = iter(retain_set["unlearn"])
+forget_eval_batch = get_batch(iter(forget_set["validation"]), 32)
+retain_eval_batch = get_batch(iter(retain_set["validation"]), 32)
+
+
 # initialize LoRAs
 lora_config = LoraConfig(
     task_type=TaskType.SEQ_2_SEQ_LM,
     inference_mode=False,
-    r=1,
+    r=8,
     lora_alpha=32,
     lora_dropout=0.1,
     target_modules=["up_proj", "down_proj", "gate_proj", "q_proj", "k_proj", "v_proj", "o_proj"],  # fmt: skip
@@ -89,17 +89,21 @@ lora_optimizer = pt.optim.Adam(
 #     only the proportions of the loss components:
 # loudness and retain
 # adv_forget and adv_retain
-loudness_vs_retain = 0.004
+loudness_vs_retain = 0.02
 adv_forget_vs_adv_retain = 0.66
 assert 0 <= loudness_vs_retain <= 1
 assert 0 <= adv_forget_vs_adv_retain <= 1
 
+train_base = True
+train_lora = False
+
 start_time = time.time()
-for i in range(20):
+for i in range(30):
     # For base model updates
     model.train()
-    loss = SimpleNamespace()
-    loss.forget = pt.tensor(pt.nan)
+    loss = DefaultNamespace()
+
+    # loss = defaultdict(lambda: pt.tensor(pt.nan))
     # note: only_grad_on must always come after set_adapter,
     #     bc set_adapter changes requires_grad
     # also we need to finalize each 4-line chunk with backward()
@@ -107,33 +111,35 @@ for i in range(20):
     # even the forward pass seems to depend on which requires_grad are set
     # ! TLDR: just don't mess with the order in these 4-line blocks
 
-    base_optimizer.zero_grad(set_to_none=True)
+    if train_base:
+        base_optimizer.zero_grad(set_to_none=True)
 
-    model.set_adapter(["adversarial_lora"])
-    only_grad_on(model, ".base_layer.")
-    loss.loudness = forward_with_clipped_logit(model, get_batch(forget_iter, 4))
-    (loss.loudness * loudness_vs_retain).backward()
+        model.set_adapter(["adversarial_lora"])
+        only_grad_on(model, ".base_layer.")
+        loss.loudness = forward_with_clipped_logit(model, get_batch(forget_iter, 4))
+        (loss.loudness * loudness_vs_retain).backward()
 
-    model.set_adapter([])
-    only_grad_on(model, ".base_layer.")
-    loss.retain = forward(model, get_batch(retain_iter, 32))
-    (loss.retain * (1 - loudness_vs_retain)).backward()
+        model.set_adapter([])
+        only_grad_on(model, ".base_layer.")
+        loss.retain = forward(model, get_batch(retain_iter, 32))
+        (loss.retain * (1 - loudness_vs_retain)).backward()
 
-    # For LoRA updates
-    lora_optimizer.zero_grad(set_to_none=True)
+        base_optimizer.step()
 
-    model.set_adapter(["adversarial_lora"])
-    only_grad_on(model, ".adversarial_lora.")
-    loss.adv_forget = forward(model, get_batch(forget_iter, 32))
-    (loss.adv_forget * adv_forget_vs_adv_retain).backward()
+    if train_lora:
+        lora_optimizer.zero_grad(set_to_none=True)
 
-    model.set_adapter(["adversarial_lora"])
-    only_grad_on(model, ".adversarial_lora.")
-    loss.adv_retain = forward(model, get_batch(retain_iter, 16))
-    (loss.adv_retain * (1 - adv_forget_vs_adv_retain)).backward()
+        model.set_adapter(["adversarial_lora"])
+        only_grad_on(model, ".adversarial_lora.")
+        loss.adv_forget = forward(model, get_batch(forget_iter, 16))
+        (loss.adv_forget * adv_forget_vs_adv_retain).backward()
 
-    base_optimizer.step()
-    lora_optimizer.step()
+        model.set_adapter(["adversarial_lora"])
+        only_grad_on(model, ".adversarial_lora.")
+        loss.adv_retain = forward(model, get_batch(retain_iter, 8))
+        (loss.adv_retain * (1 - adv_forget_vs_adv_retain)).backward()
+
+        lora_optimizer.step()
 
     # evaluate
     if (i + 1) % 10 == 0:
@@ -150,18 +156,16 @@ for i in range(20):
             model.set_adapter(["adversarial_lora"])
             loss.adv_retain = forward(model, retain_eval_batch)
 
-    print(
-        f"{i + 1:4d}  "
-        f"loudness: {loss.loudness.item():6.2f}  "
-        f"forget: {loss.forget.exp() - initial_forget_ppl:7.0f}  "
-        f"retain: {loss.retain.exp() - initial_retain_ppl:6.2f}  "
-        f"adv_forget: {loss.adv_forget.exp() - initial_forget_ppl:8.2f}  "
-        f"adv_retain: {loss.adv_retain.exp() - initial_retain_ppl:6.2f} "
-        f"{'< EVAL\n' if (i + 1) % 10 == 0 else ''}"
+    # calculate and print stats
+    stats = dict(
+        loudness=loss.loudness.item(),
+        forget=loss.forget.exp() - initial_forget_ppl,
+        retain=loss.retain.exp() - initial_retain_ppl,
+        adv_forget=loss.adv_forget.exp() - initial_forget_ppl,
+        adv_retain=loss.adv_retain.exp() - initial_retain_ppl,
     )
-print(f"time: {time.time() - start_time:.2f}s")
+    if i % 10 == 0:
+        print("\n      " + "   ".join(f"{k:>10}" for k in stats.keys()))
+    print(f"{i + 1:4d}  " + "   ".join(f"{v:10.2f}" for v in stats.values()))
 
-# %%
-# p = optimizer.param_groups[0]["params"][3]
-# state = optimizer.state[p]
-# state["exp_avg_sq"].mean()
+print(f"time: {time.time() - start_time:.2f}s")

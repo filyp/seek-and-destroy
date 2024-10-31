@@ -1,6 +1,7 @@
 import json
 import random
 from itertools import islice
+from types import SimpleNamespace
 
 import torch as pt
 from datasets import IterableDataset, IterableDatasetDict, load_dataset
@@ -55,6 +56,12 @@ def set_seeds(seed):
     pt.backends.cudnn.deterministic = True
     pt.backends.cudnn.benchmark = False
     random.seed(seed)
+
+
+class DefaultNamespace(SimpleNamespace):
+    def __getattr__(self, name):
+        # This is called when an attribute doesn't exist
+        return pt.tensor(pt.nan)
 
 
 # all below are DEPRECATED
