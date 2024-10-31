@@ -8,7 +8,6 @@ import torch as pt
 from datasets import IterableDataset, IterableDatasetDict, load_dataset
 
 
-
 def load_one_oscar_shard(lang, tokenizer):
     context_len = 100
     # only use one ~600MB shard
@@ -82,3 +81,9 @@ def remove_lora(state_dict):
         del state_dict[key]
         new_key = key.replace("base_layer.", "")
         state_dict[new_key] = value
+
+
+def looping_iter(iterable):
+    # like itertools.cycle, but will not eat memory by storing element copies
+    while True:
+        yield from iterable

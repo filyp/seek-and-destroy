@@ -230,3 +230,6 @@ og_model = AutoModelForCausalLM.from_pretrained(
 #     adv_retain=loss.adv_retain.exp() - initial_retain_ppl,
 # )
 # print(f"{i + 1:4d}  " + "   ".join(f"{v:10.2f}" for v in stats.values()))
+
+
+# assert set(model.state_dict().keys()) == set(state_dict.keys())
