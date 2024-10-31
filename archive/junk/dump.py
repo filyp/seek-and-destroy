@@ -206,3 +206,27 @@ og_model = AutoModelForCausalLM.from_pretrained(
 
 # og_model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
 # model.load_state_dict(og_model.state_dict())
+
+# %% manual eval
+# loss = DefaultNamespace()
+# i = 999
+# with pt.no_grad():
+#     model.set_adapter(["adversarial_lora"])
+#     loss.loudness = forward_with_clipped_logit(model, forget_eval_batch)
+#     model.set_adapter([])
+#     loss.forget = forward(model, forget_eval_batch)
+#     model.set_adapter([])
+#     loss.retain = forward(model, retain_eval_batch)
+#     model.set_adapter(["adversarial_lora"])
+#     loss.adv_forget = forward(model, forget_eval_batch)
+#     model.set_adapter(["adversarial_lora"])
+#     loss.adv_retain = forward(model, retain_eval_batch)
+# # calculate and print stats
+# stats = dict(
+#     loudness=loss.loudness.item(),
+#     forget=loss.forget.exp() - initial_forget_ppl,
+#     retain=loss.retain.exp() - initial_retain_ppl,
+#     adv_forget=loss.adv_forget.exp() - initial_forget_ppl,
+#     adv_retain=loss.adv_retain.exp() - initial_retain_ppl,
+# )
+# print(f"{i + 1:4d}  " + "   ".join(f"{v:10.2f}" for v in stats.values()))

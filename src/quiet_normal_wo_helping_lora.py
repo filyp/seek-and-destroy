@@ -6,7 +6,7 @@ import torch as pt
 from peft import LoraConfig, TaskType
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from utils import DefaultNamespace, load_one_oscar_shard, set_seeds
+from utils import *
 
 pt.set_default_device("cuda")
 set_seeds(42)
@@ -42,7 +42,6 @@ def only_grad_on(model, name_part):
 model_id = "Qwen/Qwen2.5-0.5B"
 model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
 
-
 # load datasets
 tokenizer = AutoTokenizer.from_pretrained(model_id)
 forget_set = load_one_oscar_shard("pl", tokenizer)
@@ -64,12 +63,11 @@ lora_config = LoraConfig(
 )
 model.add_adapter(lora_config, adapter_name="adversarial_lora")
 
-
 # get initial perplexities
+model.eval()
 with pt.no_grad():
     initial_forget_ppl = forward(model, forget_eval_batch).exp()
     initial_retain_ppl = forward(model, retain_eval_batch).exp()
-
 
 # Replace the single optimizer with two separate ones
 base_optimizer = pt.optim.Adam(
@@ -98,7 +96,7 @@ train_base = True
 train_lora = False
 
 start_time = time.time()
-for i in range(30):
+for i in range(10):
     # For base model updates
     model.train()
     loss = DefaultNamespace()
@@ -169,3 +167,14 @@ for i in range(30):
     print(f"{i + 1:4d}  " + "   ".join(f"{v:10.2f}" for v in stats.values()))
 
 print(f"time: {time.time() - start_time:.2f}s")
+
+# %% save model
+model_path = get_repo_root() / "models" / "no_lora_200_steps.pt"
+pt.save(model.state_dict(), model_path)
+
+# %% load model
+model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
+state_dict = pt.load(model_path, weights_only=True)
+remove_lora(state_dict)
+# assert set(model.state_dict().keys()) == set(state_dict.keys())
+model.load_state_dict(state_dict)

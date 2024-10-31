@@ -54,3 +54,39 @@ def intervene(model, module_name, mult, cutoff=None):
         rel_imp = m.imp["forget"] / m.imp["retain"]
         mask = rel_imp > cutoff
         m.weight.data[mask] *= mult
+
+
+
+def get_perplexity(model, dataset, num_batches=1, batch_size=32):
+    total_loss = 0
+    for batch in islice(dataset["validation"].batch(batch_size), num_batches):
+        with pt.no_grad():
+            total_loss += forward(model, batch)
+    return (total_loss / num_batches).exp()
+
+
+def get_norm_of_weights_change(model, original_state_dict):
+    partial_norms = []
+    for module_name, current_weights in model.named_parameters():
+        original_weights = original_state_dict[module_name]
+        norm = (original_weights - current_weights).norm()
+        partial_norms.append(norm)
+    return pt.tensor(partial_norms).norm()
+
+
+def get_stats(model, forget_set, retain_set):
+    return pt.tensor([
+        get_perplexity(model, forget_set),
+        get_perplexity(model, retain_set),
+        # get_norm_of_weights_change(model, og_model.state_dict()),
+    ])
+
+
+def print_stats(stats):
+    print(f"forget: {stats[0]:4.0f}  retain: {stats[1]:5.2f}  ratio: {stats[0] / stats[1]:.0f}")  # fmt: skip
+
+
+# def forward_and_get_quietness_loss(model, batch):
+#     input_ids = pt.cat(batch["input_ids"])
+#     out = model(input_ids, output_hidden_states=True)
+#     return out.hidden_states[-1].norm(dim=-1).mean()
