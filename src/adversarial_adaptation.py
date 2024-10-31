@@ -3,10 +3,10 @@ import time
 
 import matplotlib.pyplot as plt
 import torch as pt
-import wandb
 from peft import LoraConfig, TaskType
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+import wandb
 from utils import *
 
 pt.set_default_device("cuda")
@@ -74,7 +74,7 @@ model.add_adapter(lora_config, adapter_name="adversarial_lora")
 base_optimizer = pt.optim.Adam(
     # [p for n, p in model.named_parameters() if ".base_layer." in n],
     [p for n, p in model.named_parameters() if ".adversarial_lora." not in n],
-    lr=0.00002,
+    lr=0.000015,
     betas=(0.9, 0.999),
 )
 lora_optimizer = pt.optim.Adam(
@@ -84,32 +84,32 @@ lora_optimizer = pt.optim.Adam(
 )
 
 # %% config
-wandb.init(
-    project="adversarial_adaptation",
-    group="unlearning",
-    config=dict(
-        model_id=model_id,
-        base_lr=base_optimizer.param_groups[0]["lr"],
-        lora_lr=lora_optimizer.param_groups[0]["lr"],
-        loudness_vs_retain=0.2,
-        adv_forget_vs_adv_retain=0.66,
-        train_base=True,
-        train_lora=True,
-        lora_config=lora_config.to_dict(),
-    ),
+c = SimpleNamespace(
+    model_id=model_id,
+    base_lr=base_optimizer.param_groups[0]["lr"],
+    lora_lr=lora_optimizer.param_groups[0]["lr"],
+    loudness_vs_retain=0.2,
+    adv_forget_vs_adv_retain=0.66,
+    train_base=True,
+    train_lora=True,
+    lora_config=lora_config.to_dict(),
 )
-c = wandb.config
+wandb.init(project="adversarial_adaptation", group="unlearning", config=vars(c))
 # because of how Adam adapts itself, loss scale doesn't matter,
 #     only the proportions of the loss components:
 # loudness and retain
 # adv_forget and adv_retain
 assert 0 <= c.loudness_vs_retain <= 1
 assert 0 <= c.adv_forget_vs_adv_retain <= 1
+i = 0
 
 # %% training loop
+# c.train_base = False
+# c.loudness_vs_retain = 0.3
 
 start_time = time.time()
-for i in range(1000000):
+for _ in range(1000000):
+    i += 1
     # For base model updates
     model.train()
     loss = DefaultNamespace()
@@ -177,20 +177,23 @@ for i in range(1000000):
     )
 
     if (i + 1) % 10 == 0:
-        wandb.log(stats)
+        # if current run is active, log stats
+        if wandb.run:
+            wandb.log(stats)
 
     if i % 10 == 0:
         print("\n      " + "   ".join(f"{k:>10}" for k in stats.keys()))
     print(f"{i + 1:4d}  " + "   ".join(f"{v:10.2f}" for v in stats.values()))
 
-    # stop if we broke through the LoRA
-    if stats["adv_forget"] > 2000 and (i + 1) % 10 == 0:
-        break
+    # # stop if we broke through the LoRA
+    # if stats["adv_forget"] > 2000 and (i + 1) % 10 == 0:
+    #     break
 
 print(f"time: {time.time() - start_time:.2f}s")
-wandb.finish()
 
 # %%
+if wandb.run:
+    wandb.finish()
 
 # %% remove lora and save model
 # remove lora (for delete_adapter we'd need to use get_peft_model)
@@ -199,10 +202,10 @@ remove_lora(state_dict)
 model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
 model.load_state_dict(state_dict)
 # save model
-model_path = get_repo_root() / "models" / "r1_until_broken.pt"
+model_path = get_repo_root() / "models" / "r2_22k_steps.pt"
 pt.save(model.state_dict(), model_path)
 
 # %% load model
-model_path = get_repo_root() / "models" / "no_lora_200_steps.pt"
-model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
-model.load_state_dict(pt.load(model_path, weights_only=True))
+# model_path = get_repo_root() / "models" / "no_lora_200_steps.pt"
+# model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
+# model.load_state_dict(pt.load(model_path, weights_only=True))
