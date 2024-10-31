@@ -7,7 +7,7 @@ import torch as pt
 from peft import LoraConfig, TaskType
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from utils import forward, load_one_oscar_shard, set_seeds
+from utils import load_one_oscar_shard, set_seeds
 
 pt.set_default_device("cuda")
 set_seeds(42)
@@ -17,43 +17,35 @@ set_seeds(42)
 model_id = "Qwen/Qwen2.5-0.5B"
 model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
 
+
+def get_batch(iter, n):
+    return pt.cat([next(iter)["input_ids"] for _ in range(n)])
+
+
 # load datasets
 tokenizer = AutoTokenizer.from_pretrained(model_id)
 forget_set = load_one_oscar_shard("pl", tokenizer)
 retain_set = load_one_oscar_shard("en", tokenizer)
-batch_size = 32
-assert batch_size // 8 > 0
-forget_iter = iter(forget_set["unlearn"].batch(batch_size))
-retain_iter = iter(retain_set["unlearn"].batch(batch_size))
-smol_forget_iter = iter(forget_set["alt_unlearn"].batch(batch_size // 8))
-smol_retain_iter = iter(retain_set["alt_unlearn"].batch(batch_size // 8))
-forget_eval_batch = next(iter(forget_set["validation"].batch(batch_size)))
-retain_eval_batch = next(iter(retain_set["validation"].batch(batch_size)))
-
-# get initial perplexities
-with pt.no_grad():
-    initial_forget_ppl = forward(model, forget_eval_batch).exp()
-    initial_retain_ppl = forward(model, retain_eval_batch).exp()
-
-# initialize LoRAs
-lora_config = LoraConfig(
-    task_type=TaskType.SEQ_2_SEQ_LM,
-    inference_mode=False,
-    r=8,
-    lora_alpha=32,
-    lora_dropout=0.1,
-    target_modules=["up_proj", "down_proj", "gate_proj", "q_proj", "k_proj", "v_proj", "o_proj"],  # fmt: skip
-)
-model.add_adapter(lora_config, adapter_name="adversarial_lora")
+forget_iter = iter(forget_set["unlearn"])
+retain_iter = iter(retain_set["unlearn"])
+forget_eval_batch = get_batch(iter(forget_set["validation"]), 32)
+retain_eval_batch = get_batch(iter(retain_set["validation"]), 32)
 
 
-def forward_and_get_clipped_logit_mean(model, batch):
-    input_ids = pt.cat(batch["input_ids"])
-    out = model(input_ids)
-    all_logits = out.logits[:, :-1, :].flatten(end_dim=1)
-    ids = input_ids[:, 1:].flatten()
-    logits = all_logits[pt.arange(len(ids)), ids]
-    return logits.clip(0).mean()
+def forward(model, batch):
+    # forward pass
+    logits = model(batch).logits
+    # compute loss
+    loss_fn = pt.nn.CrossEntropyLoss()
+    return loss_fn(logits[:, :-1, :].flatten(end_dim=1), batch[:, 1:].flatten())
+
+
+def forward_with_clipped_logit(model, batch):
+    logits = model(batch).logits
+    logits = logits[:, :-1, :].flatten(end_dim=1)
+    ids = batch[:, 1:].flatten()
+    true_logits = logits[pt.arange(len(ids)), ids]
+    return true_logits.clip(0).mean()
 
 
 def only_grad_on(model, name_part):
@@ -61,57 +53,94 @@ def only_grad_on(model, name_part):
         param.requires_grad = name_part in name
 
 
-# todo a separate optimizer for the lora - it can have a higher LR
-optimizer = pt.optim.Adam(model.parameters(), lr=0.0001, betas=(0.9, 0.999))
-# optimizer = pt.optim.SGD(model.parameters(), lr=0.0003)
+# initialize LoRAs
+lora_config = LoraConfig(
+    task_type=TaskType.SEQ_2_SEQ_LM,
+    inference_mode=False,
+    r=1,
+    lora_alpha=32,
+    lora_dropout=0.1,
+    target_modules=["up_proj", "down_proj", "gate_proj", "q_proj", "k_proj", "v_proj", "o_proj"],  # fmt: skip
+)
+model.add_adapter(lora_config, adapter_name="adversarial_lora")
 
-# %%
-lr = SimpleNamespace(
-    # because of how Adam adapts itself, the only thing that matters is the ratios:
-    # loudness / retain
-    # adv_forget / adv_retain
-    loudness=1,
-    retain=200,
-    adv_forget=5,
-    adv_retain=1,
+
+# get initial perplexities
+with pt.no_grad():
+    initial_forget_ppl = forward(model, forget_eval_batch).exp()
+    initial_retain_ppl = forward(model, retain_eval_batch).exp()
+
+
+# Replace the single optimizer with two separate ones
+base_optimizer = pt.optim.Adam(
+    # [p for n, p in model.named_parameters() if ".base_layer." in n],
+    [p for n, p in model.named_parameters() if ".adversarial_lora." not in n],
+    lr=0.0001,
+    betas=(0.9, 0.999),
+)
+lora_optimizer = pt.optim.Adam(
+    [p for n, p in model.named_parameters() if ".adversarial_lora." in n],
+    lr=0.001,
+    betas=(0.9, 0.999),
 )
 
+# %%
+# because of how Adam adapts itself, loss scale doesn't matter,
+#     only the proportions of the loss components:
+# loudness and retain
+# adv_forget and adv_retain
+loudness_vs_retain = 0.004
+adv_forget_vs_adv_retain = 0.66
+assert 0 <= loudness_vs_retain <= 1
+assert 0 <= adv_forget_vs_adv_retain <= 1
+
 start_time = time.time()
-for i in range(300):
-    optimizer.zero_grad(set_to_none=True)
+for i in range(20):
+    # For base model updates
     model.train()
     loss = SimpleNamespace()
     loss.forget = pt.tensor(pt.nan)
-    # note: only_grad_on must come after set_adapter
+    # note: only_grad_on must always come after set_adapter,
+    #     bc set_adapter changes requires_grad
+    # also we need to finalize each 4-line chunk with backward()
+    #     before setting new requires_grad in the new chunk
+    # even the forward pass seems to depend on which requires_grad are set
+    # ! TLDR: just don't mess with the order in these 4-line blocks
+
+    base_optimizer.zero_grad(set_to_none=True)
 
     model.set_adapter(["adversarial_lora"])
     only_grad_on(model, ".base_layer.")
-    loss.loudness = forward_and_get_clipped_logit_mean(model, next(smol_forget_iter))
-    (loss.loudness * lr.loudness).backward()
+    loss.loudness = forward_with_clipped_logit(model, get_batch(forget_iter, 4))
+    (loss.loudness * loudness_vs_retain).backward()
 
     model.set_adapter([])
     only_grad_on(model, ".base_layer.")
-    loss.retain = forward(model, next(retain_iter))
-    (loss.retain * lr.retain).backward()
+    loss.retain = forward(model, get_batch(retain_iter, 32))
+    (loss.retain * (1 - loudness_vs_retain)).backward()
+
+    # For LoRA updates
+    lora_optimizer.zero_grad(set_to_none=True)
 
     model.set_adapter(["adversarial_lora"])
     only_grad_on(model, ".adversarial_lora.")
-    loss.adv_forget = forward(model, next(forget_iter))
-    (loss.adv_forget * lr.adv_forget).backward()
+    loss.adv_forget = forward(model, get_batch(forget_iter, 32))
+    (loss.adv_forget * adv_forget_vs_adv_retain).backward()
 
     model.set_adapter(["adversarial_lora"])
     only_grad_on(model, ".adversarial_lora.")
-    loss.adv_retain = forward(model, next(smol_retain_iter))
-    (loss.adv_retain * lr.adv_retain).backward()
+    loss.adv_retain = forward(model, get_batch(retain_iter, 16))
+    (loss.adv_retain * (1 - adv_forget_vs_adv_retain)).backward()
 
-    optimizer.step()
+    base_optimizer.step()
+    lora_optimizer.step()
 
     # evaluate
     if (i + 1) % 10 == 0:
         model.eval()
         with pt.no_grad():
             model.set_adapter(["adversarial_lora"])
-            loss.loudness = forward_and_get_clipped_logit_mean(model, forget_eval_batch)
+            loss.loudness = forward_with_clipped_logit(model, forget_eval_batch)
             model.set_adapter([])
             loss.forget = forward(model, forget_eval_batch)
             model.set_adapter([])
@@ -126,7 +155,7 @@ for i in range(300):
         f"loudness: {loss.loudness.item():6.2f}  "
         f"forget: {loss.forget.exp() - initial_forget_ppl:7.0f}  "
         f"retain: {loss.retain.exp() - initial_retain_ppl:6.2f}  "
-        f"adv_forget: {loss.adv_forget.exp() - initial_forget_ppl:6.2f}  "
+        f"adv_forget: {loss.adv_forget.exp() - initial_forget_ppl:8.2f}  "
         f"adv_retain: {loss.adv_retain.exp() - initial_retain_ppl:6.2f} "
         f"{'< EVAL\n' if (i + 1) % 10 == 0 else ''}"
     )

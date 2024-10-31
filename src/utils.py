@@ -22,16 +22,14 @@ def load_one_oscar_shard(lang, tokenizer):
     half1, half2 = raw_dataset.train_test_split(test_size=0.5, seed=42).values()
     quarter1, quarter2 = half1.train_test_split(test_size=0.5, seed=42).values()
     quarter3, quarter4 = half2.train_test_split(test_size=0.5, seed=42).values()
-    eigth1, eigth2 = quarter4.train_test_split(test_size=0.5, seed=42).values()
 
     dataset = (
         # define splits; make it iterable so that it can be processed on demand
         IterableDatasetDict(
             unlearn=IterableDataset.from_generator(lambda: (ex for ex in quarter1)),
-            alt_unlearn=IterableDataset.from_generator(lambda: (ex for ex in quarter2)),
-            relearn=IterableDataset.from_generator(lambda: (ex for ex in quarter3)),
-            validation=IterableDataset.from_generator(lambda: (ex for ex in eigth1)),
-            test=IterableDataset.from_generator(lambda: (ex for ex in eigth2)),
+            relearn=IterableDataset.from_generator(lambda: (ex for ex in quarter2)),
+            validation=IterableDataset.from_generator(lambda: (ex for ex in quarter3)),
+            test=IterableDataset.from_generator(lambda: (ex for ex in quarter4)),
         )
         # process the raw data, following OSCAR-2301.py
         .map(lambda ex: {"text": json.loads(ex["text"])["content"]})
@@ -49,17 +47,6 @@ def load_one_oscar_shard(lang, tokenizer):
     )
     assert next(iter(dataset["test"]))["text"] != next(iter(dataset["unlearn"]))["text"]
     return dataset
-
-
-def forward(model, batch):
-    loss_fn = pt.nn.CrossEntropyLoss()
-    # create batched input_ids
-    input_ids = pt.cat(batch["input_ids"])
-    assert input_ids.shape[1] == context_len
-    # forward pass
-    logits = model(input_ids).logits
-    # compute loss
-    return loss_fn(logits[:, :-1, :].flatten(end_dim=1), input_ids[:, 1:].flatten())
 
 
 def set_seeds(seed):
