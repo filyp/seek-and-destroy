@@ -154,7 +154,7 @@ for _ in range(1000000):
         lora_optimizer.step()
 
     # evaluate
-    if (i + 1) % 10 == 0:
+    if i % 10 == 0:
         model.eval()
         with pt.no_grad():
             model.set_adapter([])
@@ -176,14 +176,14 @@ for _ in range(1000000):
         adv_retain=loss.adv_retain.exp() - initial_retain_ppl,
     )
 
-    if (i + 1) % 10 == 0:
+    if i % 10 == 0:
         # if current run is active, log stats
         if wandb.run:
-            wandb.log(stats)
+            wandb.log(stats, step=i)
 
-    if i % 10 == 0:
+    if i % 10 == 1:
         print("\n      " + "   ".join(f"{k:>10}" for k in stats.keys()))
-    print(f"{i + 1:4d}  " + "   ".join(f"{v:10.2f}" for v in stats.values()))
+    print(f"{i:4d}  " + "   ".join(f"{v:10.2f}" for v in stats.values()))
 
     # # stop if we broke through the LoRA
     # if stats["adv_forget"] > 2000 and (i + 1) % 10 == 0:
