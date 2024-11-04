@@ -87,3 +87,28 @@ def looping_iter(iterable):
     # like itertools.cycle, but will not eat memory by storing element copies
     while True:
         yield from iterable
+
+
+def get_batch(iter, n):
+    return pt.cat([next(iter)["input_ids"] for _ in range(n)])
+
+
+def forward(model, batch):
+    # forward pass
+    logits = model(batch).logits
+    # compute loss
+    loss_fn = pt.nn.CrossEntropyLoss()
+    return loss_fn(logits[:, :-1, :].flatten(end_dim=1), batch[:, 1:].flatten())
+
+
+def forward_with_clipped_logit(model, batch):
+    logits = model(batch).logits
+    logits = logits[:, :-1, :].flatten(end_dim=1)
+    ids = batch[:, 1:].flatten()
+    true_logits = logits[pt.arange(len(ids)), ids]
+    return true_logits.clip(0).mean()
+
+
+def only_grad_on(model, name_part):
+    for name, param in model.named_parameters():
+        param.requires_grad = name_part in name

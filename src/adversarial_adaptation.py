@@ -13,31 +13,6 @@ pt.set_default_device("cuda")
 set_seeds(42)
 
 
-def get_batch(iter, n):
-    return pt.cat([next(iter)["input_ids"] for _ in range(n)])
-
-
-def forward(model, batch):
-    # forward pass
-    logits = model(batch).logits
-    # compute loss
-    loss_fn = pt.nn.CrossEntropyLoss()
-    return loss_fn(logits[:, :-1, :].flatten(end_dim=1), batch[:, 1:].flatten())
-
-
-def forward_with_clipped_logit(model, batch):
-    logits = model(batch).logits
-    logits = logits[:, :-1, :].flatten(end_dim=1)
-    ids = batch[:, 1:].flatten()
-    true_logits = logits[pt.arange(len(ids)), ids]
-    return true_logits.clip(0).mean()
-
-
-def only_grad_on(model, name_part):
-    for name, param in model.named_parameters():
-        param.requires_grad = name_part in name
-
-
 # load model
 # model_id = "google/gemma-2-2b"
 model_id = "Qwen/Qwen2.5-0.5B"
@@ -63,7 +38,7 @@ with pt.no_grad():
 lora_config = LoraConfig(
     task_type=TaskType.SEQ_2_SEQ_LM,
     inference_mode=False,
-    r=2,
+    r=1,
     lora_alpha=32,
     lora_dropout=0.1,
     target_modules=["up_proj", "down_proj", "gate_proj", "q_proj", "k_proj", "v_proj", "o_proj"],  # fmt: skip
@@ -108,7 +83,7 @@ i = 0
 # c.loudness_vs_retain = 0.3
 
 start_time = time.time()
-for _ in range(1000000):
+for _ in range(100):
     i += 1
     # For base model updates
     model.train()
@@ -195,17 +170,14 @@ print(f"time: {time.time() - start_time:.2f}s")
 if wandb.run:
     wandb.finish()
 
-# %% remove lora and save model
-# remove lora (for delete_adapter we'd need to use get_peft_model)
+# %% remove lora
+# (to use delete_adapter we'd need to use get_peft_model)
 state_dict = model.state_dict()
 remove_lora(state_dict)
 model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
 model.load_state_dict(state_dict)
-# save model
-model_path = get_repo_root() / "models" / "r2_22k_steps.pt"
+
+# %% save model
+model_path = get_repo_root() / "models" / f"r1_{i}steps.pt"
 pt.save(model.state_dict(), model_path)
 
-# %% load model
-# model_path = get_repo_root() / "models" / "no_lora_200_steps.pt"
-# model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
-# model.load_state_dict(pt.load(model_path, weights_only=True))
