@@ -31,8 +31,9 @@ retain_eval_batch = get_batch(iter(retain_set["validation"]), 32)
 # get initial perplexities
 model.eval()
 with pt.no_grad():
-    initial_forget_ppl = forward(model, forget_eval_batch).exp()
-    initial_retain_ppl = forward(model, retain_eval_batch).exp()
+    print("initial perplexities:")
+    print(f"forget: {forward(model, forget_eval_batch).exp()}")
+    print(f"retain: {forward(model, retain_eval_batch).exp()}")
 
 # %% initialize LoRA
 lora_config = LoraConfig(
@@ -69,7 +70,9 @@ c = SimpleNamespace(
     train_lora=True,
     lora_config=lora_config.to_dict(),
 )
-wandb.init(project="adversarial_adaptation", group="unlearning", config=vars(c))
+wandb.init(
+    project="adversarial_adaptation", group="unlearning", config=vars(c), name="no_lora"
+)
 # because of how Adam adapts itself, loss scale doesn't matter,
 #     only the proportions of the loss components:
 # loudness and retain
@@ -144,11 +147,11 @@ for _ in range(100):
     # calculate and print stats
     stats = dict(
         loudness=loss.loudness.item(),
-        forget=loss.forget.exp() - initial_forget_ppl,
-        retain=loss.retain.exp() - initial_retain_ppl,
+        forget=loss.forget.exp(),
+        retain=loss.retain.exp(),
         adv_loudness=loss.adv_loudness.item(),
-        adv_forget=loss.adv_forget.exp() - initial_forget_ppl,
-        adv_retain=loss.adv_retain.exp() - initial_retain_ppl,
+        adv_forget=loss.adv_forget.exp(),
+        adv_retain=loss.adv_retain.exp(),
     )
 
     if i % 10 == 0:
@@ -160,9 +163,15 @@ for _ in range(100):
         print("\n      " + "   ".join(f"{k:>10}" for k in stats.keys()))
     print(f"{i:4d}  " + "   ".join(f"{v:10.2f}" for v in stats.values()))
 
-    # # stop if we broke through the LoRA
-    # if stats["adv_forget"] > 2000 and (i + 1) % 10 == 0:
-    #     break
+    # training past the point of breaking LoRA doesn't improve final performance
+    # so stop if we broke through the LoRA
+    if stats["adv_forget"] > 500 and (i + 1) % 10 == 0:
+        break
+
+    # if i % 100 == 0:
+    #     # save model
+    #     model_path = get_repo_root() / "models" / f"{wandb.run.name}_{i}steps.pt"
+    #     pt.save(model.state_dict(), model_path)
 
 print(f"time: {time.time() - start_time:.2f}s")
 
@@ -170,14 +179,13 @@ print(f"time: {time.time() - start_time:.2f}s")
 if wandb.run:
     wandb.finish()
 
-# %% remove lora
-# (to use delete_adapter we'd need to use get_peft_model)
-state_dict = model.state_dict()
-remove_lora(state_dict)
-model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
-model.load_state_dict(state_dict)
+# # %% remove lora
+# # (to use delete_adapter we'd need to use get_peft_model)
+# state_dict = model.state_dict()
+# remove_lora(state_dict)
+# model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
+# model.load_state_dict(state_dict)
 
 # %% save model
-model_path = get_repo_root() / "models" / f"r1_{i}steps.pt"
+model_path = get_repo_root() / "models" / f"{wandb.run.name}_{i}steps.pt"
 pt.save(model.state_dict(), model_path)
-
