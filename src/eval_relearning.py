@@ -31,7 +31,7 @@ retain_eval_batch = get_batch(iter(retain_set["validation"]), 32)
 
 # %% load model (without LoRA)
 model_name = sys.argv[1]
-model_path = get_repo_root() / "models" / model_name
+model_path = get_repo_root() / model_name
 state_dict = pt.load(model_path, weights_only=True)
 remove_lora(state_dict)
 model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)

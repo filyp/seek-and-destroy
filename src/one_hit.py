@@ -29,30 +29,49 @@ retain_eval_batch = get_batch(iter(retain_set["validation"]), 32)
 
 
 # %% accumulate forget gradients
-model.zero_grad(set_to_none=True)
-for i in tqdm(range(1, 1 + 300)):
-    loss_forget = forward_with_clipped_logit(model, get_batch(forget_iter, 32))
-    loss_forget.backward()
 
-# save forget gradients
-grads = {}
-for name, param in model.named_parameters():
-    if param.grad is not None:
-        grads[name] = param.grad
-model.zero_grad(set_to_none=True)
+# accumulation_steps = 300
+# # calculate
+# model.zero_grad(set_to_none=True)
+# for _ in tqdm(range(accumulation_steps)):
+#     loss_forget = forward_with_clipped_logit(model, get_batch(forget_iter, 32))
+#     loss_forget.backward()
+#     # do not optimizer.step() !
+# # gather
+# grads = {
+#     name: param.grad / accumulation_steps
+#     for name, param in model.named_parameters()
+# }
+# model.zero_grad(set_to_none=True)
+# # save
+# circuit_path = get_repo_root() / "circuits" / f"forward_with_clipped_logit_300.pt"
+# pt.save(grads, circuit_path)
+
+# load cached
+circuit_path = get_repo_root() / "circuits" / f"forward_with_clipped_logit_300.pt"
+grads = pt.load(circuit_path)
 
 # %%
 model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
 optimizer = pt.optim.Adam(model.parameters(), lr=0.00005, betas=(0.9, 0.999))
+i = 0
+
+# get initial perplexities
+model.eval()
+with pt.no_grad():
+    print("initial perplexities:")
+    print(f"forget: {forward(model, forget_eval_batch).exp()}")
+    print(f"retain: {forward(model, retain_eval_batch).exp()}")
 
 # %%
-for i in range(1, 1 + 300):
+for _ in range(1000000):
+    i += 1
     model.train()
     loss_forget = pt.tensor(pt.nan)
 
     for name, param in model.named_parameters():
-        param.data -= grads[name] * 0.001 / 100
-        pass
+        # if "proj" in name:
+        param.data -= grads[name] * 0.001
 
     optimizer.zero_grad(set_to_none=True)
     loss_retain = forward(model, get_batch(retain_iter, 16))
@@ -77,6 +96,9 @@ for i in range(1, 1 + 300):
     print(f"{i:4d}  " + "   ".join(f"{v:10.2f}" for v in stats.values()))
 
     # save model
-    if i % 100 == 0:
-        model_path = get_repo_root() / "models" / f"one_hit_{i}steps.pt"
+    if i % 500 == 0:
+        # ! change this name
+        model_path = get_repo_root() / "models" / f"one_hit5_{i}steps.pt"
         pt.save(model.state_dict(), model_path)
+
+# %%
