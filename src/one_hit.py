@@ -52,20 +52,33 @@ unwanted_circuit = pt.load(circuit_path)
 
 # %%
 c = SimpleNamespace(
-    forget_lr=1e-5,
-    retain_lr=1e-5,
-    L2_revert_factor=0.9995,
+    forget_lr=6e-5,
+    retain_lr=4e-4,
+    L2_revert_factor=1,  # seems that for .9995 it's the same as one? maybe it's a numerical error?
     acceptable_retain_ppl=24,
-    forget_ppl_increment=2e-6,
+    forget_ppl_increment=1.2,
+    momentum=0.9,
+    rank=16,
 )
 
 set_seeds(42)
 retain_iter = looping_iter(retain_set["unlearn"])
 
 model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
-optimizer = pt.optim.Adam(model.parameters(), lr=c.retain_lr, betas=(0.8, 0.999))
+lora_config = LoraConfig(
+    task_type=TaskType.SEQ_2_SEQ_LM,
+    inference_mode=False,
+    r=c.rank,
+    lora_alpha=32,
+    lora_dropout=0.1,
+    target_modules="all-linear",
+)
+model.add_adapter(lora_config, adapter_name="retain_lora")
+
+optimizer = pt.optim.Adam(model.parameters(), lr=c.retain_lr, betas=(c.momentum, 0.999))
 # optimizer = pt.optim.SGD(model.parameters(), lr=0.0008)
-initial_state_dict = deepcopy(model.state_dict())
+# initial_state_dict = deepcopy(model.state_dict())
+
 step = 0
 last_lr_update = 0
 forget_ppl_hist = []
@@ -80,30 +93,32 @@ with pt.no_grad():
 wandb.init(
     project="adversarial_adaptation",
     group="one_hit_unlearning",
-    name=f"f={c.forget_lr:.0e} r={c.retain_lr:.0e} L2={c.L2_revert_factor}",
+    name=f"R{c.rank} f={c.forget_lr:.0e} r={c.retain_lr:.0e} L2={c.L2_revert_factor}",
     config=vars(c),
 )
 
 # %%
-for _ in range(1000000):
+for _ in range(1000):
     step += 1
     model.train()
     loss_forget = pt.tensor(pt.nan)
 
     for name, param in model.named_parameters():
-        # if "proj" in name:
-        param.data -= unwanted_circuit[name] * c.forget_lr
+        name = name.replace(".base_layer", "")
+        if name in unwanted_circuit:  # and "_proj" in name:
+            param.data -= unwanted_circuit[name] * c.forget_lr
 
     optimizer.zero_grad(set_to_none=True)
     loss_retain = forward(model, get_batch(retain_iter, 8))
     loss_retain.backward()
     optimizer.step()
 
-    # L2 revert
-    for name, param in model.named_parameters():
-        initial_weights = initial_state_dict[name]
-        delta = param.data - initial_weights
-        param.data = initial_weights + delta * c.L2_revert_factor
+    # # L2 revert
+    # for name, param in model.named_parameters():
+    #     if ".base_layer" in name:
+    #         initial_weights = initial_state_dict[name]
+    #         delta = param.data - initial_weights
+    #         param.data = initial_weights + delta * c.L2_revert_factor
 
     # # L1 revert
     # a = 0.00003
@@ -130,21 +145,18 @@ for _ in range(1000000):
     # adapt forget_lr
     if (
         stats["retain"] < c.acceptable_retain_ppl
-        and step - last_lr_update > 30
-        and forget_ppl_hist[-1] > stats["forget"]
+        and step - last_lr_update > 5 * 10
+        and forget_ppl_hist[-5] > stats["forget"]
     ):
-        c.forget_lr += c.forget_ppl_increment
+        c.forget_lr *= c.forget_ppl_increment
         last_lr_update = step
         print(f"forget_lr updated to {c.forget_lr:.1e}")
     forget_ppl_hist.append(stats["forget"])
 
     # save model
     if step % 500 == 0:
-        # ! change this name
         model_path = get_repo_root() / "models" / f"{wandb.run.name}_{step}steps.pt"
         pt.save(model.state_dict(), model_path)
 
 # %%
 wandb.finish()
-
-# %%

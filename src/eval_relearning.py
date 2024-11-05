@@ -1,12 +1,8 @@
-"""Running:
-python eval_relearning.py {model_name}
-"""
-
 # %% init things, which need to be run once
 import sys
 
 import torch as pt
-from peft import LoraConfig, TaskType
+from peft import LoraConfig, TaskType, get_peft_model
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 import wandb
@@ -29,13 +25,26 @@ retain_iter = looping_iter(retain_set["relearn"])
 forget_eval_batch = get_batch(iter(forget_set["validation"]), 32)
 retain_eval_batch = get_batch(iter(retain_set["validation"]), 32)
 
-# %% load model (without LoRA)
-model_name = sys.argv[1]
+# %% load model 
+model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
+lora_config = LoraConfig(
+    task_type=TaskType.SEQ_2_SEQ_LM,
+    inference_mode=False,
+    r=16,
+    lora_alpha=32,
+    lora_dropout=0.1,
+    target_modules="all-linear",
+)
+peft_model = get_peft_model(model, lora_config, adapter_name="retain_lora")
+model = peft_model.model
+
+# model_name = sys.argv[1]
+model_name = "models/R16 f=8e-05 r=3e-04 L2=1_500steps.pt"
 model_path = get_repo_root() / model_name
 state_dict = pt.load(model_path, weights_only=True)
-remove_lora(state_dict)
-model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
 model.load_state_dict(state_dict)
+
+model = peft_model.merge_and_unload()
 
 # %% initialize LoRA
 lora_config = LoraConfig(
@@ -44,11 +53,10 @@ lora_config = LoraConfig(
     r=16,
     lora_alpha=32,
     lora_dropout=0.1,
-    target_modules=["up_proj", "down_proj", "gate_proj", "q_proj", "k_proj", "v_proj", "o_proj"],  # fmt: skip
+    target_modules="all-linear",
 )
 model.add_adapter(lora_config, adapter_name="relearning_lora")
 
-# %%
 optimizer = pt.optim.Adam(model.parameters(), lr=0.001, betas=(0.9, 0.999))
 wandb.init(project="adversarial_adaptation", group="relearning", name=model_path.stem)
 
@@ -86,3 +94,5 @@ for i in range(1, 1 + 100):
 
 if wandb.run:
     wandb.finish()
+
+# %%
