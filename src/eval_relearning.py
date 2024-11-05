@@ -39,7 +39,7 @@ peft_model = get_peft_model(model, lora_config, adapter_name="retain_lora")
 model = peft_model.model
 
 # model_name = sys.argv[1]
-model_name = "models/R16 f=8e-05 r=3e-04 L2=1_500steps.pt"
+model_name = "models/R16 f=1e-02 r=4e-04_2000steps.pt"
 model_path = get_repo_root() / model_name
 state_dict = pt.load(model_path, weights_only=True)
 model.load_state_dict(state_dict)

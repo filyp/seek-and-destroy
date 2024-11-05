@@ -28,38 +28,66 @@ retain_eval_batch = get_batch(iter(retain_set["validation"]), 32)
 
 # %% accumulate forget gradients
 
-# accumulation_steps = 3000
-# forget_iter = looping_iter(forget_set["unlearn"])
+# accumulation_steps = 300
+# forget_iter = looping_iter(retain_set["unlearn"])
 # # calculate
 # model.zero_grad(set_to_none=True)
 # for _ in tqdm(range(accumulation_steps)):
 #     loss_forget = forward_with_clipped_logit(model, get_batch(forget_iter, 32))
+#     # loss_forget = -forward(model, get_batch(forget_iter, 32))
 #     loss_forget.backward()
 #     # do not optimizer.step() !
 # # gather
-# grads = {
+# unwanted_circuit = {
 #     name: param.grad / accumulation_steps
 #     for name, param in model.named_parameters()
 # }
 # model.zero_grad(set_to_none=True)
 # # save
-# circuit_path = get_repo_root() / "circuits" / f"forward_with_clipped_logit_3000.pt"
-# pt.save(grads, circuit_path)
+# circuit_path = get_repo_root() / "circuits" / f"retain_forward_clipped_logit_300.pt"
+# pt.save(unwanted_circuit, circuit_path)
 
-# load cached
+# %% load cached circuits
 circuit_path = get_repo_root() / "circuits" / f"forward_with_clipped_logit_300.pt"
 unwanted_circuit = pt.load(circuit_path)
+circuit_path = get_repo_root() / "circuits" / f"retain_forward_clipped_logit_300.pt"
+wanted_circuit = pt.load(circuit_path)
 
 # %%
 c = SimpleNamespace(
-    forget_lr=6e-5,
+    forget_lr=1e-2,
     retain_lr=4e-4,
-    L2_revert_factor=1,  # seems that for .9995 it's the same as one? maybe it's a numerical error?
-    acceptable_retain_ppl=24,
-    forget_ppl_increment=1.2,
+    # L2_revert_factor=1,  # seems that for .9995 it's the same as one? maybe it's a numerical error?
+    acceptable_retain_ppl=25,
+    forget_ppl_increment=1.5,
     momentum=0.9,
     rank=16,
+    # sparsity=0.9999,
+    lowest_retain_weights=0.01,
 )
+
+# %%
+for name, uw_param in unwanted_circuit.items():
+    w_param = wanted_circuit[name]
+    magnitudes = w_param.abs().flatten()
+    k = int(len(magnitudes) * c.lowest_retain_weights)
+    threshold = magnitudes.kthvalue(k).values
+    # todo maybe also think about the sign?
+    uw_param[w_param.abs() > threshold] = 0
+del wanted_circuit
+# plt.plot(wanted_circuit[n].flatten().cpu().float(), unwanted_circuit[n].flatten().cpu().float(), ".")
+
+# %%
+
+# # %% sparsify the unwanted circuit
+# for key, value in unwanted_circuit.items():
+#     magnitudes = value.abs().flatten()
+#     k = int(len(magnitudes) * c.sparsity)
+#     threshold = magnitudes.kthvalue(k).values
+#     print(f"{key} {threshold=:.1e} {len(magnitudes)=}")
+#     value[value.abs() < threshold] = 0
+
+# %%
 
 set_seeds(42)
 retain_iter = looping_iter(retain_set["unlearn"])
@@ -93,12 +121,12 @@ with pt.no_grad():
 wandb.init(
     project="adversarial_adaptation",
     group="one_hit_unlearning",
-    name=f"R{c.rank} f={c.forget_lr:.0e} r={c.retain_lr:.0e} L2={c.L2_revert_factor}",
+    name=f"R{c.rank} f={c.forget_lr:.0e} r={c.retain_lr:.0e}",
     config=vars(c),
 )
 
 # %%
-for _ in range(1000):
+for _ in range(500):
     step += 1
     model.train()
     loss_forget = pt.tensor(pt.nan)
@@ -142,16 +170,16 @@ for _ in range(1000):
     wandb.log(stats, step=step)
     print(f"{step:4d}  " + "   ".join(f"{v:10.2f}" for v in stats.values()))
 
-    # adapt forget_lr
-    if (
-        stats["retain"] < c.acceptable_retain_ppl
-        and step - last_lr_update > 5 * 10
-        and forget_ppl_hist[-5] > stats["forget"]
-    ):
-        c.forget_lr *= c.forget_ppl_increment
-        last_lr_update = step
-        print(f"forget_lr updated to {c.forget_lr:.1e}")
-    forget_ppl_hist.append(stats["forget"])
+    # # adapt forget_lr
+    # if (
+    #     stats["retain"] < c.acceptable_retain_ppl
+    #     and step - last_lr_update > 5 * 10
+    #     and forget_ppl_hist[-5] > stats["forget"]
+    # ):
+    #     c.forget_lr *= c.forget_ppl_increment
+    #     last_lr_update = step
+    #     print(f"forget_lr updated to {c.forget_lr:.1e}")
+    # forget_ppl_hist.append(stats["forget"])
 
     # save model
     if step % 500 == 0:
