@@ -19,6 +19,7 @@ def scale_perturbation(model, original_state_dict, scaling_factor):
     for module_name, current_weights in model.state_dict().items():
         original_weights = original_state_dict[module_name]
         # modification need to be done in-place so it's a bit awkward:
+        # or I could just use param.data instead
         current_weights -= original_weights
         current_weights *= scaling_factor
         current_weights += original_weights

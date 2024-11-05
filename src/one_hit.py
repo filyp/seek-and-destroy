@@ -1,5 +1,6 @@
 # %% init things, which need to be run once
 import time
+from copy import deepcopy
 
 import matplotlib.pyplot as plt
 import torch as pt
@@ -11,7 +12,6 @@ import wandb
 from utils import *
 
 pt.set_default_device("cuda")
-set_seeds(42)
 
 # load model
 # model_id = "google/gemma-2-2b"
@@ -22,15 +22,14 @@ model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
 tokenizer = AutoTokenizer.from_pretrained(model_id)
 forget_set = load_one_oscar_shard("pl", tokenizer)
 retain_set = load_one_oscar_shard("en", tokenizer)
-forget_iter = looping_iter(forget_set["unlearn"])
-retain_iter = looping_iter(retain_set["unlearn"])
 forget_eval_batch = get_batch(iter(forget_set["validation"]), 32)
 retain_eval_batch = get_batch(iter(retain_set["validation"]), 32)
 
 
 # %% accumulate forget gradients
 
-# accumulation_steps = 300
+# accumulation_steps = 3000
+# forget_iter = looping_iter(forget_set["unlearn"])
 # # calculate
 # model.zero_grad(set_to_none=True)
 # for _ in tqdm(range(accumulation_steps)):
@@ -44,16 +43,27 @@ retain_eval_batch = get_batch(iter(retain_set["validation"]), 32)
 # }
 # model.zero_grad(set_to_none=True)
 # # save
-# circuit_path = get_repo_root() / "circuits" / f"forward_with_clipped_logit_300.pt"
+# circuit_path = get_repo_root() / "circuits" / f"forward_with_clipped_logit_3000.pt"
 # pt.save(grads, circuit_path)
 
 # load cached
 circuit_path = get_repo_root() / "circuits" / f"forward_with_clipped_logit_300.pt"
-grads = pt.load(circuit_path)
+unwanted_circuit = pt.load(circuit_path)
 
 # %%
+c = SimpleNamespace(
+    forget_lr=2e-5,
+    retain_lr=2e-5,
+    L2_revert_factor=0.999,
+)
+
+set_seeds(42)
+retain_iter = looping_iter(retain_set["unlearn"])
+
 model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
-optimizer = pt.optim.Adam(model.parameters(), lr=0.00005, betas=(0.9, 0.999))
+optimizer = pt.optim.Adam(model.parameters(), lr=c.retain_lr, betas=(0.9, 0.999))
+# optimizer = pt.optim.SGD(model.parameters(), lr=0.0008)
+initial_state_dict = deepcopy(model.state_dict())
 i = 0
 
 # get initial perplexities
@@ -64,19 +74,41 @@ with pt.no_grad():
     print(f"retain: {forward(model, retain_eval_batch).exp()}")
 
 # %%
-for _ in range(1000000):
+wandb.init(
+    project="adversarial_adaptation",
+    group="one_hit_unlearning",
+    name=f"f={c.forget_lr:.0e} r={c.retain_lr:.0e} L2={c.L2_revert_factor}",
+    config=vars(c),
+)
+
+# %%
+for _ in range(2000):
     i += 1
     model.train()
     loss_forget = pt.tensor(pt.nan)
 
     for name, param in model.named_parameters():
-        # if "proj" in name:
-        param.data -= grads[name] * 0.001
+        if "proj" in name:
+            param.data -= unwanted_circuit[name] * c.forget_lr
 
     optimizer.zero_grad(set_to_none=True)
-    loss_retain = forward(model, get_batch(retain_iter, 16))
+    loss_retain = forward(model, get_batch(retain_iter, 8))
     loss_retain.backward()
     optimizer.step()
+
+    # L2 revert
+    for name, param in model.named_parameters():
+        initial_weights = initial_state_dict[name]
+        delta = param.data - initial_weights
+        param.data = initial_weights + delta * c.L2_revert_factor
+
+    # # L1 revert
+    # a = 0.00003
+    # for name, param in model.named_parameters():
+    #     initial_weights = initial_state_dict[name]
+    #     delta = param.data - initial_weights
+    #     new_delta = delta.clip(max=-a) + delta.clip(min=a)
+    #     param.data = initial_weights + new_delta
 
     # evaluate
     if i % 10 == 0:
@@ -84,21 +116,14 @@ for _ in range(1000000):
         with pt.no_grad():
             loss_forget = forward(model, forget_eval_batch)
             loss_retain = forward(model, retain_eval_batch)
-
-    # calculate and print stats
-    stats = dict(
-        forget=loss_forget.exp(),
-        retain=loss_retain.exp(),
-    )
-
-    if i % 10 == 1:
-        print("\n      " + "   ".join(f"{k:>10}" for k in stats.keys()))
-    print(f"{i:4d}  " + "   ".join(f"{v:10.2f}" for v in stats.values()))
+        stats = dict(forget=loss_forget.exp(), retain=loss_retain.exp())
+        wandb.log(stats, step=i)
+        print(f"{i:4d}  " + "   ".join(f"{v:10.2f}" for v in stats.values()))
 
     # save model
-    if i % 500 == 0:
+    if i % 200 == 0:
         # ! change this name
-        model_path = get_repo_root() / "models" / f"one_hit5_{i}steps.pt"
+        model_path = get_repo_root() / "models" / f"{wandb.run.name}_{i}steps.pt"
         pt.save(model.state_dict(), model_path)
 
 # %%
