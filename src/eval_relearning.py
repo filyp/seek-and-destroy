@@ -40,7 +40,7 @@ model = peft_model.model
 
 # model_name = sys.argv[1]
 model_name = "models/R16 f=1e-02 r=4e-04_2000steps.pt"
-model_path = get_repo_root() / model_name
+model_path = repo_root() / model_name
 state_dict = pt.load(model_path, weights_only=True)
 model.load_state_dict(state_dict)
 

@@ -233,3 +233,33 @@ og_model = AutoModelForCausalLM.from_pretrained(
 
 
 # assert set(model.state_dict().keys()) == set(state_dict.keys())
+
+
+# %% L1 and L2
+# # L2 revert
+# for name, param in model.named_parameters():
+#     if ".base_layer" in name:
+#         initial_weights = initial_state_dict[name]
+#         delta = param.data - initial_weights
+#         param.data = initial_weights + delta * c.L2_revert_factor
+
+# # L1 revert
+# a = 0.00003
+# for name, param in model.named_parameters():
+#     initial_weights = initial_state_dict[name]
+#     delta = param.data - initial_weights
+#     new_delta = delta.clip(max=-a) + delta.clip(min=a)
+#     param.data = initial_weights + new_delta
+
+
+# %% adapting forget_lr used to be needed when circuit wasn't sparse and retaining was harder
+# # adapt forget_lr
+# if (
+#     stats["retain"] < c.acceptable_retain_ppl
+#     and step - last_lr_update > 5 * 10
+#     and forget_ppl_hist[-5] > stats["forget"]
+# ):
+#     c.forget_lr *= c.forget_ppl_increment
+#     last_lr_update = step
+#     print(f"forget_lr updated to {c.forget_lr:.1e}")
+# forget_ppl_hist.append(stats["forget"])

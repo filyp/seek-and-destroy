@@ -1,6 +1,5 @@
 # %% init things, which need to be run once
 import time
-from copy import deepcopy
 
 import matplotlib.pyplot as plt
 import torch as pt
@@ -8,13 +7,11 @@ from peft import LoraConfig, TaskType
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-import wandb
 from utils import *
 
 pt.set_default_device("cuda")
 
 # load model
-# model_id = "google/gemma-2-2b"
 model_id = "Qwen/Qwen2.5-0.5B"
 model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
 
@@ -26,43 +23,20 @@ forget_eval_batch = get_batch(iter(forget_set["validation"]), 32)
 retain_eval_batch = get_batch(iter(retain_set["validation"]), 32)
 
 
-# %% accumulate forget gradients
-
-# accumulation_steps = 300
-# forget_iter = looping_iter(retain_set["unlearn"])
-# # calculate
-# model.zero_grad(set_to_none=True)
-# for _ in tqdm(range(accumulation_steps)):
-#     loss_forget = forward_with_clipped_logit(model, get_batch(forget_iter, 32))
-#     # loss_forget = -forward(model, get_batch(forget_iter, 32))
-#     loss_forget.backward()
-#     # do not optimizer.step() !
-# # gather
-# unwanted_circuit = {
-#     name: param.grad / accumulation_steps
-#     for name, param in model.named_parameters()
-# }
-# model.zero_grad(set_to_none=True)
-# # save
-# circuit_path = get_repo_root() / "circuits" / f"retain_forward_clipped_logit_300.pt"
-# pt.save(unwanted_circuit, circuit_path)
-
 # %% load cached circuits
-circuit_path = get_repo_root() / "circuits" / f"forward_with_clipped_logit_300.pt"
+circuit_path = repo_root() / "circuits" / f"forward_with_clipped_logit_300.pt"
 unwanted_circuit = pt.load(circuit_path)
-circuit_path = get_repo_root() / "circuits" / f"retain_forward_clipped_logit_300.pt"
+circuit_path = repo_root() / "circuits" / f"retain_forward_clipped_logit_300.pt"
 wanted_circuit = pt.load(circuit_path)
 
 # %%
 c = SimpleNamespace(
     forget_lr=1e-2,
     retain_lr=4e-4,
-    # L2_revert_factor=1,  # seems that for .9995 it's the same as one? maybe it's a numerical error?
     acceptable_retain_ppl=25,
     forget_ppl_increment=1.5,
     momentum=0.9,
     rank=16,
-    # sparsity=0.9999,
     lowest_retain_weights=0.01,
 )
 
@@ -75,20 +49,9 @@ for name, uw_param in unwanted_circuit.items():
     # todo maybe also think about the sign?
     uw_param[w_param.abs() > threshold] = 0
 del wanted_circuit
-# plt.plot(wanted_circuit[n].flatten().cpu().float(), unwanted_circuit[n].flatten().cpu().float(), ".")
+
 
 # %%
-
-# # %% sparsify the unwanted circuit
-# for key, value in unwanted_circuit.items():
-#     magnitudes = value.abs().flatten()
-#     k = int(len(magnitudes) * c.sparsity)
-#     threshold = magnitudes.kthvalue(k).values
-#     print(f"{key} {threshold=:.1e} {len(magnitudes)=}")
-#     value[value.abs() < threshold] = 0
-
-# %%
-
 set_seeds(42)
 retain_iter = looping_iter(retain_set["unlearn"])
 
@@ -104,12 +67,8 @@ lora_config = LoraConfig(
 model.add_adapter(lora_config, adapter_name="retain_lora")
 
 optimizer = pt.optim.Adam(model.parameters(), lr=c.retain_lr, betas=(c.momentum, 0.999))
-# optimizer = pt.optim.SGD(model.parameters(), lr=0.0008)
-# initial_state_dict = deepcopy(model.state_dict())
 
 step = 0
-last_lr_update = 0
-forget_ppl_hist = []
 
 # get initial perplexities
 model.eval()
@@ -118,15 +77,9 @@ with pt.no_grad():
     print(f"forget: {forward(model, forget_eval_batch).exp()}")
     print(f"retain: {forward(model, retain_eval_batch).exp()}")
 
-wandb.init(
-    project="adversarial_adaptation",
-    group="one_hit_unlearning",
-    name=f"R{c.rank} f={c.forget_lr:.0e} r={c.retain_lr:.0e}",
-    config=vars(c),
-)
 
 # %%
-for _ in range(500):
+for _ in range(100):
     step += 1
     model.train()
     loss_forget = pt.tensor(pt.nan)
@@ -141,21 +94,6 @@ for _ in range(500):
     loss_retain.backward()
     optimizer.step()
 
-    # # L2 revert
-    # for name, param in model.named_parameters():
-    #     if ".base_layer" in name:
-    #         initial_weights = initial_state_dict[name]
-    #         delta = param.data - initial_weights
-    #         param.data = initial_weights + delta * c.L2_revert_factor
-
-    # # L1 revert
-    # a = 0.00003
-    # for name, param in model.named_parameters():
-    #     initial_weights = initial_state_dict[name]
-    #     delta = param.data - initial_weights
-    #     new_delta = delta.clip(max=-a) + delta.clip(min=a)
-    #     param.data = initial_weights + new_delta
-
     if step % 10 != 0:
         continue
 
@@ -167,24 +105,11 @@ for _ in range(500):
     stats = dict(
         forget=loss_forget.exp(), retain=loss_retain.exp(), forget_lr=c.forget_lr
     )
-    wandb.log(stats, step=step)
     print(f"{step:4d}  " + "   ".join(f"{v:10.2f}" for v in stats.values()))
-
-    # # adapt forget_lr
-    # if (
-    #     stats["retain"] < c.acceptable_retain_ppl
-    #     and step - last_lr_update > 5 * 10
-    #     and forget_ppl_hist[-5] > stats["forget"]
-    # ):
-    #     c.forget_lr *= c.forget_ppl_increment
-    #     last_lr_update = step
-    #     print(f"forget_lr updated to {c.forget_lr:.1e}")
-    # forget_ppl_hist.append(stats["forget"])
 
     # save model
     if step % 500 == 0:
-        model_path = get_repo_root() / "models" / f"{wandb.run.name}_{step}steps.pt"
+        run_name=f"R{c.rank} f={c.forget_lr:.0e} r={c.retain_lr:.0e}",
+        model_path = repo_root() / "models" / f"{run_name}_{step}steps.pt"
         pt.save(model.state_dict(), model_path)
 
-# %%
-wandb.finish()

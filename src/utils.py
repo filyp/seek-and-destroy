@@ -21,15 +21,15 @@ def load_one_oscar_shard(lang, tokenizer):
     # split into 4 quarters
     half1, half2 = raw_dataset.train_test_split(test_size=0.5, seed=42).values()
     quarter3, quarter4 = half2.train_test_split(test_size=0.5, seed=42).values()
-    eigth7, eigth8 = quarter4.train_test_split(test_size=0.5, seed=42).values()
+    # eigth7, eigth8 = quarter4.train_test_split(test_size=0.5, seed=42).values()
 
     dataset = (
         # define splits; make it iterable so that it can be processed on demand
         IterableDatasetDict(
-            unlearn=IterableDataset.from_generator(lambda: (ex for ex in half1)),
-            relearn=IterableDataset.from_generator(lambda: (ex for ex in quarter3)),
-            validation=IterableDataset.from_generator(lambda: (ex for ex in eigth7)),
-            test=IterableDataset.from_generator(lambda: (ex for ex in eigth8)),
+            train=IterableDataset.from_generator(lambda: (ex for ex in half1)),
+            # relearn=IterableDataset.from_generator(lambda: (ex for ex in quarter3)),
+            validation=IterableDataset.from_generator(lambda: (ex for ex in quarter3)),
+            test=IterableDataset.from_generator(lambda: (ex for ex in quarter4)),
         )
         # process the raw data, following OSCAR-2301.py
         .map(lambda ex: {"text": json.loads(ex["text"])["content"]})
@@ -45,7 +45,7 @@ def load_one_oscar_shard(lang, tokenizer):
         # filter out the short ones
         .filter(lambda ex: ex["input_ids"].shape[-1] >= context_len)
     )
-    assert next(iter(dataset["test"]))["text"] != next(iter(dataset["unlearn"]))["text"]
+    assert next(iter(dataset["test"]))["text"] != next(iter(dataset["train"]))["text"]
     return dataset
 
 
@@ -63,7 +63,7 @@ class DefaultNamespace(SimpleNamespace):
         return pt.tensor(pt.nan)
 
 
-def get_repo_root():
+def repo_root():
     return Path(
         subprocess.check_output(["git", "rev-parse", "--show-toplevel"])
         .decode("utf-8")
@@ -93,22 +93,22 @@ def get_batch(iter, n):
     return pt.cat([next(iter)["input_ids"] for _ in range(n)])
 
 
-def forward(model, batch):
-    # forward pass
-    logits = model(batch).logits
-    # compute loss
-    loss_fn = pt.nn.CrossEntropyLoss()
-    return loss_fn(logits[:, :-1, :].flatten(end_dim=1), batch[:, 1:].flatten())
+def cross_entropy_loss(output, input_ids):
+    return pt.nn.CrossEntropyLoss()(
+        output.logits[:, :-1, :].flatten(end_dim=1),
+        input_ids[:, 1:].flatten(),
+    )
 
 
-def forward_with_clipped_logit(model, batch):
-    logits = model(batch).logits
-    logits = logits[:, :-1, :].flatten(end_dim=1)
-    ids = batch[:, 1:].flatten()
+def correct_logit_loss(output, input_ids):
+    logits = output.logits[:, :-1, :].flatten(end_dim=1)
+    ids = input_ids[:, 1:].flatten()
     true_logits = logits[pt.arange(len(ids)), ids]
-    return true_logits.clip(0).mean()
+    return -true_logits.mean()
 
 
-def only_grad_on(model, name_part):
-    for name, param in model.named_parameters():
-        param.requires_grad = name_part in name
+# def clipped_correct_logit_loss(output, input_ids):
+#     logits = output.logits[:, :-1, :].flatten(end_dim=1)
+#     ids = input_ids[:, 1:].flatten()
+#     true_logits = logits[pt.arange(len(ids)), ids]
+#     return -true_logits.clip(0).mean()

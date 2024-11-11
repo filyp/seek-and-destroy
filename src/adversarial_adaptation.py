@@ -13,6 +13,11 @@ pt.set_default_device("cuda")
 set_seeds(42)
 
 
+def only_grad_on(model, name_part):
+    for name, param in model.named_parameters():
+        param.requires_grad = name_part in name
+
+
 # load model
 # model_id = "google/gemma-2-2b"
 model_id = "Qwen/Qwen2.5-0.5B"
@@ -187,5 +192,5 @@ if wandb.run:
 # model.load_state_dict(state_dict)
 
 # %% save model
-model_path = get_repo_root() / "models" / f"{wandb.run.name}_{i}steps.pt"
+model_path = repo_root() / "models" / f"{wandb.run.name}_{i}steps.pt"
 pt.save(model.state_dict(), model_path)

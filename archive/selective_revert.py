@@ -29,7 +29,7 @@ retain_eval_batch = get_batch(iter(_retain_set["validation"]), 32)
 model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
 original_state_dict = deepcopy(model.state_dict())
 
-model_path = get_repo_root() / "models" / f"one_hit5_500steps.pt"
+model_path = repo_root() / "models" / f"one_hit5_500steps.pt"
 state_dict = pt.load(model_path)
 model.load_state_dict(state_dict)
 
