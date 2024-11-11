@@ -270,3 +270,14 @@ if step % 500 == 0:
     run_name = f"f={forget_lr:.0e} r={retain_lr:.0e}"
     model_path = repo_root() / "models" / f"{run_name}_{step}steps.pt"
     pt.save(model.state_dict(), model_path)
+
+
+# !!!
+# # code for calculating threshold per parameter
+# # ! load circuit
+# circuit = c(circuit_name)
+# # sparsify circuit
+# for param_name, scores in kinda_safe_eval(criterion).items():
+#     k = int(scores.numel() * quantile)
+#     threshold = scores.flatten().kthvalue(k).values
+#     circuit[param_name][scores < threshold] = 0

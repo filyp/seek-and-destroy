@@ -22,31 +22,23 @@ def unlearn_and_relearn(
     circuit_name="forget_linear_correct_logit",
     criterion='c("retain_absolu_correct_logit").abs() * (-1)',
     # note: too small forget_lr with bfloat16, can cause updates to become 0 due to numerical errors
-    forget_lr=1.0e-2,
+    forget_lr=1e-1,
     retain_lr=4e-4,
     relearn_lr=1.2e-3,
-    unlearning_steps=600000,
+    unlearning_steps=500,
     relearning_steps=30,
-    _stop_unlearning_at_ppl=28.4,
+    _stop_unlearning_at_ppl=28.5,
 ):
     set_seeds(42)
 
-    # code for calculating threshold per parameter
-    # # ! load circuit
-    # circuit = c(circuit_name)
-    # # sparsify circuit
-    # for param_name, scores in kinda_safe_eval(criterion).items():
-    #     k = int(scores.numel() * quantile)
-    #     threshold = scores.flatten().kthvalue(k).values
-    #     circuit[param_name][scores < threshold] = 0
-
+    # ! calculate one threshold for the whole model
     scores_dict = kinda_safe_eval(criterion)
     scores_flat = pt.cat([scores.flatten() for scores in scores_dict.values()])
     k = int(scores_flat.numel() * quantile)
     threshold = scores_flat.kthvalue(k).values
-    print(f"{threshold=:.5f}")
     del scores_flat
 
+    # ! load circuit and sparsify
     circuit = c(circuit_name)
     for param_name, scores in scores_dict.items():
         circuit[param_name][scores < threshold] = 0
@@ -96,8 +88,6 @@ def unlearn_and_relearn(
             if r_ppl > _stop_unlearning_at_ppl:
                 break
 
-    # for name, param in circuit.items():
-    #     print((param != 0).sum().item(), name)
     del circuit
 
     # ! prepare for relearning
@@ -131,28 +121,28 @@ def unlearn_and_relearn(
             print(f"{step:4d}  " + "   ".join(f"{v:10.2f}" for v in stats.values()))
 
 # %%
-unlearn_and_relearn(retain_lr=0, quantile=0.95)
+unlearn_and_relearn(retain_lr=0, quantile=0.9, forget_lr=5e-1)
+
+
+# %%
+unlearn_and_relearn(quantile=0.9, forget_lr=1e-1)
 
 # %% takeaways: (for quantile=0.95, may want to verify for higher)
+
+# calculating threshold:
+# per model seems > than per parameter ?
+
+# training for too long makes it come back!
+
+# to be confirmed:
 # circuit_name:
 # forget_linear_correct_logit > forget_linear_cross_entropy
 
+# to be confirmed:
 # criterion:
 # retain_*_correct_logit >> retain_*_cross_entropy
 # retain_absolu_cross_entropy > retain_square_cross_entropy > retain_linear_cross_entropy
 # 1/R >> F/R  ? (but this needs more thorough verification)
 
-# !
-# wait! the thresh is just broken! it's zero! so maybe the previous results are bad too!
-# ! no, it's not numerical, it's the fuckin embed_tokens!!!
-# calculating threshold:
-# per model is kinda the same as per parameter, but per model allows more extreme quantiles
-# %%
-
-criterion = "c('retain_absolu_correct_logit').abs() * (-1)"
-scores_dict = kinda_safe_eval(criterion)
-# %%
-for n, scores in scores_dict.items():
-    print(n, (scores == 0).sum().item())
 
 # %%

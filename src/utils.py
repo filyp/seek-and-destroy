@@ -114,7 +114,7 @@ def correct_logit_loss(output, input_ids):
 # load circuit
 def c(circuit_name):
     circ = pt.load(repo_root() / "circuits" / f"{circuit_name}.pt", weights_only=True)
-    del circ["model.embed_tokens.weight"]  # this is filled with zeros
+    del circ["model.embed_tokens.weight"]  # this is filled with zeros, at least for polish
     return TensorDict(circ)
 
 
