@@ -263,3 +263,10 @@ og_model = AutoModelForCausalLM.from_pretrained(
 #     last_lr_update = step
 #     print(f"forget_lr updated to {c.forget_lr:.1e}")
 # forget_ppl_hist.append(stats["forget"])
+
+
+# save model
+if step % 500 == 0:
+    run_name = f"f={forget_lr:.0e} r={retain_lr:.0e}"
+    model_path = repo_root() / "models" / f"{run_name}_{step}steps.pt"
+    pt.save(model.state_dict(), model_path)

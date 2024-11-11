@@ -6,6 +6,10 @@ from types import SimpleNamespace
 
 import torch as pt
 from datasets import IterableDataset, IterableDatasetDict, load_dataset
+from RestrictedPython import compile_restricted, safe_globals
+from RestrictedPython.Eval import default_guarded_getiter
+from RestrictedPython.Guards import guarded_iter_unpack_sequence, safer_getattr
+from tensordict import TensorDict
 
 
 def load_one_oscar_shard(lang, tokenizer):
@@ -57,10 +61,10 @@ def set_seeds(seed):
     random.seed(seed)
 
 
-class DefaultNamespace(SimpleNamespace):
-    def __getattr__(self, name):
-        # This is called when an attribute doesn't exist
-        return pt.tensor(pt.nan)
+# class DefaultNamespace(SimpleNamespace):
+#     def __getattr__(self, name):
+#         # This is called when an attribute doesn't exist
+#         return pt.tensor(pt.nan)
 
 
 def repo_root():
@@ -107,8 +111,32 @@ def correct_logit_loss(output, input_ids):
     return -true_logits.mean()
 
 
-# def clipped_correct_logit_loss(output, input_ids):
-#     logits = output.logits[:, :-1, :].flatten(end_dim=1)
-#     ids = input_ids[:, 1:].flatten()
-#     true_logits = logits[pt.arange(len(ids)), ids]
-#     return -true_logits.clip(0).mean()
+# load circuit
+def c(circuit_name):
+    return TensorDict(
+        pt.load(repo_root() / "circuits" / f"{circuit_name}.pt", weights_only=True)
+    )
+
+
+def kinda_safe_eval(expr):
+    # Create a custom globals dictionary with necessary components
+    restricted_globals = dict(safe_globals)
+    restricted_globals.update({
+        "_getiter_": default_guarded_getiter,
+        "_iter_unpack_sequence_": guarded_iter_unpack_sequence,
+        "_getattr_": safer_getattr,
+        # Add any other necessary functions/variables that your expression needs
+        "c": c,
+    })
+
+    byte_code = compile_restricted(expr, filename="<inline code>", mode="eval")
+    return eval(byte_code, restricted_globals)
+
+
+def get_perplexities(model, batches):
+    model.eval()
+    with pt.no_grad():
+        return [cross_entropy_loss(model(batch), batch).exp() for batch in batches]
+    # print("initial perplexities:")
+    # f_ppl, r_ppl = get_perplexities(model, [forget_eval, retain_eval])
+    # print(f"forget: {f_ppl}  retain: {r_ppl}")
