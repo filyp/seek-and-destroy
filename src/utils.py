@@ -99,13 +99,13 @@ def get_batch(iter, n):
 
 def cross_entropy_loss(output, input_ids):
     return pt.nn.CrossEntropyLoss()(
-        output.logits[:, :-1, :].flatten(end_dim=1),
+        output.logits[:, :-1, :].flatten(end_dim=1).to(pt.float32),
         input_ids[:, 1:].flatten(),
     )
 
 
 def correct_logit_loss(output, input_ids):
-    logits = output.logits[:, :-1, :].flatten(end_dim=1)
+    logits = output.logits[:, :-1, :].flatten(end_dim=1).to(pt.float32)
     ids = input_ids[:, 1:].flatten()
     true_logits = logits[pt.arange(len(ids)), ids]
     return -true_logits.mean()
