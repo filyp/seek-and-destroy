@@ -113,9 +113,10 @@ def correct_logit_loss(output, input_ids):
 
 # load circuit
 def c(circuit_name):
-    return TensorDict(
-        pt.load(repo_root() / "circuits" / f"{circuit_name}.pt", weights_only=True)
-    )
+    circ = pt.load(repo_root() / "circuits" / f"{circuit_name}.pt", weights_only=True)
+    del circ["model.embed_tokens.weight"]  # this is filled with zeros
+    return TensorDict(circ)
+
 
 
 def kinda_safe_eval(expr):

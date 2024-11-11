@@ -19,6 +19,8 @@ def get_circuit(data_iter, grad_acc_fn, loss_fn, num_steps=1000):
     # load model
     model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
 
+    # note: using hooks is more complicated than processing grads after backward()
+    #       but it prevents a memory spike - no need to store many param.grad
     def custom_grad_acc(param):
         # * note that we apply grad_acc_fn AFTER we've already summed over batch and token pos
         # * applying it before, would be really complicated
