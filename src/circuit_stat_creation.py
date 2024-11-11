@@ -1,5 +1,4 @@
 # %%
-import matplotlib.pyplot as plt
 import torch as pt
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -50,6 +49,7 @@ for data_name, data_iter in [
         ("linear", lambda x: x),
         ("square", lambda x: x**2),
         ("absolu", lambda x: x.abs()),
+        # * actually these could be computed in parallel, with that would 3x mem usage
     ]:
         for loss_name, loss_fn in [
             ("cross_entropy", cross_entropy_loss),
