@@ -14,13 +14,14 @@ forget_set = load_one_oscar_shard("pl", tokenizer)
 retain_set = load_one_oscar_shard("en", tokenizer)
 forget_eval = get_batch(iter(forget_set["validation"]), 32)
 retain_eval = get_batch(iter(retain_set["validation"]), 32)
+forget = "pl"
 
 
 # %%
 def unlearn_and_relearn(
     quantile=0.9,  # between 0 and 1
-    circuit_name="forget_linear_correct_logit",
-    criterion='c("retain_absolu_correct_logit").abs() * (-1)',
+    circuit_name="forget_linear_logit",
+    criterion='c("en_abs_logit").abs() * (-1)',
     module_type="up_proj",
     # note: too small forget_lr with bfloat16, can cause updates to become 0 probably due to numerical errors
     forget_lr=1e-1,
@@ -33,6 +34,9 @@ def unlearn_and_relearn(
     # prepare data iterators
     forget_iter = looping_iter(forget_set["train"])
     retain_iter = looping_iter(retain_set["train"])
+    
+    circuit_name = circuit_name.replace("forget", forget)
+    criterion = criterion.replace("forget", forget)
 
     # ! calculate one threshold for the whole model
     scores_dict = kinda_safe_eval(criterion)
@@ -120,36 +124,36 @@ def unlearn_and_relearn(
 
 # fmt: off
 # %%
-# unlearn_and_relearn(quantile=0.93, forget_lr=6e-1, retain_lr=1e-2, criterion='(c("forget_absolu_correct_logit").abs() + 0.1) / c("retain_absolu_correct_logit").abs()')
+# unlearn_and_relearn(quantile=0.93, forget_lr=6e-1, retain_lr=1e-2, criterion='(c("forget_abs_logit").abs() + 0.1) / c("en_abs_logit").abs()')
 # 27.21 / 575 (at 30) / 32.66 (at 200)
-# unlearn_and_relearn(quantile=0.8, forget_lr=4e-2, retain_lr=1e-2, unlearn_steps=400, relearn_steps=200, criterion='(c("forget_absolu_correct_logit").abs() + 0.1) / c("retain_absolu_correct_logit").abs()')
+# unlearn_and_relearn(quantile=0.8, forget_lr=4e-2, retain_lr=1e-2, unlearn_steps=400, relearn_steps=200, criterion='(c("forget_abs_logit").abs() + 0.1) / c("en_abs_logit").abs()')
 # 27.89 / 660 (at 30 r1)
-unlearn_and_relearn(quantile=0.9, forget_lr=3e-1, retain_lr=0, unlearn_steps=50, relearn_steps=200, criterion='(c("forget_absolu_correct_logit").abs() + 0.1) / c("retain_absolu_correct_logit").abs()')
+unlearn_and_relearn(quantile=0.9, forget_lr=3e-1, retain_lr=0, unlearn_steps=50, relearn_steps=20, criterion='(c("forget_abs_logit").abs() + 0.1) / c("en_abs_logit").abs()')
 
 # %% experiments
 # (next 4 blocks are done with module_type="")
 # % compare circuit_name
-# * circuit_name: forget_linear_correct_logit > forget_linear_cross_entropy
-# unlearn_and_relearn(circuit_name="forget_linear_correct_logit", quantile=0.9)
-# unlearn_and_relearn(circuit_name="forget_linear_cross_entropy", quantile=0.9)
+# * circuit_name: forget_linear_logit > forget_linear_crossent
+# unlearn_and_relearn(circuit_name="forget_linear_logit", quantile=0.9)
+# unlearn_and_relearn(circuit_name="forget_linear_crossent", quantile=0.9)
 
 # % compare criterion
 # * absolute > square > linear (for correct_logit)
-# unlearn_and_relearn(criterion='c("retain_absolu_correct_logit").abs() * (-1)')
-# unlearn_and_relearn(criterion='c("retain_square_correct_logit").abs() * (-1)')
-# unlearn_and_relearn(criterion='c("retain_linear_correct_logit").abs() * (-1)')
+# unlearn_and_relearn(criterion='c("en_abs_logit").abs() * (-1)')
+# unlearn_and_relearn(criterion='c("en_square_logit").abs() * (-1)')
+# unlearn_and_relearn(criterion='c("en_linear_logit").abs() * (-1)')
 
 # % compare criterion
 # * correct_logit > cross_entropy (but it's more nuanced)
-# unlearn_and_relearn(criterion='c("retain_absolu_correct_logit").abs() * (-1)')
-# unlearn_and_relearn(criterion='c("retain_absolu_cross_entropy").abs() * (-1)', quantile=0.92)
+# unlearn_and_relearn(criterion='c("en_abs_logit").abs() * (-1)')
+# unlearn_and_relearn(criterion='c("en_abs_crossent").abs() * (-1)', quantile=0.92)
 
 # % comparre criterion
 # * (F+a)/R >> 1/R >> F/R
 # a needs to be tuned well - it has a huuge impact
-# unlearn_and_relearn(criterion='c("retain_absolu_correct_logit").abs() ** (-1)')
-# unlearn_and_relearn(criterion='c("forget_absolu_correct_logit").abs() / c("retain_absolu_correct_logit").abs()')  # broken
-# unlearn_and_relearn(criterion='(c("forget_absolu_correct_logit").abs() + 0.1) / c("retain_absolu_correct_logit").abs()')
+# unlearn_and_relearn(criterion='c("en_abs_logit").abs() ** (-1)')
+# unlearn_and_relearn(criterion='c("forget_abs_logit").abs() / c("en_abs_logit").abs()')  # broken
+# unlearn_and_relearn(criterion='(c("forget_abs_logit").abs() + 0.1) / c("en_abs_logit").abs()')
 
 # % compare module_type
 # * up_proj is the best, even better than intervening on all!
@@ -157,8 +161,8 @@ unlearn_and_relearn(quantile=0.9, forget_lr=3e-1, retain_lr=0, unlearn_steps=50,
 #     layernorms and attention do nothing
 #     apart from v_proj.weight and o_proj.weight, but they are meh
 #     just intervening on up_proj looks best
-# # common = dict(forget_lr=3e-1, criterion='(c("forget_absolu_correct_logit").abs() + 0.1) / c("retain_absolu_correct_logit").abs()')
-# common = dict(forget_lr=3e-1, criterion='c("retain_absolu_correct_logit").abs() ** (-1)')
+# # common = dict(forget_lr=3e-1, criterion='(c("forget_abs_logit").abs() + 0.1) / c("en_abs_logit").abs()')
+# common = dict(forget_lr=3e-1, criterion='c("en_abs_logit").abs() ** (-1)')
 # unlearn_and_relearn(**common, module_type="")
 # unlearn_and_relearn(**common, module_type="down_proj")
 # unlearn_and_relearn(**common, module_type="up_proj")

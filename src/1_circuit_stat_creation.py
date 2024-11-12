@@ -8,11 +8,6 @@ from utils import *
 model_id = "Qwen/Qwen2.5-0.5B"
 pt.set_default_device("cuda")
 
-# load datasets
-tokenizer = AutoTokenizer.from_pretrained(model_id)
-forget_set = load_one_oscar_shard("pl", tokenizer)
-retain_set = load_one_oscar_shard("en", tokenizer)
-
 
 # %%
 def get_circuit(data_iter, grad_acc_fn, loss_fn, num_steps=1000):
@@ -43,19 +38,24 @@ def get_circuit(data_iter, grad_acc_fn, loss_fn, num_steps=1000):
 
 
 # %%
+# load datasets
+tokenizer = AutoTokenizer.from_pretrained(model_id)
+pl_set = load_one_oscar_shard("pl", tokenizer)
+en_set = load_one_oscar_shard("en", tokenizer)
+
 for data_name, data_iter in [
-    ("retain", looping_iter(retain_set["train"])),
-    ("forget", looping_iter(forget_set["train"])),
+    ("en", looping_iter(en_set["train"])),
+    ("pl", looping_iter(pl_set["train"])),
 ]:
     for grad_acc_name, grad_acc_fn in [
         ("linear", lambda x: x),
         ("square", lambda x: x**2),
-        ("absolu", lambda x: x.abs()),
+        ("abs", lambda x: x.abs()),
         # * actually these could be computed in parallel, with that would 3x mem usage
     ]:
         for loss_name, loss_fn in [
-            ("cross_entropy", cross_entropy_loss),
-            ("correct_logit", correct_logit_loss),
+            ("crossent", cross_entropy_loss),
+            ("logit", correct_logit_loss),
         ]:
             circuit_name = f"{data_name}_{grad_acc_name}_{loss_name}.pt"
             print("calculating:", circuit_name)
