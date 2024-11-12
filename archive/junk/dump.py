@@ -281,3 +281,14 @@ if step % 500 == 0:
 #     k = int(scores.numel() * quantile)
 #     threshold = scores.flatten().kthvalue(k).values
 #     circuit[param_name][scores < threshold] = 0
+
+
+# # stop if forget_ppl is going down
+# if f_ppl < last_forget_ppl:
+#     break
+# last_forget_ppl = f_ppl
+
+# stop if retain_ppl is too high
+if r_ppl > _stop_unlearning_at_ppl:
+    print(f"Stopping unlearning due to high retain perplexity {r_ppl:.2f}")
+    break
