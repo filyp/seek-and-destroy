@@ -33,7 +33,7 @@ def get_circuit(data_iter, grad_acc_fn, loss_fn, num_steps=1000):
 
     # gather
     return {
-        name: -param.custom_grad / num_steps for name, param in model.named_parameters()
+        name: param.custom_grad / num_steps for name, param in model.named_parameters()
     }
 
 
@@ -49,13 +49,13 @@ for data_name, data_iter in [
 ]:
     for grad_acc_name, grad_acc_fn in [
         ("linear", lambda x: x),
-        ("square", lambda x: x**2),
-        ("abs", lambda x: x.abs()),
+        # ("square", lambda x: x**2),
+        # ("abs", lambda x: x.abs()),
         # * actually these could be computed in parallel, with that would 3x mem usage
     ]:
         for loss_name, loss_fn in [
             ("crossent", cross_entropy_loss),
-            ("logit", correct_logit_loss),
+            # ("logit", correct_logit_loss),
         ]:
             circuit_name = f"{data_name}_{grad_acc_name}_{loss_name}.pt"
             print("calculating:", circuit_name)

@@ -292,3 +292,9 @@ if step % 500 == 0:
 if r_ppl > _stop_unlearning_at_ppl:
     print(f"Stopping unlearning due to high retain perplexity {r_ppl:.2f}")
     break
+
+
+# training past the point of breaking LoRA doesn't improve final performance
+# so stop if we broke through the LoRA
+if stats["adv_forget"] > 500 and (i + 1) % 10 == 0:
+    break

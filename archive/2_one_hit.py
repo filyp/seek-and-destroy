@@ -20,6 +20,7 @@ forget = "pl"
 # %%
 def unlearn_and_relearn(
     quantile=0.9,  # between 0 and 1
+    # ! note: this may be inverted in the old implementation
     circuit_name="forget_linear_logit",
     criterion='c("en_abs_logit").abs() * (-1)',
     module_type="up_proj",
@@ -84,10 +85,7 @@ def unlearn_and_relearn(
             optimizer.step()
 
         if step % 10 == 0:
-            # evaluate
-            f_ppl, r_ppl = get_perplexities(model, [forget_eval, retain_eval])
-            stats = dict(forget=f_ppl, retain=r_ppl)
-            print(f"{step:4d}  " + "   ".join(f"{v:10.2f}" for v in stats.values()))
+            print_perplexities(model, [forget_eval, retain_eval], step)
 
     del circuit
 
@@ -116,10 +114,7 @@ def unlearn_and_relearn(
         optimizer.step()
 
         if step % 10 == 0:
-            # evaluate
-            f_ppl, r_ppl = get_perplexities(model, [forget_eval, retain_eval])
-            stats = dict(forget=f_ppl, retain=r_ppl)
-            print(f"{step:4d}  " + "   ".join(f"{v:10.2f}" for v in stats.values()))
+            print_perplexities(model, [forget_eval, retain_eval], step)
 
 
 # fmt: off
@@ -128,14 +123,14 @@ def unlearn_and_relearn(
 # 27.21 / 575 (at 30) / 32.66 (at 200)
 # unlearn_and_relearn(quantile=0.8, forget_lr=4e-2, retain_lr=1e-2, unlearn_steps=400, relearn_steps=200, criterion='(c("forget_abs_logit").abs() + 0.1) / c("en_abs_logit").abs()')
 # 27.89 / 660 (at 30 r1)
-unlearn_and_relearn(quantile=0.9, forget_lr=3e-1, retain_lr=0, unlearn_steps=50, relearn_steps=20, criterion='(c("forget_abs_logit").abs() + 0.1) / c("en_abs_logit").abs()')
+unlearn_and_relearn(quantile=0.9, forget_lr=3e-1, retain_lr=0, unlearn_steps=50, relearn_steps=60, criterion='(c("forget_abs_logit").abs() + 0.1) / c("en_abs_logit").abs()')
 
 # %% experiments
 # (next 4 blocks are done with module_type="")
 # % compare circuit_name
 # * circuit_name: forget_linear_logit > forget_linear_crossent
 # unlearn_and_relearn(circuit_name="forget_linear_logit", quantile=0.9)
-# unlearn_and_relearn(circuit_name="forget_linear_crossent", quantile=0.9)
+# unlearn_and_relearn(circuit_name="-forget_linear_crossent", quantile=0.9)
 
 # % compare criterion
 # * absolute > square > linear (for correct_logit)

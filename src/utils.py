@@ -108,7 +108,7 @@ def correct_logit_loss(output, input_ids):
     logits = output.logits[:, :-1, :].flatten(end_dim=1).to(pt.float32)
     ids = input_ids[:, 1:].flatten()
     true_logits = logits[pt.arange(len(ids)), ids]
-    return -true_logits.mean()
+    return true_logits.mean()
 
 
 # load circuit
@@ -134,10 +134,15 @@ def kinda_safe_eval(expr):
     return eval(byte_code, restricted_globals)
 
 
+
+
 def get_perplexities(model, batches):
     model.eval()
     with pt.no_grad():
         return [cross_entropy_loss(model(batch), batch).exp() for batch in batches]
-    # print("initial perplexities:")
-    # f_ppl, r_ppl = get_perplexities(model, [forget_eval, retain_eval])
-    # print(f"forget: {f_ppl}  retain: {r_ppl}")
+
+
+def print_perplexities(model, batches, step):
+    f_ppl, r_ppl = get_perplexities(model, batches)
+    stats = dict(forget=f_ppl, retain=r_ppl)
+    print(f"{step:4d}  " + "   ".join(f"{v:10.2f}" for v in stats.values()))
