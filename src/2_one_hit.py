@@ -18,16 +18,16 @@ retain_eval = get_batch(iter(retain_set["validation"]), 32)
 
 # %%
 def unlearn_and_relearn(
-    quantile=0.99,  # between 0 and 1
+    quantile=0.9,  # between 0 and 1
     circuit_name="forget_linear_correct_logit",
     criterion='c("retain_absolu_correct_logit").abs() * (-1)',
-    # note: too small forget_lr with bfloat16, can cause updates to become 0 due to numerical errors
+    # note: too small forget_lr with bfloat16, can cause updates to become 0 probably due to numerical errors
     forget_lr=1e-1,
-    retain_lr=4e-4,
-    relearn_lr=1.2e-3,
-    unlearning_steps=500,
+    retain_lr=0,  # 4e-4,
+    relearn_lr=1e-3,
+    unlearning_steps=50,
     relearning_steps=30,
-    _stop_unlearning_at_ppl=28.5,
+    _stop_unlearning_at_ppl=28,
 ):
     set_seeds(42)
 
@@ -36,6 +36,7 @@ def unlearn_and_relearn(
     scores_flat = pt.cat([scores.flatten() for scores in scores_dict.values()])
     k = int(scores_flat.numel() * quantile)
     threshold = scores_flat.kthvalue(k).values
+    print(f"{threshold=:.2e}")
     del scores_flat
 
     # ! load circuit and sparsify
@@ -43,7 +44,6 @@ def unlearn_and_relearn(
     for param_name, scores in scores_dict.items():
         circuit[param_name][scores < threshold] = 0
     del scores_dict
-
 
     # load model
     model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
@@ -56,11 +56,14 @@ def unlearn_and_relearn(
     forget_iter = looping_iter(forget_set["train"])
     retain_iter = looping_iter(retain_set["train"])
 
-    optimizer = pt.optim.Adam(model.parameters(), lr=retain_lr, betas=(0.9, 0.999))
+    # Adam seems to need to warmup period - although theoretically at start it should be stronger
+    # optimizer = pt.optim.Adam(model.parameters(), lr=retain_lr, betas=(0.9, 0.999))
+    optimizer = pt.optim.SGD(model.parameters(), lr=retain_lr)
 
     # ! unlearning loop
     print("step      forget       retain")
     print("unlearning...")
+    last_forget_ppl = 0
     for step in range(1, 1 + unlearning_steps):
         # break the circuit a bit
         for name, param in model.named_parameters():
@@ -85,7 +88,14 @@ def unlearn_and_relearn(
             stats = dict(forget=f_ppl, retain=r_ppl)
             print(f"{step:4d}  " + "   ".join(f"{v:10.2f}" for v in stats.values()))
 
+            # # stop if forget_ppl is going down
+            # if f_ppl < last_forget_ppl:
+            #     break
+            # last_forget_ppl = f_ppl
+
+            # stop if retain_ppl is too high
             if r_ppl > _stop_unlearning_at_ppl:
+                print(f"Stopping unlearning due to high retain perplexity {r_ppl:.2f}")
                 break
 
     del circuit
@@ -120,29 +130,56 @@ def unlearn_and_relearn(
             stats = dict(forget=f_ppl, retain=r_ppl)
             print(f"{step:4d}  " + "   ".join(f"{v:10.2f}" for v in stats.values()))
 
-# %%
-unlearn_and_relearn(retain_lr=0, quantile=0.9, forget_lr=5e-1)
+# %% experiments
+# % compare circuit_name
+# * circuit_name: forget_linear_correct_logit > forget_linear_cross_entropy
+# unlearn_and_relearn(circuit_name="forget_linear_correct_logit", quantile=0.9)
+# unlearn_and_relearn(circuit_name="forget_linear_cross_entropy", quantile=0.9)
 
+# % compare criterion
+# * absolute > square > linear (for correct_logit)
+# unlearn_and_relearn(criterion='c("retain_absolu_correct_logit").abs() * (-1)')
+# unlearn_and_relearn(criterion='c("retain_square_correct_logit").abs() * (-1)')
+# unlearn_and_relearn(criterion='c("retain_linear_correct_logit").abs() * (-1)')
 
-# %%
-unlearn_and_relearn(quantile=0.9, forget_lr=1e-1)
+# % compare criterion
+# * correct_logit > cross_entropy (but it's more nuanced)
+# unlearn_and_relearn(criterion='c("retain_absolu_correct_logit").abs() * (-1)')
+# unlearn_and_relearn(criterion='c("retain_absolu_cross_entropy").abs() * (-1)', quantile=0.92)
 
-# %% takeaways: (for quantile=0.95, may want to verify for higher)
+# % comparre criterion
+# * (F+a)/R >> 1/R >> F/R
+# a needs to be tuned well - it has a huuge impact
+unlearn_and_relearn(criterion='c("retain_absolu_correct_logit").abs() ** (-1)')
+unlearn_and_relearn(criterion='c("forget_absolu_correct_logit").abs() / c("retain_absolu_correct_logit").abs()') # broken
+unlearn_and_relearn(criterion='(c("forget_absolu_correct_logit").abs() + 0.1) / c("retain_absolu_correct_logit").abs()') 
 
-# calculating threshold:
-# per model seems > than per parameter ?
+# todo look at module types separately
+
+# %% best so far
+# todo also could try higher quantile rather than retraining
+unlearn_and_relearn(unlearning_steps=600, retain_lr=1e-2, forget_lr=3e-2, criterion='(c("forget_absolu_correct_logit").abs() + 0.1) / c("retain_absolu_correct_logit").abs()')
+
+# %% other notes
+
+# * calculating threshold: per model >> per parameter
+# also, attacking wider population (lower quantile) doesn't help that much
+#     high q vs low q + retaining is very similar
+
+# calibrating the right quantile seems important
 
 # training for too long makes it come back!
+#     also even with short training there's a spike and then a comedown
+#     maybe because of Adam? - yeah I've never seen this with SGD so far
 
-# to be confirmed:
-# circuit_name:
-# forget_linear_correct_logit > forget_linear_cross_entropy
 
-# to be confirmed:
-# criterion:
-# retain_*_correct_logit >> retain_*_cross_entropy
-# retain_absolu_cross_entropy > retain_square_cross_entropy > retain_linear_cross_entropy
-# 1/R >> F/R  ? (but this needs more thorough verification)
+
+# ? there must be some precition error interacting
+#     forget_lr=1e-1 is different than 2e-1 with twice less steps!
+#     after understanding, try to recreate the benefit but intentionally
+#         - but is there any benefit?
+#     or for now just use high forget_lr to omit this
+
 
 
 # %%
