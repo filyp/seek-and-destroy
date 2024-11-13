@@ -29,14 +29,13 @@ quantile = 0.95  # between 0 and 1
 criterion = 'c("en_abs_logit").abs() * (-1)'
 module_type = "up_proj"
 # note: too small forget_lr with bfloat16, can updates 0 due to numerical errors
-unlearn_lr = 3e-3
-adversa_lr = 1e-3
-retain_mult = 1
-unlearn_steps = 50
-#
-relearn_lr = 1e-3
-relearn_steps = 30
-
+unlearn_lr = 3e-4
+adversa_lr = 30e-4
+helper_lr = 5e-4
+# unlearn_lr = 1e-2
+# adversa_lr = 3e-2
+# retain_mult = 10
+unlearn_steps = 50000000000000
 
 set_seeds(42)
 # prepare data iterators
@@ -54,27 +53,32 @@ del scores
 
 # load model
 model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
+# model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.float32)
 
-# add lora
-lora_config = LoraConfig(r=1, target_modules=[module_type])
-peft_model = get_peft_model(model, lora_config, adapter_name="adversarial_lora")
+# add loras
+adv_lora_config = LoraConfig(r=1, target_modules=[module_type])
+peft_model = get_peft_model(model, adv_lora_config, adapter_name="adv_lora", mixed=True)
 model = peft_model.model
+helper_lora_config = LoraConfig(r=4, target_modules=[module_type])
+peft_model.add_adapter("helper_lora", helper_lora_config)
 
 # initialize optimizers
 base_optimizer = pt.optim.Adam(
     [p for n, p in model.named_parameters() if ".base_layer." in n],
     lr=unlearn_lr,
-    betas=(0.9, 0.999),
 )
-lora_optimizer = pt.optim.Adam(
-    [p for n, p in model.named_parameters() if ".adversarial_lora." in n],
+adv_optimizer = pt.optim.Adam(
+    [p for n, p in model.named_parameters() if ".adv_lora." in n],
     lr=adversa_lr,
-    betas=(0.9, 0.999),
 )
-
+helper_optimizer = pt.optim.Adam(
+    [p for n, p in model.named_parameters() if ".helper_lora." in n],
+    lr=helper_lr,
+)
 
 # %%
 # ! unlearn loop
+print("step         f         r    base_f    base_r")
 for step in range(1, 1 + unlearn_steps):
     model.train()
     f_input_ids = get_batch(forget_iter, 16)
@@ -82,42 +86,57 @@ for step in range(1, 1 + unlearn_steps):
 
     # ! unlearn on the base model
     base_optimizer.zero_grad(set_to_none=True)
+    peft_model.set_adapter(["helper_lora", "adv_lora"])
     only_grad_on(model, ".base_layer.")
     correct_logit_loss(model(f_input_ids), f_input_ids).backward()
-    with peft_model.disable_adapter():
-        # assert all(p.requires_grad == (".base_layer." in n) for n, p in model.named_parameters())
-        (cross_entropy_loss(model(r_input_ids), r_input_ids) * retain_mult).backward()
+    # with peft_model.disable_adapter():
+    #     only_grad_on(model, ".base_layer.")  # unneeded, but let's be safe
+    #     (cross_entropy_loss(model(r_input_ids), r_input_ids) * retain_mult).backward()
     # apply mask
     for name, param in model.named_parameters():
         name = name.replace(".base_layer", "")
         if name in mask:
             param.grad = param.grad * mask[name]
     base_optimizer.step()
+    
+    helper_optimizer.zero_grad(set_to_none=True)
+    peft_model.set_adapter(["helper_lora"])
+    only_grad_on(model, ".helper_lora.")
+    cross_entropy_loss(model(r_input_ids), r_input_ids).backward()
+    helper_optimizer.step()
 
     # ! relearn with adversarial lora
-    lora_optimizer.zero_grad(set_to_none=True)
-    only_grad_on(model, ".adversarial_lora.")
-    cross_entropy_loss(model(r_input_ids), r_input_ids).backward()
-    lora_optimizer.step()
+    adv_optimizer.zero_grad(set_to_none=True)
+    peft_model.set_adapter(["helper_lora", "adv_lora"])
+    only_grad_on(model, ".adv_lora.")
+    cross_entropy_loss(model(f_input_ids), f_input_ids).backward()
+    adv_optimizer.step()
 
+    # ! eval
     if step % 10 == 0:
-        print_perplexities(model, [forget_eval, retain_eval], step)
-
-    if step % 50 == 0:
-        with peft_model.disable_adapter():
-            print("ppl without adversarial lora:")
-            print_perplexities(model, [forget_eval, retain_eval], -1)
-
-
+        peft_model.set_adapter(["helper_lora", "adv_lora"])
+        f_ppl, r_ppl = get_perplexities(model, [forget_eval, retain_eval])
+        peft_model.set_adapter(["helper_lora"])
+        f_ppl_base, r_ppl_base = get_perplexities(model, [forget_eval, retain_eval])
+        print(f"{step:4} {f_ppl:9.2f} {r_ppl:9.2f} {f_ppl_base:9.2f} {r_ppl_base:9.2f}")
+        
+        if f_ppl > 10000:
+            break
+    
 # %%
 del mask
-peft_model.delete_adapter("adversarial_lora")
+peft_model.delete_adapter("adv_lora")
 
-# for n, p in model.named_parameters():
-#     print(n)
-# print_perplexities(model, [forget_eval, retain_eval], -1)
+# ! merge and unload
+peft_model.set_adapter(["helper_lora"])
+model = peft_model.merge_and_unload()
+del peft_model
 
 # %%
+# ! parameters
+relearn_lr = 1e-3
+relearn_steps = 10000
+
 # add relearning lora
 lora_config = LoraConfig(r=1, target_modules="all-linear")
 peft_model = get_peft_model(model, lora_config, adapter_name="relearning_lora")
