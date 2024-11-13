@@ -24,16 +24,18 @@ def only_grad_on(model, name_part):
 
 # %%
 # ! parameters
-quantile=0.95  # between 0 and 1
-criterion='(c("forget_abs_logit").abs() + 0.1) / c("en_abs_logit").abs()'
-module_type="up_proj"
-unlearn_lr=1e-3
-adv_lr=1e-3
-unlearn_steps=30
-# 
-# retain_lr=0
-# relearn_lr=1e-3
-relearn_steps=30
+quantile = 0.95  # between 0 and 1
+# criterion='(c("forget_abs_logit").abs() + 0.1) / c("en_abs_logit").abs()'
+criterion = 'c("en_abs_logit").abs() * (-1)'
+module_type = "up_proj"
+# note: too small forget_lr with bfloat16, can updates 0 due to numerical errors
+unlearn_lr = 3e-3
+adversa_lr = 1e-3
+retain_mult = 1
+unlearn_steps = 50
+#
+relearn_lr = 1e-3
+relearn_steps = 30
 
 
 set_seeds(42)
@@ -66,21 +68,25 @@ base_optimizer = pt.optim.Adam(
 )
 lora_optimizer = pt.optim.Adam(
     [p for n, p in model.named_parameters() if ".adversarial_lora." in n],
-    lr=adv_lr,
+    lr=adversa_lr,
     betas=(0.9, 0.999),
 )
+
 
 # %%
 # ! unlearn loop
 for step in range(1, 1 + unlearn_steps):
     model.train()
-    input_ids = get_batch(forget_iter, 32)
+    f_input_ids = get_batch(forget_iter, 16)
+    r_input_ids = get_batch(retain_iter, 16)
 
     # ! unlearn on the base model
     base_optimizer.zero_grad(set_to_none=True)
     only_grad_on(model, ".base_layer.")
-    loss = correct_logit_loss(model(input_ids), input_ids)
-    loss.backward()
+    correct_logit_loss(model(f_input_ids), f_input_ids).backward()
+    with peft_model.disable_adapter():
+        # assert all(p.requires_grad == (".base_layer." in n) for n, p in model.named_parameters())
+        (cross_entropy_loss(model(r_input_ids), r_input_ids) * retain_mult).backward()
     # apply mask
     for name, param in model.named_parameters():
         name = name.replace(".base_layer", "")
@@ -91,25 +97,27 @@ for step in range(1, 1 + unlearn_steps):
     # ! relearn with adversarial lora
     lora_optimizer.zero_grad(set_to_none=True)
     only_grad_on(model, ".adversarial_lora.")
-    loss = cross_entropy_loss(model(input_ids), input_ids)
-    loss.backward()
+    cross_entropy_loss(model(r_input_ids), r_input_ids).backward()
     lora_optimizer.step()
 
     if step % 10 == 0:
         print_perplexities(model, [forget_eval, retain_eval], step)
 
-print("ppl without adversarial lora:")
-with peft_model.disable_adapter():
-    print_perplexities(model, [forget_eval, retain_eval], 0)
+    if step % 50 == 0:
+        with peft_model.disable_adapter():
+            print("ppl without adversarial lora:")
+            print_perplexities(model, [forget_eval, retain_eval], -1)
 
 
 # %%
 del mask
+peft_model.delete_adapter("adversarial_lora")
 
-# ! prepare for relearning
-# merge retain_lora weights
-model = peft_model.merge_and_unload()
+# for n, p in model.named_parameters():
+#     print(n)
+# print_perplexities(model, [forget_eval, retain_eval], -1)
 
+# %%
 # add relearning lora
 lora_config = LoraConfig(r=1, target_modules="all-linear")
 peft_model = get_peft_model(model, lora_config, adapter_name="relearning_lora")
@@ -133,3 +141,4 @@ for step in range(1, 1 + relearn_steps):
     if step % 10 == 0:
         print_perplexities(model, [forget_eval, retain_eval], step)
 
+# %%
