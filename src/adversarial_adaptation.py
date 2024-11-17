@@ -24,18 +24,22 @@ def only_grad_on(model, name_part):
 
 # %%
 # ! parameters
-quantile = 0.95  # between 0 and 1
+quantile = 0.8  # between 0 and 1
 # criterion='(c("forget_abs_logit").abs() + 0.1) / c("en_abs_logit").abs()'
 criterion = 'c("en_abs_logit").abs() * (-1)'
 module_type = "up_proj"
-# note: too small forget_lr with bfloat16, can updates 0 due to numerical errors
-unlearn_lr = 3e-4
-adversa_lr = 30e-4
+# note: too small forget_lr with bfloat16, can make updates 0 due to numerical errors ?
+# unlearn_lr = 15e-4
+# adversa_lr = 30e-4
+# helper_lr = 20e-4
+# for SGD
+unlearn_lr = 1e-1
+# 
+adversa_lr = 3e-3
 helper_lr = 5e-4
-# unlearn_lr = 1e-2
-# adversa_lr = 3e-2
-# retain_mult = 10
-unlearn_steps = 50000000000000
+#
+# retain_mult = 3  # retain grads are naturally about 3x smaller (even though loss has similar scale), IDK why
+unlearn_steps = 1000000
 
 set_seeds(42)
 # prepare data iterators
@@ -63,7 +67,7 @@ helper_lora_config = LoraConfig(r=4, target_modules=[module_type])
 peft_model.add_adapter("helper_lora", helper_lora_config)
 
 # initialize optimizers
-base_optimizer = pt.optim.Adam(
+base_optimizer = pt.optim.SGD(
     [p for n, p in model.named_parameters() if ".base_layer." in n],
     lr=unlearn_lr,
 )
@@ -81,24 +85,29 @@ helper_optimizer = pt.optim.Adam(
 print("step         f         r    base_f    base_r")
 for step in range(1, 1 + unlearn_steps):
     model.train()
-    f_input_ids = get_batch(forget_iter, 16)
-    r_input_ids = get_batch(retain_iter, 16)
+    f_input_ids = get_batch(forget_iter, 8)
+    r_input_ids = get_batch(retain_iter, 8)
 
     # ! unlearn on the base model
     base_optimizer.zero_grad(set_to_none=True)
     peft_model.set_adapter(["helper_lora", "adv_lora"])
     only_grad_on(model, ".base_layer.")
-    correct_logit_loss(model(f_input_ids), f_input_ids).backward()
+    loss = correct_logit_loss(model(f_input_ids), f_input_ids)
+    loss.backward()
+    # print("logit", model.model.layers[12].mlp.up_proj.base_layer.weight.grad.norm())
+    # ! retain on the base model
     # with peft_model.disable_adapter():
     #     only_grad_on(model, ".base_layer.")  # unneeded, but let's be safe
-    #     (cross_entropy_loss(model(r_input_ids), r_input_ids) * retain_mult).backward()
-    # apply mask
+    #     loss = cross_entropy_loss(model(r_input_ids), r_input_ids) * retain_mult
+    #     loss.backward()
+    # ! apply mask
     for name, param in model.named_parameters():
         name = name.replace(".base_layer", "")
         if name in mask:
             param.grad = param.grad * mask[name]
     base_optimizer.step()
-    
+
+    # ! retain with helper lora
     helper_optimizer.zero_grad(set_to_none=True)
     peft_model.set_adapter(["helper_lora"])
     only_grad_on(model, ".helper_lora.")
@@ -113,16 +122,16 @@ for step in range(1, 1 + unlearn_steps):
     adv_optimizer.step()
 
     # ! eval
-    if step % 10 == 0:
+    if step % 5 == 0:
         peft_model.set_adapter(["helper_lora", "adv_lora"])
         f_ppl, r_ppl = get_perplexities(model, [forget_eval, retain_eval])
         peft_model.set_adapter(["helper_lora"])
         f_ppl_base, r_ppl_base = get_perplexities(model, [forget_eval, retain_eval])
         print(f"{step:4} {f_ppl:9.2f} {r_ppl:9.2f} {f_ppl_base:9.2f} {r_ppl_base:9.2f}")
-        
+
         if f_ppl > 10000:
             break
-    
+
 # %%
 del mask
 peft_model.delete_adapter("adv_lora")
@@ -135,7 +144,7 @@ del peft_model
 # %%
 # ! parameters
 relearn_lr = 1e-3
-relearn_steps = 10000
+relearn_steps = 100
 
 # add relearning lora
 lora_config = LoraConfig(r=1, target_modules="all-linear")
