@@ -61,10 +61,10 @@ def set_seeds(seed):
     random.seed(seed)
 
 
-# class DefaultNamespace(SimpleNamespace):
-#     def __getattr__(self, name):
-#         # This is called when an attribute doesn't exist
-#         return pt.tensor(pt.nan)
+class DefaultNamespace(SimpleNamespace):
+    def __getattr__(self, name):
+        # This is called when an attribute doesn't exist
+        return pt.tensor(pt.nan)
 
 
 def repo_root():
@@ -111,12 +111,19 @@ def correct_logit_loss(output, input_ids):
     return true_logits.mean()
 
 
+def clipped_correct_logit_loss(output, input_ids):
+    logits = output.logits[:, :-1, :].flatten(end_dim=1).to(pt.float32)
+    ids = input_ids[:, 1:].flatten()
+    true_logits = logits[pt.arange(len(ids)), ids]
+    return true_logits.clip(min=0).mean()
+
+
 # load circuit
 def c(circuit_name):
     circ = pt.load(repo_root() / "circuits" / f"{circuit_name}.pt", weights_only=True)
-    del circ["model.embed_tokens.weight"]  # this is filled with zeros, at least for polish
+    # this is filled with zero imps, at least for polish
+    del circ["model.embed_tokens.weight"]
     return TensorDict(circ)
-
 
 
 def kinda_safe_eval(expr):
@@ -132,8 +139,6 @@ def kinda_safe_eval(expr):
 
     byte_code = compile_restricted(expr, filename="<inline code>", mode="eval")
     return eval(byte_code, restricted_globals)
-
-
 
 
 def get_perplexities(model, batches):
