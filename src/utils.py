@@ -25,13 +25,11 @@ def load_one_oscar_shard(lang, tokenizer):
     # split into 4 quarters
     half1, half2 = raw_dataset.train_test_split(test_size=0.5, seed=42).values()
     quarter3, quarter4 = half2.train_test_split(test_size=0.5, seed=42).values()
-    # eigth7, eigth8 = quarter4.train_test_split(test_size=0.5, seed=42).values()
 
     dataset = (
         # define splits; make it iterable so that it can be processed on demand
         IterableDatasetDict(
             train=IterableDataset.from_generator(lambda: (ex for ex in half1)),
-            # relearn=IterableDataset.from_generator(lambda: (ex for ex in quarter3)),
             validation=IterableDataset.from_generator(lambda: (ex for ex in quarter3)),
             test=IterableDataset.from_generator(lambda: (ex for ex in quarter4)),
         )
@@ -141,14 +139,14 @@ def print_perplexities(model, batches, step):
 
 # Create a class that writes to both stdout and a file
 class Tee:
-    def __init__(self, *files):
-        self.files = files
+    def __init__(self, stdout):
+        self.old_stdout = stdout
+        self.msgs = []
 
     def write(self, message):
-        for file in self.files:
-            file.write(message)
-            file.flush()  # Ensure the message is written immediately
+        self.msgs.append(message)
+        self.old_stdout.write(message)
+        self.old_stdout.flush()
 
     def flush(self):
-        for file in self.files:
-            file.flush()
+        self.old_stdout.flush()

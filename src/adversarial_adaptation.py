@@ -32,33 +32,30 @@ def only_grad_on(model, name_part):
 
 # %%
 # ! parameters
-quantile = 0.2  # between 0 and 1
-# todo remove abs, regenerate circuits
+quantile = 0.1  # between 0 and 1
 # criterion='c("en_abs_logit") / (c("forget_abs_logit") + 0.1)'
 criterion = 'c("en_abs_logit")'
 target_modules=["up_proj", "down_proj", "gate_proj", "q_proj", "k_proj", "v_proj", "o_proj"]  # fmt: skip
-# target_modules=["up_proj", "down_proj", "gate_proj"]  # fmt: skip
-# target_modules=["up_proj"]  # fmt: skip
 #
 # note: too small forget_lr with bfloat16, can make updates 0 due to numerical errors ?
 unlearn_lr = 3e-2
 adversa_lr = 10e-4
 helper_lr = 8e-4
 relearn_lr = 3e-4
-# retain_mult = 3  # retain grads are naturally about 3x smaller (even though loss has similar scale), IDK why
-unlearn_steps = 1000
-relearn_steps = 100
+# retain grads are naturally about 3x smaller (even though loss has similar scale), IDK why
+# retain_mult = 3
+unlearn_steps = 10
+relearn_steps = 10
 
 # run_name = f"U={unlearn_lr:.0e} A={adversa_lr:.0e} H={helper_lr:.0e} R={relearn_lr:.0e}"
 # wandb.init(project="adversarial_adaptation", group="unlearning", name=run_name)
 
-# ! for reproducibility, save this file state and append output into it
-timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-path = repo_root() / "results" / f"{Path(__file__).stem}_{timestamp}.py"
+# ! for reproducibility save this file state and append output into it
+folder = repo_root() / "results" / datetime.now().strftime("%Y-%m-%d")
+folder.mkdir(parents=True, exist_ok=True)
+path = folder / f"{datetime.now().strftime('%H-%M-%S')}_{Path(__file__).stem}.py"
 shutil.copy(__file__, path)
-log_file = open(path, "a")
-original_stdout = sys.stdout
-sys.stdout = Tee(sys.stdout, log_file)
+sys.stdout = Tee(sys.stdout)
 print('"""')
 print("commit hash: ", commit_hash())
 
@@ -208,6 +205,8 @@ for step in range(1 + unlearn_steps, 1 + unlearn_steps + relearn_steps):
             wandb.log(results, step=step)
 
 print('"""')
-sys.stdout = original_stdout
-log_file.close()
-# %%
+msgs = sys.stdout.msgs
+sys.stdout = sys.stdout.old_stdout
+# prepend the messages to the log file
+old_content = path.read_text()
+path.write_text("".join(msgs) + "\n" + old_content)
