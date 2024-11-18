@@ -30,6 +30,14 @@ def only_grad_on(model, name_part):
         param.requires_grad = name_part in name
 
 
+def get_mask(criterion, quantile, target_modules):
+    scores = kinda_safe_eval(criterion)
+    scores = {k: v for k, v in scores.items() if any(m in k for m in target_modules)}
+    k = int(quantile * sum(s.numel() for s in scores.values()))
+    threshold = pt.cat([s.flatten() for s in scores.values()]).kthvalue(k).values
+    return {k: v < threshold for k, v in scores.items()}
+
+
 # %%
 # ! parameters
 quantile = 0.1  # between 0 and 1
@@ -44,8 +52,8 @@ helper_lr = 8e-4
 relearn_lr = 3e-4
 # retain grads are naturally about 3x smaller (even though loss has similar scale), IDK why
 # retain_mult = 3
-unlearn_steps = 10
-relearn_steps = 10
+unlearn_steps = 1000
+relearn_steps = 100
 
 # run_name = f"U={unlearn_lr:.0e} A={adversa_lr:.0e} H={helper_lr:.0e} R={relearn_lr:.0e}"
 # wandb.init(project="adversarial_adaptation", group="unlearning", name=run_name)
@@ -64,14 +72,8 @@ set_seeds(42)
 forget_iter = looping_iter(forget_set["train"])
 retain_iter = looping_iter(retain_set["train"])
 
-# ! get mask
 criterion = criterion.replace("forget", forget)
-scores = kinda_safe_eval(criterion)
-scores = {k: v for k, v in scores.items() if any(m in k for m in target_modules)}
-k = int(quantile * sum(s.numel() for s in scores.values()))
-threshold = pt.cat([s.flatten() for s in scores.values()]).kthvalue(k).values
-mask = {k: v < threshold for k, v in scores.items()}
-del scores
+mask = get_mask(criterion, quantile, target_modules)
 
 # load model
 model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
@@ -81,7 +83,7 @@ model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
 adv_lora_config = LoraConfig(r=2, target_modules=target_modules, lora_dropout=0.1)
 peft_model = get_peft_model(model, adv_lora_config, adapter_name="adv_lora", mixed=True)
 model = peft_model.model
-helper_lora_config = LoraConfig(r=1, target_modules=target_modules, lora_dropout=0.1)
+helper_lora_config = LoraConfig(r=2, target_modules=target_modules, lora_dropout=0.1)
 peft_model.add_adapter("helper_lora", helper_lora_config)
 
 # initialize optimizers
@@ -145,21 +147,21 @@ for step in range(1, 1 + unlearn_steps):
     # ! eval
     if step % 10 == 0:
         peft_model.set_adapter(["helper_lora", "adv_lora"])
-        adv_f_ppl, adv_r_ppl = get_perplexities(model, [forget_eval, retain_eval])
+        adv_forget, adv_retain = get_perplexities(model, [forget_eval, retain_eval])
         peft_model.set_adapter(["helper_lora"])
-        f_ppl_base, r_ppl_base = get_perplexities(model, [forget_eval, retain_eval])
+        base_forget, base_retain = get_perplexities(model, [forget_eval, retain_eval])
 
         results = dict(
-            base_forget=f_ppl_base,
-            base_retain=r_ppl_base,
-            adv_forget=adv_f_ppl,
-            adv_retain=adv_r_ppl,
+            base_forget=base_forget,
+            base_retain=base_retain,
+            adv_forget=adv_forget,
+            adv_retain=adv_retain,
         )
         print(f"{step:4} " + " ".join(f"{v:11.2f}" for v in results.values()))
         if wandb.run:
             wandb.log(results, step=step)
 
-        if adv_f_ppl > 10000:
+        if adv_forget > 10000 or base_retain > 32:
             break
 
 del mask
@@ -210,3 +212,5 @@ sys.stdout = sys.stdout.old_stdout
 # prepend the messages to the log file
 old_content = path.read_text()
 path.write_text("".join(msgs) + "\n" + old_content)
+
+# %%
