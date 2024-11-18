@@ -57,7 +57,6 @@ def intervene(model, module_name, mult, cutoff=None):
         m.weight.data[mask] *= mult
 
 
-
 def get_perplexity(model, dataset, num_batches=1, batch_size=32):
     total_loss = 0
     for batch in islice(dataset["validation"].batch(batch_size), num_batches):
@@ -91,3 +90,21 @@ def print_stats(stats):
 #     input_ids = pt.cat(batch["input_ids"])
 #     out = model(input_ids, output_hidden_states=True)
 #     return out.hidden_states[-1].norm(dim=-1).mean()
+
+
+# def remove_lora(state_dict):
+#     keys = list(state_dict.keys())
+#     for key in keys:
+#         if "lora" in key:
+#             del state_dict[key]
+#             continue
+#         value = state_dict[key]
+#         del state_dict[key]
+#         new_key = key.replace("base_layer.", "")
+#         state_dict[new_key] = value
+
+
+class DefaultNamespace(SimpleNamespace):
+    def __getattr__(self, name):
+        # This is called when an attribute doesn't exist
+        return pt.tensor(pt.nan)

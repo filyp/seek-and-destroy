@@ -35,19 +35,21 @@ def only_grad_on(model, name_part):
 
 # %% initialize LoRA
 lora_config = LoraConfig(
-    task_type=TaskType.SEQ_2_SEQ_LM,
-    inference_mode=False,
+    # task_type=TaskType.SEQ_2_SEQ_LM,
+    # inference_mode=False,
     r=1,
-    lora_alpha=32,
-    lora_dropout=0.1,
+    # lora_alpha=32,
+    # lora_dropout=0.1,
     target_modules=["up_proj", "down_proj", "gate_proj", "q_proj", "k_proj", "v_proj", "o_proj"],  # fmt: skip
+    # target_modules=["up_proj"],
 )
 model.add_adapter(lora_config, adapter_name="adversarial_lora")
 
 # %% initialize optimizers
 base_optimizer = pt.optim.Adam(
-    # [p for n, p in model.named_parameters() if ".base_layer." in n],
-    [p for n, p in model.named_parameters() if ".adversarial_lora." not in n],
+    # [p for n, p in model.named_parameters() if "up_proj.base_layer." in n],
+    [p for n, p in model.named_parameters() if "_proj.base_layer." in n],
+    # [p for n, p in model.named_parameters() if ".adversarial_lora." not in n],
     lr=0.000015,
     betas=(0.9, 0.999),
 )
@@ -79,8 +81,6 @@ assert 0 <= c.loudness_vs_retain <= 1
 assert 0 <= c.adv_forget_vs_adv_retain <= 1
 i = 0
 
-# %%
-print_perplexities(model, [forget_eval_batch, retain_eval_batch], -1)
 # %% training loop
 # c.train_base = False
 # c.loudness_vs_retain = 0.3

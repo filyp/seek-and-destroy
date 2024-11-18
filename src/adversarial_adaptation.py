@@ -1,6 +1,7 @@
 # %%
 import torch as pt
 from peft import LoraConfig, get_peft_model
+from torch.optim.lr_scheduler import LambdaLR
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 import wandb
@@ -27,28 +28,29 @@ def only_grad_on(model, name_part):
 # %%
 # ! parameters
 quantile = 0.95  # between 0 and 1
+# todo remove abs, regenerate circuits
 # criterion='(c("forget_abs_logit").abs() + 0.1) / c("en_abs_logit").abs()'
 criterion = 'c("en_abs_logit").abs() * (-1)'
 target_modules=["up_proj", "down_proj", "gate_proj", "q_proj", "k_proj", "v_proj", "o_proj"]  # fmt: skip
+# target_modules=["up_proj", "down_proj", "gate_proj"]  # fmt: skip
+# target_modules=["up_proj"]  # fmt: skip
+# 
 # note: too small forget_lr with bfloat16, can make updates 0 due to numerical errors ?
-# unlearn_lr = 15e-4
-# adversa_lr = 30e-4
-# helper_lr = 20e-4
-# for SGD
-unlearn_lr = 1e-1
-#
-adversa_lr = 1e-3
-helper_lr = 5e-4
-#
+unlearn_lr = 0.7e-2
+adversa_lr = 3e-4
+helper_lr = 0.5e-4
+relearn_lr = 3e-4
 # retain_mult = 3  # retain grads are naturally about 3x smaller (even though loss has similar scale), IDK why
-unlearn_steps = 1000000
+unlearn_steps = 200
+relearn_steps = 100
+run_name = f"U={unlearn_lr:.0e} A={adversa_lr:.0e} H={helper_lr:.0e} R={relearn_lr:.0e}"
 
+# wandb.init(project="adversarial_adaptation", group="unlearning", name=run_name)
+print(f"running {run_name}")
 set_seeds(42)
 # prepare data iterators
 forget_iter = looping_iter(forget_set["train"])
 retain_iter = looping_iter(retain_set["train"])
-
-# %%
 
 # ! get mask
 criterion = criterion.replace("forget", forget)
@@ -67,7 +69,7 @@ model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
 adv_lora_config = LoraConfig(r=1, target_modules=target_modules, lora_dropout=0.1)
 peft_model = get_peft_model(model, adv_lora_config, adapter_name="adv_lora", mixed=True)
 model = peft_model.model
-helper_lora_config = LoraConfig(r=4, target_modules=target_modules, lora_dropout=0.1)
+helper_lora_config = LoraConfig(r=1, target_modules=target_modules, lora_dropout=0.1)
 peft_model.add_adapter("helper_lora", helper_lora_config)
 
 # initialize optimizers
@@ -75,35 +77,24 @@ base_optimizer = pt.optim.SGD(
     [p for n, p in model.named_parameters() if ".base_layer." in n],
     lr=unlearn_lr,
 )
-
-
-# Learning rate warmup for the first 100 steps
-def lr_lambda(step):
-    return min(1.0, step / 100)  # Linear warmup
-
-
-scheduler = pt.optim.lr_scheduler.LambdaLR(base_optimizer, lr_lambda)
+# scheduler = LambdaLR(base_optimizer, lambda step: min(1.0, step / 100))
 
 adv_optimizer = pt.optim.Adam(
     [p for n, p in model.named_parameters() if ".adv_lora." in n],
     lr=adversa_lr,
 )
 helper_optimizer = pt.optim.Adam(
+# helper_optimizer = pt.optim.SGD(
     [p for n, p in model.named_parameters() if ".helper_lora." in n],
     lr=helper_lr,
 )
 
-wandb.init(project="adversarial_adaptation", group="unlearning", name="default")
-step = 0
-
-# %%
 # ! unlearn loop
-print("step         f         r    base_f    base_r")
-for _ in range(1000000):
-    step += 1
+print("step      base_f      base_r      adv_f      adv_r")
+for step in range(1, 1 + unlearn_steps):
     model.train()
     f_input_ids = get_batch(forget_iter, 8)
-    r_input_ids = get_batch(retain_iter, 8)
+    r_input_ids = get_batch(retain_iter, 4)
 
     # ! unlearn on the base model
     base_optimizer.zero_grad(set_to_none=True)
@@ -117,13 +108,13 @@ for _ in range(1000000):
     #     loss = cross_entropy_loss(model(r_input_ids), r_input_ids) * retain_mult
     #     loss.backward()
 
-    # # ! apply mask
+    # ! apply mask
     for name, param in model.named_parameters():
         name = name.replace(".base_layer", "")
         if name in mask:
             param.grad = param.grad * mask[name]
     base_optimizer.step()
-    scheduler.step()  # Update the learning rate
+    # scheduler.step()  # Update the learning rate
 
     # ! retain with helper lora
     helper_optimizer.zero_grad(set_to_none=True)
@@ -147,48 +138,30 @@ for _ in range(1000000):
         f_ppl_base, r_ppl_base = get_perplexities(model, [forget_eval, retain_eval])
 
         results = dict(
-            adv_forget=adv_f_ppl,
-            adv_retain=adv_r_ppl,
             base_forget=f_ppl_base,
             base_retain=r_ppl_base,
+            adv_forget=adv_f_ppl,
+            adv_retain=adv_r_ppl,
         )
-        print(f"{step:4} " + " ".join(f"{v:9.2f}" for v in results.values()))
-        wandb.log(results, step=step)
+        print(f"{step:4} " + " ".join(f"{v:11.2f}" for v in results.values()))
+        if wandb.run:
+            wandb.log(results, step=step)
 
         if adv_f_ppl > 10000:
             break
 
-# %%
-print_perplexities(model, [forget_eval, retain_eval], 0)
-
-# %%
 del mask
+# ! delete adversarial lora
 peft_model.delete_adapter("adv_lora")
-
-# ! merge and unload
+# ! merge and unload helper lora
 peft_model.set_adapter(["helper_lora"])
 model = peft_model.merge_and_unload()
-# del peft_model
-
-# %%
-# save model
-model_path = repo_root() / "models" / f"{wandb.run.name}_{step}steps.pt"
-pt.save(model.state_dict(), model_path)
-
-# %%
-# load model
-# model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
-state_dict = pt.load(repo_root() / "models" / "tmp.pt")
-model.load_state_dict(state_dict)
-
-# %%
-# ! parameters
-relearn_lr = 1e-3
-relearn_steps = 100
+del peft_model
 
 # add relearning lora
 # lora_config = LoraConfig(r=1, target_modules="all-linear")
-lora_config = LoraConfig(r=1, target_modules=target_modules)
+# lora_config = LoraConfig(r=1, target_modules=target_modules)
+lora_config = LoraConfig(r=1, target_modules=["up_proj"])
 peft_model = get_peft_model(model, lora_config, adapter_name="relearning_lora")
 model = peft_model.model
 
@@ -196,7 +169,7 @@ optimizer = pt.optim.Adam(model.parameters(), lr=relearn_lr, betas=(0.9, 0.999))
 
 # ! relearning loop
 print("relearning...")
-for step in range(1, 1 + relearn_steps):
+for step in range(1 + unlearn_steps, 1 + unlearn_steps + relearn_steps):
     # standard forward, backward, and update
     model.train()
     optimizer.zero_grad(set_to_none=True)
@@ -209,5 +182,7 @@ for step in range(1, 1 + relearn_steps):
 
     if step % 10 == 0:
         print_perplexities(model, [forget_eval, retain_eval], step)
+        if wandb.run:
+            wandb.log(results, step=step)
 
 # %%

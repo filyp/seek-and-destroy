@@ -61,30 +61,12 @@ def set_seeds(seed):
     random.seed(seed)
 
 
-class DefaultNamespace(SimpleNamespace):
-    def __getattr__(self, name):
-        # This is called when an attribute doesn't exist
-        return pt.tensor(pt.nan)
-
-
 def repo_root():
     return Path(
         subprocess.check_output(["git", "rev-parse", "--show-toplevel"])
         .decode("utf-8")
         .strip()
     )
-
-
-def remove_lora(state_dict):
-    keys = list(state_dict.keys())
-    for key in keys:
-        if "lora" in key:
-            del state_dict[key]
-            continue
-        value = state_dict[key]
-        del state_dict[key]
-        new_key = key.replace("base_layer.", "")
-        state_dict[new_key] = value
 
 
 def looping_iter(iterable):
@@ -150,4 +132,12 @@ def get_perplexities(model, batches):
 def print_perplexities(model, batches, step):
     f_ppl, r_ppl = get_perplexities(model, batches)
     stats = dict(forget=f_ppl, retain=r_ppl)
-    print(f"{step:4d}  " + "   ".join(f"{v:10.2f}" for v in stats.values()))
+    print(f"{step:4d} " + " ".join(f"{v:11.2f}" for v in stats.values()))
+
+
+# # save model (needs to be done after deleting/merging LoRAs)
+# pt.save(model.state_dict(), repo_root() / "models" / "model_post.pt")
+# # load model
+# model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
+# state_dict = pt.load(repo_root() / "models" / "model_post.pt", weights_only=True)
+# model.load_state_dict(state_dict)

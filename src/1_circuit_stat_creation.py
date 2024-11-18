@@ -48,14 +48,14 @@ for data_name, data_iter in [
     ("pl", looping_iter(pl_set["train"])),
 ]:
     for grad_acc_name, grad_acc_fn in [
+        ("abs", lambda x: x.abs()),
         ("linear", lambda x: x),
-        # ("square", lambda x: x**2),
-        # ("abs", lambda x: x.abs()),
+        ("square", lambda x: x**2),
         # * actually these could be computed in parallel, with that would 3x mem usage
     ]:
         for loss_name, loss_fn in [
+            ("logit", correct_logit_loss),
             ("crossent", cross_entropy_loss),
-            # ("logit", correct_logit_loss),
         ]:
             circuit_name = f"{data_name}_{grad_acc_name}_{loss_name}.pt"
             print("calculating:", circuit_name)
