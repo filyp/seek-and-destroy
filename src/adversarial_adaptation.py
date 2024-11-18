@@ -1,4 +1,9 @@
 # %%
+import shutil
+import sys
+from datetime import datetime
+from pathlib import Path
+
 import torch as pt
 from peft import LoraConfig, get_peft_model
 from torch.optim.lr_scheduler import LambdaLR
@@ -27,26 +32,36 @@ def only_grad_on(model, name_part):
 
 # %%
 # ! parameters
-quantile = 0.95  # between 0 and 1
+quantile = 0.2  # between 0 and 1
 # todo remove abs, regenerate circuits
-# criterion='(c("forget_abs_logit").abs() + 0.1) / c("en_abs_logit").abs()'
-criterion = 'c("en_abs_logit").abs() * (-1)'
+# criterion='c("en_abs_logit") / (c("forget_abs_logit") + 0.1)'
+criterion = 'c("en_abs_logit")'
 target_modules=["up_proj", "down_proj", "gate_proj", "q_proj", "k_proj", "v_proj", "o_proj"]  # fmt: skip
 # target_modules=["up_proj", "down_proj", "gate_proj"]  # fmt: skip
 # target_modules=["up_proj"]  # fmt: skip
-# 
+#
 # note: too small forget_lr with bfloat16, can make updates 0 due to numerical errors ?
-unlearn_lr = 0.7e-2
-adversa_lr = 3e-4
-helper_lr = 0.5e-4
+unlearn_lr = 3e-2
+adversa_lr = 10e-4
+helper_lr = 8e-4
 relearn_lr = 3e-4
 # retain_mult = 3  # retain grads are naturally about 3x smaller (even though loss has similar scale), IDK why
-unlearn_steps = 200
+unlearn_steps = 1000
 relearn_steps = 100
-run_name = f"U={unlearn_lr:.0e} A={adversa_lr:.0e} H={helper_lr:.0e} R={relearn_lr:.0e}"
 
+# run_name = f"U={unlearn_lr:.0e} A={adversa_lr:.0e} H={helper_lr:.0e} R={relearn_lr:.0e}"
 # wandb.init(project="adversarial_adaptation", group="unlearning", name=run_name)
-print(f"running {run_name}")
+
+# ! for reproducibility, save this file state and append output into it
+timestamp = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+path = repo_root() / "results" / f"{Path(__file__).stem}_{timestamp}.py"
+shutil.copy(__file__, path)
+log_file = open(path, "a")
+original_stdout = sys.stdout
+sys.stdout = Tee(sys.stdout, log_file)
+print('"""')
+print("commit hash: ", commit_hash())
+
 set_seeds(42)
 # prepare data iterators
 forget_iter = looping_iter(forget_set["train"])
@@ -58,7 +73,7 @@ scores = kinda_safe_eval(criterion)
 scores = {k: v for k, v in scores.items() if any(m in k for m in target_modules)}
 k = int(quantile * sum(s.numel() for s in scores.values()))
 threshold = pt.cat([s.flatten() for s in scores.values()]).kthvalue(k).values
-mask = {k: v > threshold for k, v in scores.items()}
+mask = {k: v < threshold for k, v in scores.items()}
 del scores
 
 # load model
@@ -66,7 +81,7 @@ model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
 # model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.float32)
 
 # add loras
-adv_lora_config = LoraConfig(r=1, target_modules=target_modules, lora_dropout=0.1)
+adv_lora_config = LoraConfig(r=2, target_modules=target_modules, lora_dropout=0.1)
 peft_model = get_peft_model(model, adv_lora_config, adapter_name="adv_lora", mixed=True)
 model = peft_model.model
 helper_lora_config = LoraConfig(r=1, target_modules=target_modules, lora_dropout=0.1)
@@ -77,14 +92,14 @@ base_optimizer = pt.optim.SGD(
     [p for n, p in model.named_parameters() if ".base_layer." in n],
     lr=unlearn_lr,
 )
-# scheduler = LambdaLR(base_optimizer, lambda step: min(1.0, step / 100))
+scheduler = LambdaLR(base_optimizer, lambda step: min(1.0, step / 100))
 
 adv_optimizer = pt.optim.Adam(
     [p for n, p in model.named_parameters() if ".adv_lora." in n],
     lr=adversa_lr,
 )
 helper_optimizer = pt.optim.Adam(
-# helper_optimizer = pt.optim.SGD(
+    # helper_optimizer = pt.optim.SGD(
     [p for n, p in model.named_parameters() if ".helper_lora." in n],
     lr=helper_lr,
 )
@@ -114,7 +129,7 @@ for step in range(1, 1 + unlearn_steps):
         if name in mask:
             param.grad = param.grad * mask[name]
     base_optimizer.step()
-    # scheduler.step()  # Update the learning rate
+    scheduler.step()  # Update the learning rate
 
     # ! retain with helper lora
     helper_optimizer.zero_grad(set_to_none=True)
@@ -158,6 +173,13 @@ peft_model.set_adapter(["helper_lora"])
 model = peft_model.merge_and_unload()
 del peft_model
 
+pt.save(model.state_dict(), repo_root() / "models" / "autosave.pt")
+
+# # load model
+# model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
+# state_dict = pt.load(repo_root() / "models" / "model_post.pt", weights_only=True)
+# model.load_state_dict(state_dict)
+
 # add relearning lora
 # lora_config = LoraConfig(r=1, target_modules="all-linear")
 # lora_config = LoraConfig(r=1, target_modules=target_modules)
@@ -185,4 +207,7 @@ for step in range(1 + unlearn_steps, 1 + unlearn_steps + relearn_steps):
         if wandb.run:
             wandb.log(results, step=step)
 
+print('"""')
+sys.stdout = original_stdout
+log_file.close()
 # %%

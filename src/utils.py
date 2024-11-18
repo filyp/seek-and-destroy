@@ -69,6 +69,10 @@ def repo_root():
     )
 
 
+def commit_hash():
+    return subprocess.check_output(["git", "rev-parse", "HEAD"]).decode("utf-8").strip()
+
+
 def looping_iter(iterable):
     # like itertools.cycle, but will not eat memory by storing element copies
     while True:
@@ -135,9 +139,16 @@ def print_perplexities(model, batches, step):
     print(f"{step:4d} " + " ".join(f"{v:11.2f}" for v in stats.values()))
 
 
-# # save model (needs to be done after deleting/merging LoRAs)
-# pt.save(model.state_dict(), repo_root() / "models" / "model_post.pt")
-# # load model
-# model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
-# state_dict = pt.load(repo_root() / "models" / "model_post.pt", weights_only=True)
-# model.load_state_dict(state_dict)
+# Create a class that writes to both stdout and a file
+class Tee:
+    def __init__(self, *files):
+        self.files = files
+
+    def write(self, message):
+        for file in self.files:
+            file.write(message)
+            file.flush()  # Ensure the message is written immediately
+
+    def flush(self):
+        for file in self.files:
+            file.flush()
