@@ -3,16 +3,20 @@ import torch as pt
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+from dataloading_utils import *
 from utils import *
 
-model_id = "Qwen/Qwen2.5-0.5B"
+# model_id = "Qwen/Qwen2.5-0.5B"
+model_id = "EleutherAI/pythia-70m-deduped"
+# model_id = "EleutherAI/pythia-160m-deduped"
+# model_id = "HuggingFaceTB/SmolLM-135M"
 pt.set_default_device("cuda")
 
 
 # %%
 def get_circuit(data_iter, grad_acc_fn, loss_fn, num_steps=1000):
     # load model
-    model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
+    model = AutoModelForCausalLM.from_pretrained(model_id)
 
     # note: using hooks is more complicated than processing grads after backward()
     #       but it prevents a memory spike - no need to store many param.grad
@@ -40,18 +44,21 @@ def get_circuit(data_iter, grad_acc_fn, loss_fn, num_steps=1000):
 # %%
 # load datasets
 tokenizer = AutoTokenizer.from_pretrained(model_id)
-pl_set = load_one_oscar_shard("pl", tokenizer)
+python_set = load_python_dataset(tokenizer)
 en_set = load_one_oscar_shard("en", tokenizer)
+pl_set = load_one_oscar_shard("pl", tokenizer)
+(repo_root() / "circuits" / model_id).mkdir(parents=True, exist_ok=True)
 
 for data_name, data_iter in [
+    ("python", looping_iter(python_set["train"])),
     ("en", looping_iter(en_set["train"])),
-    ("pl", looping_iter(pl_set["train"])),
+    # ("pl", looping_iter(pl_set["train"])),
 ]:
     for grad_acc_name, grad_acc_fn in [
         ("abs", lambda x: x.abs()),
         ("linear", lambda x: x),
-        ("square", lambda x: x**2),
-        # * actually these could be computed in parallel, with that would 3x mem usage
+        # ("square", lambda x: x**2),
+        # * actually these could be computed in parallel, but that would 3x mem usage
     ]:
         for loss_name, loss_fn in [
             ("logit", correct_logit_loss),
@@ -61,5 +68,5 @@ for data_name, data_iter in [
             print("calculating:", circuit_name)
             pt.save(
                 get_circuit(data_iter, grad_acc_fn, loss_fn),
-                repo_root() / "circuits" / circuit_name,
+                repo_root() / "circuits" / model_id / circuit_name,
             )

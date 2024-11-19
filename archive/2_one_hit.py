@@ -49,7 +49,7 @@ def unlearn_and_relearn(
     del scores_flat
 
     # ! load circuit and sparsify
-    circuit = c(circuit_name)
+    circuit = load_circuit(circuit_name)
     for param_name, scores in scores_dict.items():
         circuit[param_name][scores < threshold] = 0
     del scores_dict

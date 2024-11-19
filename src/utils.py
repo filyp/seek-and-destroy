@@ -1,54 +1,12 @@
-import json
 import random
 import subprocess
 from pathlib import Path
-from types import SimpleNamespace
 
 import torch as pt
-from datasets import IterableDataset, IterableDatasetDict, load_dataset
 from RestrictedPython import compile_restricted, safe_globals
 from RestrictedPython.Eval import default_guarded_getiter
 from RestrictedPython.Guards import guarded_iter_unpack_sequence, safer_getattr
 from tensordict import TensorDict
-
-
-def load_one_oscar_shard(lang, tokenizer):
-    context_len = 100
-    # only use one ~600MB shard
-    # also, streaming would make splitting too slow
-    raw_dataset = load_dataset(
-        "text",
-        split="train",  # train is the only split in oscar
-        data_files=f"hf://datasets/oscar-corpus/OSCAR-2301/{lang}_meta/{lang}_meta_part_1.jsonl.zst",
-    )
-
-    # split into 4 quarters
-    half1, half2 = raw_dataset.train_test_split(test_size=0.5, seed=42).values()
-    quarter3, quarter4 = half2.train_test_split(test_size=0.5, seed=42).values()
-
-    dataset = (
-        # define splits; make it iterable so that it can be processed on demand
-        IterableDatasetDict(
-            train=IterableDataset.from_generator(lambda: (ex for ex in half1)),
-            validation=IterableDataset.from_generator(lambda: (ex for ex in quarter3)),
-            test=IterableDataset.from_generator(lambda: (ex for ex in quarter4)),
-        )
-        # process the raw data, following OSCAR-2301.py
-        .map(lambda ex: {"text": json.loads(ex["text"])["content"]})
-        # tokenize
-        .map(
-            lambda ex: tokenizer(
-                ex["text"],
-                return_tensors="pt",
-                max_length=context_len,
-                truncation=True,
-            ),
-        )
-        # filter out the short ones
-        .filter(lambda ex: ex["input_ids"].shape[-1] >= context_len)
-    )
-    assert next(iter(dataset["test"]))["text"] != next(iter(dataset["train"]))["text"]
-    return dataset
 
 
 def set_seeds(seed):
@@ -69,12 +27,6 @@ def repo_root():
 
 def commit_hash():
     return subprocess.check_output(["git", "rev-parse", "HEAD"]).decode("utf-8").strip()
-
-
-def looping_iter(iterable):
-    # like itertools.cycle, but will not eat memory by storing element copies
-    while True:
-        yield from iterable
 
 
 def get_batch(iter, n):
@@ -102,11 +54,12 @@ def clipped_correct_logit_loss(output, input_ids):
     return true_logits.clip(min=0).mean()
 
 
-# load circuit
-def c(circuit_name):
+def load_circuit(circuit_name):
     circ = pt.load(repo_root() / "circuits" / f"{circuit_name}.pt", weights_only=True)
     # this is filled with zero imps, at least for polish
-    del circ["model.embed_tokens.weight"]
+    for name in list(circ.keys()):
+        if "embed" in name:
+            del circ[name]
     return TensorDict(circ)
 
 
@@ -118,7 +71,7 @@ def kinda_safe_eval(expr):
         "_iter_unpack_sequence_": guarded_iter_unpack_sequence,
         "_getattr_": safer_getattr,
         # Add any other necessary functions/variables that your expression needs
-        "c": c,
+        "load_circuit": load_circuit,
     })
 
     byte_code = compile_restricted(expr, filename="<inline code>", mode="eval")
@@ -137,7 +90,7 @@ def print_perplexities(model, batches, step):
     print(f"{step:4d} " + " ".join(f"{v:11.2f}" for v in stats.values()))
 
 
-# Create a class that writes to both stdout and a file
+# class that captures stdout and also appends messages to a list
 class Tee:
     def __init__(self, stdout):
         self.old_stdout = stdout
