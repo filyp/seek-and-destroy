@@ -27,14 +27,15 @@ print(f"init forget: {init_forget:6.2f}    init retain: {init_retain:6.2f}")
 # ! parameters
 quantile = 0.01  # between 0 and 1
 target_modules = ["dense", "dense_h_to_4h", "dense_4h_to_h"]
-unlearn_lr = 6e-3
-adv_lora_lr = 5e-4
-ret_lora_lr = 0  # 3e-4
-disruption_score_decay = 0.99
-unlearn_steps = 1000
-relearn_steps = 30
+# target_modules = ["dense_h_to_4h", "dense_4h_to_h"]
+unlearn_lr = 0.8e-2
+adv_lora_lr = 6e-4
+ret_lora_lr = 1e-5
+disruption_score_decay = 0.95
+unlearn_steps = 10000
 relearn_lr = 3e-4
 
+path = save_file_and_stdout_open(__file__)
 set_seeds(42)
 # todo: smth is still undeterministic!
 # prepare data iterators
@@ -63,7 +64,7 @@ ret_optimizer = pt.optim.Adam(ret_lora_params, lr=ret_lora_lr)
 for param in interven_params:
     param.disruption_score = pt.zeros_like(param)
 
-# %%
+# %
 # ! unlearning loop
 print("step      base_f      base_r      adv_f      adv_r")
 for step in range(1, 1 + unlearn_steps):
@@ -85,7 +86,6 @@ for step in range(1, 1 + unlearn_steps):
 
     # ! get threshold
     # todo take unlearn grads into account when computing disruption scores?
-    # ? todo maybe save compute by setting it only once?
     disruption_scores = [p.disruption_score for p in interven_params]
     threshold = get_threshold(quantile, disruption_scores)
 
@@ -131,6 +131,13 @@ for step in range(1, 1 + unlearn_steps):
             break
 
     # ! eval relearning
-    if step % 100 == 0:
+    if step % 1000 == 0:
         collapsed_model = copy_model_and_collapse_loras(peft_model)
-        relearn(collapsed_model, relearn_lr, relearn_steps, forget_set, retain_set)
+        relearn(collapsed_model, relearn_lr, 300, forget_set, retain_set)
+    elif step % 100 == 0:
+        collapsed_model = copy_model_and_collapse_loras(peft_model)
+        relearn(collapsed_model, relearn_lr, 30, forget_set, retain_set)
+
+save_file_and_stdout_close(path)
+
+# %%
