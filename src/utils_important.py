@@ -43,7 +43,7 @@ def relearn(model, relearn_lr, relearn_steps, forget_set, retain_set):
     optimizer = pt.optim.Adam(model.parameters(), lr=relearn_lr, betas=(0.9, 0.999))
 
     # ! relearning loop
-    print("<relearning>")
+    print("")
     for step in range(1, 1 + relearn_steps):
         # standard forward, backward, and update
         model.train()
@@ -60,5 +60,5 @@ def relearn(model, relearn_lr, relearn_steps, forget_set, retain_set):
             r_loss = eval_loss(model, retain_eval)
             print(f"{step:4d} {f_loss:11.2f} {r_loss:11.2f}   <   RELEARNING")
 
-    print("</relearning>")
+    print("")
     return eval_loss(model, forget_eval)

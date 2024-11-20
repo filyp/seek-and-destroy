@@ -26,16 +26,17 @@ print(f"init forget: {init_forget:6.2f}    init retain: {init_retain:6.2f}")
 
 # %%
 # ! parameters
-quantile = 0.001  # between 0 and 1
+quantile = 0.0001  # between 0 and 1
 target_modules = ["dense", "dense_h_to_4h", "dense_4h_to_h"]
-unlearn_lr = 2e-3
+unlearn_lr = 5e-3
 adv_lora_lr = 6e-4
-ret_lora_lr = 3e-5
+ret_lora_lr = 3e-4
 disruption_score_decay = 0.95
 unlearn_steps = 200
 relearn_lr = 3e-4
+f_amp = 0.9
 
-# path = save_file_and_stdout_open(__file__)
+path = save_file_and_stdout_open(__file__)
 set_seeds(42)
 # todo: smth is still undeterministic!
 # prepare data iterators
@@ -92,9 +93,7 @@ for step in range(1, 1 + unlearn_steps):
     loss = clipped_correct_logit_loss(model(f_input_ids), f_input_ids)
     loss.backward()
     # ! get threshold
-    # disruption_scores = [p.disruption_score / p.grad**2 for p in interven_params]
-    disruption_scores = [p.disruption_score / (p.grad.abs()+0.1) for p in interven_params]
-    # disruption_scores = [p.disruption_score for p in interven_params]
+    disruption_scores = [p.disruption_score / p.grad.abs()**f_amp for p in interven_params]
     threshold = get_threshold(quantile, disruption_scores)
     # ! apply mask
     for param in interven_params:
@@ -134,13 +133,13 @@ for step in range(1, 1 + unlearn_steps):
     # ! eval relearning
     if step % 50 == 0:
         collapsed_model = copy_model_and_collapse_loras(peft_model)
-        relearn(collapsed_model, relearn_lr, 50, forget_set, retain_set)
+        relearn(collapsed_model, relearn_lr, 30, forget_set, retain_set)
 
 
 # # ! final bigger eval relearning
 # collapsed_model = copy_model_and_collapse_loras(peft_model)
 # final_forget_loss = relearn(collapsed_model, relearn_lr, 50, forget_set, retain_set)
 
-# save_file_and_stdout_close(path)
+save_file_and_stdout_close(path)
 
 # %%
