@@ -298,3 +298,7 @@ if r_ppl > _stop_unlearning_at_ppl:
 # so stop if we broke through the LoRA
 if stats["adv_forget"] > 500 and (i + 1) % 10 == 0:
     break
+
+
+# path = save_file_and_stdout_open(__file__)
+# save_file_and_stdout_close(path)

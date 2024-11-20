@@ -5,7 +5,7 @@ from torch.optim.lr_scheduler import LambdaLR
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 import wandb
-from dataloading_utils import *
+from utils_dataloading import *
 from utils import *
 
 # model_id = "Qwen/Qwen2.5-0.5B"
@@ -20,7 +20,6 @@ tokenizer = AutoTokenizer.from_pretrained(model_id)
 # forget_set = load_one_oscar_shard("pl", tokenizer)
 forget_set = load_python_dataset(tokenizer)
 retain_set = load_one_oscar_shard("en", tokenizer)
-forget = "python"
 
 forget_eval = get_batch(iter(forget_set["validation"]), 32)
 retain_eval = get_batch(iter(retain_set["validation"]), 32)

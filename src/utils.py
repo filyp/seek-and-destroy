@@ -6,10 +6,6 @@ from datetime import datetime
 from pathlib import Path
 
 import torch as pt
-from RestrictedPython import compile_restricted, safe_globals
-from RestrictedPython.Eval import default_guarded_getiter
-from RestrictedPython.Guards import guarded_iter_unpack_sequence, safer_getattr
-from tensordict import TensorDict
 
 original_stdout = sys.stdout
 
@@ -57,30 +53,6 @@ def clipped_correct_logit_loss(output, input_ids):
     ids = input_ids[:, 1:].flatten()
     true_logits = logits[pt.arange(len(ids)), ids]
     return true_logits.clip(min=0).mean()
-
-
-def load_circuit(circuit_name):
-    circ = pt.load(repo_root() / "circuits" / f"{circuit_name}.pt", weights_only=True)
-    # this is filled with zero imps, at least for polish
-    for name in list(circ.keys()):
-        if "embed" in name:
-            del circ[name]
-    return TensorDict(circ)
-
-
-def kinda_safe_eval(expr):
-    # Create a custom globals dictionary with necessary components
-    restricted_globals = dict(safe_globals)
-    restricted_globals.update({
-        "_getiter_": default_guarded_getiter,
-        "_iter_unpack_sequence_": guarded_iter_unpack_sequence,
-        "_getattr_": safer_getattr,
-        # Add any other necessary functions/variables that your expression needs
-        "load_circuit": load_circuit,
-    })
-
-    byte_code = compile_restricted(expr, filename="<inline code>", mode="eval")
-    return eval(byte_code, restricted_globals)
 
 
 def get_perplexities(model, batches):
