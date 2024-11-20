@@ -16,26 +16,26 @@ tokenizer = AutoTokenizer.from_pretrained(model_id)
 forget_set = load_python_dataset(tokenizer)
 retain_set = load_one_oscar_shard("en", tokenizer)
 
-forget_eval = get_batch(iter(forget_set["validation"]), 32)
-retain_eval = get_batch(iter(retain_set["validation"]), 32)
+f_eval = get_batch(iter(forget_set["validation"]), 32)
+r_eval = get_batch(iter(retain_set["validation"]), 32)
 
 model = AutoModelForCausalLM.from_pretrained(model_id)
-init_forget, init_retain = get_perplexities(model, [forget_eval, retain_eval])
+init_forget = eval_loss(model, f_eval)
+init_retain = eval_loss(model, r_eval)
 print(f"init forget: {init_forget:6.2f}    init retain: {init_retain:6.2f}")
 
 # %%
 # ! parameters
-quantile = 0.01  # between 0 and 1
+quantile = 0.001  # between 0 and 1
 target_modules = ["dense", "dense_h_to_4h", "dense_4h_to_h"]
-# target_modules = ["dense_h_to_4h", "dense_4h_to_h"]
-unlearn_lr = 0.8e-2
+unlearn_lr = 4e-3
 adv_lora_lr = 6e-4
-ret_lora_lr = 1e-5
+ret_lora_lr = 3e-6
 disruption_score_decay = 0.95
-unlearn_steps = 10000
+unlearn_steps = 100
 relearn_lr = 3e-4
 
-path = save_file_and_stdout_open(__file__)
+# path = save_file_and_stdout_open(__file__)
 set_seeds(42)
 # todo: smth is still undeterministic!
 # prepare data iterators
@@ -84,11 +84,6 @@ for step in range(1, 1 + unlearn_steps):
         param.disruption_score *= disruption_score_decay
         param.disruption_score += param.grad**2
 
-    # ! get threshold
-    # todo take unlearn grads into account when computing disruption scores?
-    disruption_scores = [p.disruption_score for p in interven_params]
-    threshold = get_threshold(quantile, disruption_scores)
-
     # ! unlearn on the base model
     peft_model.set_adapter(["ret_lora", "adv_lora"])
     only_grad_on(model, interven_params)
@@ -96,6 +91,10 @@ for step in range(1, 1 + unlearn_steps):
     # loss = cross_entropy_loss(model(f_input_ids), f_input_ids)
     loss = clipped_correct_logit_loss(model(f_input_ids), f_input_ids)
     loss.backward()
+    # ! get threshold
+    disruption_scores = [p.disruption_score / p.grad**2 for p in interven_params]
+    # disruption_scores = [p.disruption_score for p in interven_params]
+    threshold = get_threshold(quantile, disruption_scores)
     # ! apply mask
     for param in interven_params:
         mask = param.disruption_score < threshold
@@ -112,32 +111,33 @@ for step in range(1, 1 + unlearn_steps):
 
     # ! eval
     if step % 10 == 0:
-        peft_model.set_adapter(["ret_lora", "adv_lora"])
-        adv_forget, adv_retain = get_perplexities(model, [forget_eval, retain_eval])
+        res = {}
         peft_model.set_adapter(["ret_lora"])
-        base_forget, base_retain = get_perplexities(model, [forget_eval, retain_eval])
+        res["base_forget"] = eval_loss(model, f_eval)
+        res["base_retain"] = eval_loss(model, r_eval)
+        peft_model.set_adapter(["ret_lora", "adv_lora"])
+        res["adv_forget"] = eval_loss(model, f_eval)
+        res["adv_retain"] = eval_loss(model, r_eval)
 
-        results = dict(
-            base_forget=base_forget,
-            base_retain=base_retain,
-            adv_forget=adv_forget,
-            adv_retain=adv_retain,
-        )
-        print(f"{step:4} " + " ".join(f"{v:11.2f}" for v in results.values()))
+        print(f"{step:4} " + " ".join(f"{v:11.2f}" for v in res.values()))
         if wandb.run:
-            wandb.log(results, step=step)
+            wandb.log(res, step=step)
 
-        if adv_forget > 10000 or base_retain > init_retain * 1.1:
+        if res["adv_forget"] > 10 or res["base_retain"] > init_retain + 0.1:
             break
 
     # ! eval relearning
-    if step % 1000 == 0:
-        collapsed_model = copy_model_and_collapse_loras(peft_model)
-        relearn(collapsed_model, relearn_lr, 300, forget_set, retain_set)
-    elif step % 100 == 0:
+    if step % 100 == 0:
         collapsed_model = copy_model_and_collapse_loras(peft_model)
         relearn(collapsed_model, relearn_lr, 30, forget_set, retain_set)
 
-save_file_and_stdout_close(path)
+
+# %%
+
+# ! final bigger eval relearning
+collapsed_model = copy_model_and_collapse_loras(peft_model)
+relearn(collapsed_model, relearn_lr, 100, forget_set, retain_set)
+
+# save_file_and_stdout_close(path)
 
 # %%

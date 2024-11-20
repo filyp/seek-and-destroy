@@ -55,12 +55,10 @@ def relearn(model, relearn_lr, relearn_steps, forget_set, retain_set):
         optimizer.step()
 
         if step % 10 == 0:
-            print("RELRN ", end="")
-            print_perplexities(model, [forget_eval, retain_eval], step)
+            f_loss = eval_loss(model, forget_eval)
+            r_loss = eval_loss(model, retain_eval)
+            print(f"{step:4d} {f_loss:11.2f} {r_loss:11.2f} < RELEARN")
             # if wandb.run:
             #     wandb.log(results, step=step)
 
-    model.eval()
-    with pt.no_grad():
-        retain_ppl = cross_entropy_loss(model(retain_eval), retain_eval).exp()
-    return retain_ppl
+    return eval_loss(model, retain_eval)
