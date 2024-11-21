@@ -1,3 +1,4 @@
+import logging
 import random
 import shutil
 import subprocess
@@ -53,6 +54,13 @@ def clipped_correct_logit_loss(output, input_ids):
     return true_logits.clip(min=0).mean()
 
 
+loss_fns = dict(
+    cross_entropy=cross_entropy_loss,
+    clipped_correct_logit=clipped_correct_logit_loss,
+    correct_logit=correct_logit_loss,
+)
+
+
 def eval_loss(model, batch):
     model.eval()
     with pt.no_grad():
@@ -60,9 +68,17 @@ def eval_loss(model, batch):
 
 
 # for reproducibility save the file state and append output into it
-def save_script(file_name):
+def save_script_and_attach_logger(file_name):
+    # save script
     folder = repo_root() / "results" / datetime.now().strftime("%Y-%m-%d")
     folder.mkdir(parents=True, exist_ok=True)
     path = folder / f"{datetime.now().strftime('%H:%M:%S')}_{Path(file_name).stem}.py"
     shutil.copy(file_name, path)
-    return path
+    # attach logger
+    for h in logging.getLogger().handlers[1:]:
+        logging.root.removeHandler(h)
+    file_handler = logging.FileHandler(path)
+    formatter = logging.Formatter("# %(asctime)s %(levelname)s  %(message)s")
+    file_handler.setFormatter(formatter)
+    logging.root.addHandler(file_handler)
+    logging.info(f"commit hash: {commit_hash()}")

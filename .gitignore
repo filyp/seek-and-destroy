@@ -5,3 +5,4 @@ wandb
 models
 circuits
 results
+src/db.sqlite3

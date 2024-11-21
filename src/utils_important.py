@@ -39,7 +39,9 @@ def relearn(model, relearn_lr, relearn_steps, forget_set, retain_set):
     retain_eval = get_batch(iter(retain_set["validation"]), 32)
 
     # add relearning lora
-    lora_config = LoraConfig(r=1, target_modules=["dense_h_to_4h"])
+    is_modern = any("up_proj" in n for n, _ in model.named_parameters())
+    target_modules = ["up_proj"] if is_modern else ["dense_h_to_4h"]
+    lora_config = LoraConfig(r=1, target_modules=target_modules)
     peft_model = get_peft_model(model, lora_config, adapter_name="relearning_lora")
     model = peft_model.model
 
