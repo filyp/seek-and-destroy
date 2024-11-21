@@ -15,7 +15,7 @@ pt.set_default_device("cuda")
 
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s %(levelname)s   %(message)s",
+    format="%(asctime)s %(levelname)s  %(message)s",
     datefmt="%H:%M:%S",
     handlers=[logging.StreamHandler()],
 )
@@ -35,21 +35,23 @@ logging.info(f"init forget: {init_forget:6.2f}    init retain: {init_retain:6.2f
 
 # %%
 # ! parameters
-quantile = 0.0005  # between 0 and 1
+quantile = 0.001  # between 0 and 1
 target_modules = ["dense", "dense_h_to_4h", "dense_4h_to_h"]
-unlearn_lr = 5e-3
+unlearn_lr = 1e-4
 adv_lora_lr = 6e-4
-ret_lora_lr = 0  # 3e-4  # tip: first look for good params with this set to 0
-disruption_score_decay = 0.95
-unlearn_steps = 50
+ret_lora_lr = 5e-5  # tip: first look for good params with this set to 0
+disruption_score_decay = 0.9
+unlearn_steps = 5000
 relearn_lr = 3e-4
-mask_fn = lambda param: param.disruption_score / param.grad.abs() ** 0.2
+mask_fn = lambda param: param.disruption_score / param.grad.abs() ** 2
 
 # ! save current script state and log to it
 path = save_script(__file__)
 for h in logging.getLogger().handlers[1:]:
     logging.root.removeHandler(h)
-logging.root.addHandler(logging.FileHandler(path))
+file_handler = logging.FileHandler(path)
+file_handler.setFormatter(logging.Formatter("# %(asctime)s %(levelname)s  %(message)s"))
+logging.root.addHandler(file_handler)
 logging.info(f"commit hash: {commit_hash()}")
 
 set_seeds(42)
@@ -82,7 +84,7 @@ for param in interven_params:
 
 # %
 # ! unlearning loop
-logging.info("step      base_f      base_r      adv_f      adv_r")
+logging.info("step      base_f      base_r       adv_f      adv_r")
 for step in range(1, 1 + unlearn_steps):
     model.train()
     f_input_ids = get_batch(forget_iter, 16)
@@ -150,7 +152,9 @@ for step in range(1, 1 + unlearn_steps):
         collapsed_model = copy_model_and_collapse_loras(peft_model)
         relearn(collapsed_model, relearn_lr, 30, forget_set, retain_set)
 
+# %
+# ! final bigger eval relearning
+collapsed_model = copy_model_and_collapse_loras(peft_model)
+final_forget_loss = relearn(collapsed_model, relearn_lr, 50, forget_set, retain_set)
 
-# # ! final bigger eval relearning
-# collapsed_model = copy_model_and_collapse_loras(peft_model)
-# final_forget_loss = relearn(collapsed_model, relearn_lr, 50, forget_set, retain_set)
+# %%
