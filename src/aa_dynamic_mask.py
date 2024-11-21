@@ -43,22 +43,23 @@ logging.info(f"init forget: {init_forget:6.2f}    init retain: {init_retain:6.2f
 def objective(trial):
     # ! parameters
     quantile = trial.suggest_float("quantile", 0.0001, 1, log=True)
-    unlearn_lr = trial.suggest_float("unlearn_lr", 1e-5, 1e-2, log=True)
-    adv_lora_lr = 3e-4
-    ret_lora_lr = 3e-4  # tip: first look for good params with this set to 0
-    disruption_score_decay = 0.95
-    unlearn_steps = 300
-    relearn_lr = 3e-4
-    forget_amp = trial.suggest_float("forget_amp", 0, 2)
+    unlearn_lr = trial.suggest_float("unlearn_lr", 1e-5, 1e-3, log=True)
+    adv_lora_lr = trial.suggest_float("adv_lora_lr", 1e-5, 1e-3, log=True)
+    ret_lora_lr = trial.suggest_float("ret_lora_lr", 1e-5, 1e-3, log=True)
+    disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.5, 0.999)
+    unl_loss_fn = loss_fns[trial.suggest_categorical("unl_loss_fn", loss_fns.keys())]
+    forget_amp = trial.suggest_float("forget_amp", 0, 1.5)
     mask_fn = lambda param: param.disruption_score / param.grad.abs() ** forget_amp
     disruption_score_warmup = 20
+    unlearn_steps = 200
+    relearn_lr = 3e-4
 
-    trial.set_user_attr("lora_defeated", False)
+    trial.set_user_attr("lora_defeaten", False)
     trial.set_user_attr("retain_broken", False)
 
     save_script_and_attach_logger(__file__)
     set_seeds(42)
-    # todo: smth is still undeterministic!
+    # note: smth is still undeterministic!
     # prepare data iterators
     forget_iter = looping_iter(forget_set["train"])
     retain_iter = looping_iter(retain_set["train"])
@@ -66,10 +67,10 @@ def objective(trial):
     # load model
     model = AutoModelForCausalLM.from_pretrained(model_id)
     # add loras
-    adv_lora_conf = LoraConfig(r=1, target_modules=target_modules, lora_dropout=0.1)
+    adv_lora_conf = LoraConfig(r=4, target_modules=target_modules, lora_dropout=0.1)
     peft_model = get_peft_model(model, adv_lora_conf, adapter_name="adv_lora", mixed=True)  # fmt: skip
     model = peft_model.model
-    ret_lora_conf = LoraConfig(r=1, target_modules=target_modules, lora_dropout=0.1)
+    ret_lora_conf = LoraConfig(r=4, target_modules=target_modules, lora_dropout=0.1)
     peft_model.add_adapter("ret_lora", ret_lora_conf)
 
     interven_params = [p for n, p in model.named_parameters() if ".base_layer.weight" in n]  # fmt: skip
@@ -111,9 +112,7 @@ def objective(trial):
         peft_model.set_adapter(["ret_lora", "adv_lora"])
         only_grad_on(model, interven_params)
         model.zero_grad(set_to_none=True)
-        # loss_fn = loss_fns[trial.suggest_categorical("loss_fn", loss_fns.keys()])
-        loss_fn = clipped_correct_logit_loss
-        loss = loss_fn(model(f_input_ids), f_input_ids)
+        loss = unl_loss_fn(model(f_input_ids), f_input_ids)
         loss.backward()
         # ! get threshold
         final_scores = [mask_fn(p) for p in interven_params]
@@ -150,11 +149,12 @@ def objective(trial):
                 logging.error("Retain performance broken")
                 # raise optuna.TrialPruned()
                 trial.set_user_attr("retain_broken", True)
-                return init_forget - 0.1
+                return init_forget - 0.5
             if res["adv_forget"] > 10:
                 logging.error("Adversarial LoRA defeated")
-                trial.set_user_attr("lora_defeated", True)
+                trial.set_user_attr("lora_defeaten", True)
                 break
+            # todo early stopping on bad performance?
 
         # # ! eval relearning
         # if step % 50 == 0:
@@ -164,13 +164,13 @@ def objective(trial):
     # %
     # ! final bigger eval relearning
     collapsed_model = copy_model_and_collapse_loras(peft_model)
-    final_forget_loss = relearn(collapsed_model, relearn_lr, 100, forget_set, retain_set)
-    return final_forget_loss
+    forget_loss = relearn(collapsed_model, relearn_lr, 100, forget_set, retain_set)
+    return forget_loss
 
 
 # %%
 study = optuna.create_study(
-    study_name="clippedlogit_noprune",
+    study_name="7param_noprune",
     storage="sqlite:///db.sqlite3",
     direction="maximize",
     # load_if_exists=True  # This allows resuming existing studies
@@ -179,6 +179,6 @@ study.set_metric_names(["forget_loss"])
 study.set_user_attr("forget_set", forget_set_name)
 study.set_user_attr("model_id", model_id)
 study.set_user_attr("target_modules", target_modules)
-study.optimize(objective, n_trials=1000)
+study.optimize(objective, n_trials=10000)
 
 # %%
