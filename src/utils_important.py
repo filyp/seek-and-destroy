@@ -1,3 +1,4 @@
+import logging
 from copy import deepcopy
 
 import torch as pt
@@ -26,7 +27,9 @@ def copy_model_and_collapse_loras(peft_model):
     peft_model_copy.delete_adapter("adv_lora")
     # merge and unload helper lora
     peft_model_copy.set_adapter(["ret_lora"])
-    return peft_model_copy.merge_and_unload()
+    collapsed = peft_model_copy.merge_and_unload()
+    del collapsed.peft_config
+    return collapsed
 
 
 def relearn(model, relearn_lr, relearn_steps, forget_set, retain_set):
@@ -43,7 +46,7 @@ def relearn(model, relearn_lr, relearn_steps, forget_set, retain_set):
     optimizer = pt.optim.Adam(model.parameters(), lr=relearn_lr, betas=(0.9, 0.999))
 
     # ! relearning loop
-    print("")
+    logging.info("")
     for step in range(1, 1 + relearn_steps):
         # standard forward, backward, and update
         model.train()
@@ -58,7 +61,7 @@ def relearn(model, relearn_lr, relearn_steps, forget_set, retain_set):
         if step % 10 == 0:
             f_loss = eval_loss(model, forget_eval)
             r_loss = eval_loss(model, retain_eval)
-            print(f"{step:4d} {f_loss:11.2f} {r_loss:11.2f}   <   RELEARNING")
+            logging.info(f"{step:4d} {f_loss:11.2f} {r_loss:11.2f}   <   RELEARNING")
 
-    print("")
+    logging.info("")
     return eval_loss(model, forget_eval)

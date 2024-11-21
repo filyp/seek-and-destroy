@@ -1,15 +1,24 @@
 # %%
+import logging
+
 import torch as pt
+import wandb
 from peft import LoraConfig, get_peft_model
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-import wandb
 from utils import *
 from utils_dataloading import *
 from utils_important import *
 
 model_id = "EleutherAI/pythia-70m-deduped"
 pt.set_default_device("cuda")
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s   %(message)s",
+    datefmt="%H:%M:%S",
+    handlers=[logging.StreamHandler()],
+)
 
 # load datasets
 tokenizer = AutoTokenizer.from_pretrained(model_id)
@@ -22,21 +31,27 @@ r_eval = get_batch(iter(retain_set["validation"]), 32)
 model = AutoModelForCausalLM.from_pretrained(model_id)
 init_forget = eval_loss(model, f_eval)
 init_retain = eval_loss(model, r_eval)
-print(f"init forget: {init_forget:6.2f}    init retain: {init_retain:6.2f}")
+logging.info(f"init forget: {init_forget:6.2f}    init retain: {init_retain:6.2f}")
 
 # %%
 # ! parameters
-quantile = 0.0001  # between 0 and 1
+quantile = 0.0005  # between 0 and 1
 target_modules = ["dense", "dense_h_to_4h", "dense_4h_to_h"]
 unlearn_lr = 5e-3
 adv_lora_lr = 6e-4
-ret_lora_lr = 3e-4
+ret_lora_lr = 0  # 3e-4  # tip: first look for good params with this set to 0
 disruption_score_decay = 0.95
-unlearn_steps = 200
+unlearn_steps = 50
 relearn_lr = 3e-4
-f_amp = 0.9
+mask_fn = lambda param: param.disruption_score / param.grad.abs() ** 0.2
 
-path = save_file_and_stdout_open(__file__)
+# ! save current script state and log to it
+path = save_script(__file__)
+for h in logging.getLogger().handlers[1:]:
+    logging.root.removeHandler(h)
+logging.root.addHandler(logging.FileHandler(path))
+logging.info(f"commit hash: {commit_hash()}")
+
 set_seeds(42)
 # todo: smth is still undeterministic!
 # prepare data iterators
@@ -67,7 +82,7 @@ for param in interven_params:
 
 # %
 # ! unlearning loop
-print("step      base_f      base_r      adv_f      adv_r")
+logging.info("step      base_f      base_r      adv_f      adv_r")
 for step in range(1, 1 + unlearn_steps):
     model.train()
     f_input_ids = get_batch(forget_iter, 16)
@@ -93,11 +108,11 @@ for step in range(1, 1 + unlearn_steps):
     loss = clipped_correct_logit_loss(model(f_input_ids), f_input_ids)
     loss.backward()
     # ! get threshold
-    disruption_scores = [p.disruption_score / p.grad.abs()**f_amp for p in interven_params]
-    threshold = get_threshold(quantile, disruption_scores)
+    final_scores = [mask_fn(p) for p in interven_params]
+    threshold = get_threshold(quantile, final_scores)
     # ! apply mask
     for param in interven_params:
-        mask = param.disruption_score < threshold
+        mask = mask_fn(param) < threshold
         param.grad *= mask
     base_optimizer.step()
 
@@ -119,15 +134,15 @@ for step in range(1, 1 + unlearn_steps):
         res["adv_forget"] = eval_loss(model, f_eval)
         res["adv_retain"] = eval_loss(model, r_eval)
 
-        print(f"{step:4} " + " ".join(f"{v:11.2f}" for v in res.values()))
+        logging.info(f"{step:4} " + " ".join(f"{v:11.2f}" for v in res.values()))
         if wandb.run:
             wandb.log(res, step=step)
 
-        if res["adv_forget"] > 10:
-            print("Adversarial LoRA defeated")
-            break
         if res["base_retain"] > init_retain + 0.1:
-            print("Retain performance broken")
+            logging.error("Retain performance broken")
+            break
+        if res["adv_forget"] > 10:
+            logging.error("Adversarial LoRA defeated")
             break
 
     # ! eval relearning
@@ -139,7 +154,3 @@ for step in range(1, 1 + unlearn_steps):
 # # ! final bigger eval relearning
 # collapsed_model = copy_model_and_collapse_loras(peft_model)
 # final_forget_loss = relearn(collapsed_model, relearn_lr, 50, forget_set, retain_set)
-
-save_file_and_stdout_close(path)
-
-# %%

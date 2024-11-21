@@ -75,7 +75,7 @@ relearn_steps = 300
 # run_name = f"U={unlearn_lr:.0e} A={adversa_lr:.0e} H={helper_lr:.0e} R={relearn_lr:.0e}"
 # wandb.init(project="adversarial_adaptation", group="unlearning", name=run_name)
 
-path = save_file_and_stdout_open(__file__)
+path = save_script(__file__)
 
 set_seeds(42)
 # prepare data iterators
