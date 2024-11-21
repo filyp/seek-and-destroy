@@ -74,3 +74,10 @@ def looping_iter(iterable):
     # like itertools.cycle, but will not eat memory by storing element copies
     while True:
         yield from iterable
+
+
+dataset_loaders = dict(
+    python=load_python_dataset,
+    en=lambda tokenizer: load_one_oscar_shard("en", tokenizer),
+    pl=lambda tokenizer: load_one_oscar_shard("pl", tokenizer),
+)
