@@ -16,12 +16,19 @@ def only_grad_on(model, params_to_grad):
 
 
 def get_threshold(quantile, disruption_scores):
+    """
+    Calculate threshold value for parameter masking.
+    Returns the k-th smallest value where k is determined by quantile.
+    """
     total_num_params = sum(s.numel() for s in disruption_scores)
     k = int(quantile * total_num_params)
     return pt.cat([s.flatten() for s in disruption_scores]).kthvalue(k).values
 
 
 def copy_model_and_collapse_loras(peft_model):
+    """
+    Creates a copy of the model with retention LoRA merged and adversarial LoRA removed.
+    """
     peft_model_copy = deepcopy(peft_model)
     # delete adversarial lora
     peft_model_copy.delete_adapter("adv_lora")
@@ -32,24 +39,24 @@ def copy_model_and_collapse_loras(peft_model):
     return collapsed
 
 
-def relearn(model, relearn_lr, relearn_steps, forget_set, retain_set):
+def relearn(model, config, forget_set, retain_set):
     forget_iter = looping_iter(forget_set["validation"])
     retain_iter = looping_iter(retain_set["validation"])
     forget_eval = get_batch(iter(forget_set["validation"]), 32)
     retain_eval = get_batch(iter(retain_set["validation"]), 32)
 
     # add relearning lora
-    is_modern = any("up_proj" in n for n, _ in model.named_parameters())
-    target_modules = ["up_proj"] if is_modern else ["dense_h_to_4h"]
-    lora_config = LoraConfig(r=1, target_modules=target_modules)
+    lora_config = LoraConfig(**config.relearn_lora_conf)
     peft_model = get_peft_model(model, lora_config, adapter_name="relearning_lora")
     model = peft_model.model
 
-    optimizer = pt.optim.Adam(model.parameters(), lr=relearn_lr, betas=(0.9, 0.999))
+    optimizer = pt.optim.Adam(
+        model.parameters(), lr=config.relearn_lr, betas=(0.9, 0.999)
+    )
 
     # ! relearning loop
     logging.info("")
-    for step in range(1, 1 + relearn_steps):
+    for step in range(1, 1 + config.relearn_steps):
         # standard forward, backward, and update
         model.train()
         optimizer.zero_grad(set_to_none=True)

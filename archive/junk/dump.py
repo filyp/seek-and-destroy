@@ -302,3 +302,7 @@ if stats["adv_forget"] > 500 and (i + 1) % 10 == 0:
 
 # path = save_file_and_stdout_open(__file__)
 # save_file_and_stdout_close(path)
+
+
+# model_id="HuggingFaceTB/SmolLM-135M",
+# target_modules=["gate_proj", "down_proj", "up_proj", "q_proj", "v_proj", "k_proj", "o_proj"],
