@@ -14,7 +14,8 @@ from utils_important import *
 
 config = SimpleNamespace(
     # Model/data configs
-    model_id="EleutherAI/pythia-14m",
+    # model_id="EleutherAI/pythia-14m",
+    model_id="EleutherAI/pythia-70m",
     forget_set_name="python",
     lora_config=dict(
         r=4,
@@ -44,7 +45,7 @@ logging.basicConfig(
 
 # load datasets
 tokenizer = AutoTokenizer.from_pretrained(config.model_id)
-retain_set = dataset_loaders["en"](tokenizer)
+retain_set = dataset_loaders["wikitext"](tokenizer)
 forget_set = dataset_loaders[config.forget_set_name](tokenizer)
 
 f_eval_batch = get_batch(iter(forget_set["validation"]), config.eval_batch_size)
@@ -59,10 +60,10 @@ logging.info(f"init forget: {init_forget:6.2f}    init retain: {init_retain:6.2f
 # %%
 def objective(trial):
     # ! parameters
-    quantile = trial.suggest_float("quantile", 0.0001, 0.1, log=True)
-    unlearn_lr = trial.suggest_float("unlearn_lr", 1e-5, 2e-4, log=True)
-    adv_lora_lr = trial.suggest_float("adv_lora_lr", 1e-4, 1e-3, log=True)
-    ret_lora_lr = trial.suggest_float("ret_lora_lr", 1e-4, 1e-3, log=True)
+    quantile = trial.suggest_float("quantile", 100e-6, 50e-3, log=True)
+    unlearn_lr = trial.suggest_float("unlearn_lr", 5e-6, 200e-6, log=True)
+    adv_lora_lr = trial.suggest_float("adv_lora_lr", 10e-6, 1e-3, log=True)
+    ret_lora_lr = trial.suggest_float("ret_lora_lr", 10e-6, 1e-3, log=True)
     unl_loss_fn = loss_fns[trial.suggest_categorical("unl_loss_fn", loss_fns.keys())]
     ret_loss_fn = loss_fns[trial.suggest_categorical("ret_loss_fn", loss_fns.keys())]
     forget_amp = trial.suggest_float("forget_amp", 0.5, 1.5)
@@ -184,7 +185,7 @@ def objective(trial):
 
 # %%
 study = optuna.create_study(
-    study_name="8param_100/50s_narrower_noprune",
+    study_name="8param_100/50s_narrower2_noprune_70m_wikitext",
     storage="sqlite:///db.sqlite3",
     direction="maximize",
     # load_if_exists=True  # This allows resuming existing studies

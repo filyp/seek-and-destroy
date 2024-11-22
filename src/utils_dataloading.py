@@ -4,7 +4,14 @@ import re
 from datasets import IterableDataset, IterableDatasetDict, load_dataset
 
 
-def prepare_dataset(raw_dataset, tokenizer, preprocess_fn):
+def looping_iter(iterable):
+    # like itertools.cycle, but will not eat memory by storing element copies
+    while True:
+        yield from iterable
+
+
+def prepare_dataset(raw_dataset, tokenizer, preprocess_fn=lambda ex: {}):
+    # preprocess_fn is used to add additional fields to the dataset before tokenization
     context_len = 100
 
     # split into 4 quarters
@@ -28,24 +35,33 @@ def prepare_dataset(raw_dataset, tokenizer, preprocess_fn):
             ),
         )
         # filter out the short ones
+        # this together with truncation ensures that each example has exactly 100 tokens
         .filter(lambda ex: ex["input_ids"].shape[-1] >= context_len)
     )
     assert next(iter(dataset["test"]))["text"] != next(iter(dataset["train"]))["text"]
     return dataset
 
 
-def load_one_oscar_shard(lang, tokenizer):
-    # only use one ~600MB shard
-    # also, streaming would make splitting too slow
+# def load_one_oscar_shard(lang, tokenizer):
+#     # only use one ~600MB shard
+#     # also, streaming would make splitting too slow
+#     return prepare_dataset(
+#         load_dataset(
+#             "text",
+#             split="train",  # train is the only split in oscar
+#             data_files=f"hf://datasets/oscar-corpus/OSCAR-2301/{lang}_meta/{lang}_meta_part_1.jsonl.zst",
+#         ),
+#         tokenizer,
+#         # process the raw data, following OSCAR-2301.py
+#         lambda ex: {"text": json.loads(ex["text"])["content"]},
+#     )
+
+
+def load_wikitext(tokenizer):
     return prepare_dataset(
-        load_dataset(
-            "text",
-            split="train",  # train is the only split in oscar
-            data_files=f"hf://datasets/oscar-corpus/OSCAR-2301/{lang}_meta/{lang}_meta_part_1.jsonl.zst",
-        ),
+        # train split is big enough so just use it - it's simpler
+        load_dataset("Salesforce/wikitext", "wikitext-103-raw-v1", split="train"),
         tokenizer,
-        # process the raw data, following OSCAR-2301.py
-        lambda ex: {"text": json.loads(ex["text"])["content"]},
     )
 
 
@@ -70,14 +86,9 @@ def load_python_dataset(tokenizer):
     )
 
 
-def looping_iter(iterable):
-    # like itertools.cycle, but will not eat memory by storing element copies
-    while True:
-        yield from iterable
-
-
 dataset_loaders = dict(
+    wikitext=load_wikitext,
     python=load_python_dataset,
-    en=lambda tokenizer: load_one_oscar_shard("en", tokenizer),
-    pl=lambda tokenizer: load_one_oscar_shard("pl", tokenizer),
+    # oscar_en=lambda tokenizer: load_one_oscar_shard("en", tokenizer),
+    # oscar_pl=lambda tokenizer: load_one_oscar_shard("pl", tokenizer),
 )

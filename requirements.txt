@@ -1,13 +1,13 @@
 # RestrictedPython
 bitsandbytes
 datasets
-# gunicorn
+gunicorn
 ipykernel
 ipywidgets
 matplotlib
 optuna
 optuna-dashboard
-# optuna-fast-fanova
+optuna-fast-fanova
 peft
 scipy
 # tensordict
