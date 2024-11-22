@@ -117,6 +117,10 @@ def objective(trial):
                 trial.set_user_attr("retain_broken", True)
                 # raise optuna.TrialPruned()
                 return init_forget - 0.3
+            # early stopping if forget loss doesn't improve
+            if step >= 30 and res["forget"] < init_forget + 0.05:
+                logging.info("Forget loss stalled")
+                return res["forget"]
 
     # final evaluation: test relearning capability
     copied_model = deepcopy(model)

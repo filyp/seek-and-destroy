@@ -19,5 +19,5 @@ def is_repo_clean() -> bool:
 
 
 def add_tag_to_current_commit(tag: str) -> None:
-    cmd = ["git", "tag", tag]
-    subprocess.run(cmd, check=True)
+    """note that if this tag already exists, it will be moved to the current commit"""
+    subprocess.run(["git", "tag", "-f", tag], check=True)

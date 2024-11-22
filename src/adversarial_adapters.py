@@ -36,7 +36,7 @@ config = SimpleNamespace(
     relearn_lora_conf=dict(r=1, target_modules=["up_proj"]),
     # Default tunable params
     disruption_score_decay=0.95,
-    disruption_score_warmup=20,
+    disruption_score_warmup=10,
 )
 
 pt.set_default_device("cuda")
@@ -64,10 +64,10 @@ logging.info(f"init forget: {init_forget:6.2f}    init retain: {init_retain:6.2f
 # %%
 def objective(trial):
     # ! parameters
-    quantile = trial.suggest_float("quantile", 100e-6, 100e-3, log=True)
-    unlearn_lr = trial.suggest_float("unlearn_lr", 5e-6, 200e-6, log=True)
-    adv_lora_lr = trial.suggest_float("adv_lora_lr", 10e-6, 2e-3, log=True)
-    ret_lora_lr = trial.suggest_float("ret_lora_lr", 10e-6, 1e-3, log=True)
+    quantile = trial.suggest_float("quantile", 1e-4, 1e-1, log=True)
+    unlearn_lr = trial.suggest_float("unlearn_lr", 1e-5, 1e-3, log=True)
+    adv_lora_lr = trial.suggest_float("adv_lora_lr", 1e-5, 2e-3, log=True)
+    ret_lora_lr = trial.suggest_float("ret_lora_lr", 1e-5, 1e-3, log=True)
     unl_loss_fn = loss_fns[trial.suggest_categorical("unl_loss_fn", loss_fns.keys())]
     ret_loss_fn = loss_fns["cross_entropy"]
     # ret_loss_fn = loss_fns[trial.suggest_categorical("ret_loss_fn", loss_fns.keys())]
@@ -190,12 +190,16 @@ def objective(trial):
                 logging.error("Adversarial LoRA defeaten")
                 trial.set_user_attr("lora_defeaten", True)
                 break
-            # todo early stopping on bad performance?
-
+            # early stopping if base forget loss doesn't improve
+            if step >= 30 and res["base_forget"] < init_forget + 0.05:
+                logging.info("Forget loss stalled")
+                return res["base_forget"]
         # # ! eval relearning
         # if step % 50 == 0:
         #     collapsed_model = copy_model_and_collapse_loras(peft_model)
         #     relearn(collapsed_model, config, forget_set, retain_set)
+
+    trial.set_user_attr("steps", step)
 
     # %
     # ! final bigger eval relearning
