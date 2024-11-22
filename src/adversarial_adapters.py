@@ -4,11 +4,10 @@ from types import SimpleNamespace
 
 import optuna
 import torch as pt
-import wandb
 from peft import LoraConfig, get_peft_model
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from utils.dataloading import dataset_loaders
+from utils.data_loading import dataset_loaders
 from utils.git import add_tag_to_current_commit, commit_hash, is_repo_clean
 from utils.model_operations import *
 from utils.training import loss_fns, set_seeds
@@ -79,9 +78,7 @@ def objective(trial):
     trial.set_user_attr("lora_defeaten", False)
     trial.set_user_attr("retain_broken", False)
 
-    # save_script_and_attach_logger(__file__)
-    set_seeds(42)
-    # note: smth is still undeterministic!
+    set_seeds(42)  # note: something is still undeterministic!
     # prepare data iterators
     forget_iter = looping_iter(forget_set["train"])
     retain_iter = looping_iter(retain_set["train"])
@@ -168,8 +165,6 @@ def objective(trial):
             res["adv_retain"] = eval_loss(model, r_eval_batch)
 
             logging.info(f"{step:4} " + " ".join(f"{v:11.2f}" for v in res.values()))
-            if wandb.run:
-                wandb.log(res, step=step)
 
             if res["base_retain"] > init_retain + 0.1:
                 logging.error("Retain performance broken")
