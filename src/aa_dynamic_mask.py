@@ -44,14 +44,15 @@ def objective(trial):
     # ! parameters
     quantile = trial.suggest_float("quantile", 0.0001, 1, log=True)
     unlearn_lr = trial.suggest_float("unlearn_lr", 1e-5, 1e-3, log=True)
-    adv_lora_lr = trial.suggest_float("adv_lora_lr", 1e-5, 1e-3, log=True)
-    ret_lora_lr = trial.suggest_float("ret_lora_lr", 1e-5, 1e-3, log=True)
-    disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.5, 0.999)
+    adv_lora_lr = 3e-4  # trial.suggest_float("adv_lora_lr", 1e-5, 1e-3, log=True)
+    ret_lora_lr = 3e-4  # trial.suggest_float("ret_lora_lr", 1e-5, 1e-3, log=True)
     unl_loss_fn = loss_fns[trial.suggest_categorical("unl_loss_fn", loss_fns.keys())]
-    forget_amp = trial.suggest_float("forget_amp", 0, 1.5)
+    forget_amp = trial.suggest_float("forget_amp", 0, 2)
+    retain_amp = trial.suggest_float("retain_amp", 0, 2)
     mask_fn = lambda param: param.disruption_score / param.grad.abs() ** forget_amp
+    disruption_score_decay = 0.95
     disruption_score_warmup = 20
-    unlearn_steps = 200
+    unlearn_steps = 100
     relearn_lr = 3e-4
 
     trial.set_user_attr("lora_defeaten", False)
@@ -103,7 +104,7 @@ def objective(trial):
         # ! update disruption scores
         for param in interven_params:
             param.disruption_score *= disruption_score_decay
-            param.disruption_score += param.grad**2
+            param.disruption_score += param.grad.abs() ** retain_amp
         if step <= disruption_score_warmup:
             continue
         ret_optimizer.step()
@@ -147,11 +148,11 @@ def objective(trial):
 
             if res["base_retain"] > init_retain + 0.1:
                 logging.error("Retain performance broken")
-                # raise optuna.TrialPruned()
                 trial.set_user_attr("retain_broken", True)
-                return init_forget - 0.5
+                # raise optuna.TrialPruned()
+                return init_forget - 0.3
             if res["adv_forget"] > 10:
-                logging.error("Adversarial LoRA defeated")
+                logging.error("Adversarial LoRA defeaten")
                 trial.set_user_attr("lora_defeaten", True)
                 break
             # todo early stopping on bad performance?
@@ -164,13 +165,13 @@ def objective(trial):
     # %
     # ! final bigger eval relearning
     collapsed_model = copy_model_and_collapse_loras(peft_model)
-    forget_loss = relearn(collapsed_model, relearn_lr, 100, forget_set, retain_set)
+    forget_loss = relearn(collapsed_model, relearn_lr, 50, forget_set, retain_set)
     return forget_loss
 
 
 # %%
 study = optuna.create_study(
-    study_name="7param_noprune",
+    study_name="5param_noprune",
     storage="sqlite:///db.sqlite3",
     direction="maximize",
     # load_if_exists=True  # This allows resuming existing studies
