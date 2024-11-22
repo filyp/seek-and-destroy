@@ -3,7 +3,7 @@ import torch as pt
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from utils_dataloading import *
+from utils.utils_dataloading import *
 from utils import *
 
 # model_id = "Qwen/Qwen2.5-0.5B"

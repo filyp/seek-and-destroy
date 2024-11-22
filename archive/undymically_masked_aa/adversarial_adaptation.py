@@ -5,7 +5,7 @@ from torch.optim.lr_scheduler import LambdaLR
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 import wandb
-from utils_dataloading import *
+from utils.dataloading import *
 from utils import *
 
 # model_id = "Qwen/Qwen2.5-0.5B"

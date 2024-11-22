@@ -1,12 +1,12 @@
 import logging
 import random
 import shutil
-import subprocess
-import sys
 from datetime import datetime
 from pathlib import Path
 
 import torch as pt
+
+from utils.git import commit_hash, repo_root
 
 
 # --- Setup and Environment ---
@@ -18,24 +18,12 @@ def set_seeds(seed):
     random.seed(seed)
 
 
-def repo_root():
-    return Path(
-        subprocess.check_output(["git", "rev-parse", "--show-toplevel"])
-        .decode("utf-8")
-        .strip()
-    )
-
-
-def commit_hash():
-    return subprocess.check_output(["git", "rev-parse", "HEAD"]).decode("utf-8").strip()
-
-
 def save_script_and_attach_logger(file_name):
     # for reproducibility save the file state and append output into it
     # save script
     folder = repo_root() / "results" / datetime.now().strftime("%Y-%m-%d")
     folder.mkdir(parents=True, exist_ok=True)
-    path = folder / f"{datetime.now().strftime('%H:%M:%S')}_{Path(file_name).stem}.py"
+    path = folder / f"{datetime.now().strftime('%H:%M:%S')}_{Path(file_name).stem}.log"
     shutil.copy(file_name, path)
     # attach logger
     for h in logging.getLogger().handlers[1:]:

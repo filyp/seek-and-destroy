@@ -1,4 +1,3 @@
-import json
 import re
 
 from datasets import IterableDataset, IterableDatasetDict, load_dataset

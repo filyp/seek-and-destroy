@@ -306,3 +306,21 @@ if stats["adv_forget"] > 500 and (i + 1) % 10 == 0:
 
 # model_id="HuggingFaceTB/SmolLM-135M",
 # target_modules=["gate_proj", "down_proj", "up_proj", "q_proj", "v_proj", "k_proj", "o_proj"],
+
+
+
+
+
+# ! retain with helper lora
+peft_model.set_adapter(["ret_lora"])
+only_grad_on(model, interven_params + ret_lora_params)
+model.zero_grad(set_to_none=True)
+loss = ret_loss_fn(model(r_input_ids), r_input_ids)
+loss.backward()
+# ! update disruption scores
+for param in interven_params:
+    param.disruption_score *= config.disruption_score_decay
+    param.disruption_score += param.grad.abs() ** retain_amp
+if step <= config.disruption_score_warmup:
+    continue
+ret_optimizer.step()
