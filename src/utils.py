@@ -85,3 +85,18 @@ loss_fns = dict(
     clipped_correct_logit=clipped_correct_logit_loss,
     correct_logit=correct_logit_loss,
 )
+
+
+# --- Mock Trial for Optuna ---
+class MockTrial:
+    def __init__(self, params):
+        self.params = params
+
+    def suggest_float(self, name, *args, **kwargs):
+        return self.params[name]
+
+    def suggest_categorical(self, name, *args, **kwargs):
+        return self.params[name]
+
+    def set_user_attr(self, *args, **kwargs):
+        pass

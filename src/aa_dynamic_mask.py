@@ -22,7 +22,7 @@ config = SimpleNamespace(
         target_modules=["query_key_value", "dense", "dense_h_to_4h", "dense_4h_to_h"],
     ),
     # Training constants
-    unlearn_steps=50,
+    unlearn_steps=100,
     batch_size=16,
     eval_batch_size=32,
     # Relearning params
@@ -184,28 +184,29 @@ def objective(trial):
 
 # %%
 study = optuna.create_study(
-    study_name="8param_50/50s_narrower_noprune",
+    study_name="8param_100/50s_narrower_noprune",
     storage="sqlite:///db.sqlite3",
     direction="maximize",
     # load_if_exists=True  # This allows resuming existing studies
 )
 study.set_metric_names(["forget_loss"])
+study.set_user_attr("commit_hash", commit_hash())
 for k, v in config.__dict__.items():
     study.set_user_attr(k, v)
 study.optimize(objective, n_trials=10000)
 
 # %%
-test_params = {
-    "quantile": 0.005,
-    "unlearn_lr": 30e-6,
-    "adv_lora_lr": 3e-4,
-    "ret_lora_lr": 3e-4,
-    "unl_loss_fn": "clipped_correct_logit",
-    "ret_loss_fn": "cross_entropy",
-    "forget_amp": 1.0,
-    "retain_amp": 1.7,
-}
+# test_params = {
+#     "quantile": 0.005,
+#     "unlearn_lr": 30e-6,
+#     "adv_lora_lr": 3e-4,
+#     "ret_lora_lr": 3e-4,
+#     "unl_loss_fn": "clipped_correct_logit",
+#     "ret_loss_fn": "cross_entropy",
+#     "forget_amp": 1.0,
+#     "retain_amp": 1.7,
+# }
+# config.unlearn_steps = 300
 
-trial = optuna.trial.create_trial(params=test_params)
-result = objective(trial)
-logging.info(f"Final result: {result}")
+# result = objective(MockTrial(test_params))
+# logging.info(f"Final result: {result}")
