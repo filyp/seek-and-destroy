@@ -4,7 +4,7 @@ from copy import deepcopy
 import torch as pt
 from peft import LoraConfig, get_peft_model
 
-from utils.dataloading import looping_iter
+from utils.data_loading import looping_iter
 from utils.training import cross_entropy_loss, eval_loss, get_batch
 
 

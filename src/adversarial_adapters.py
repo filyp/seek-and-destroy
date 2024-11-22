@@ -69,7 +69,8 @@ def objective(trial):
     adv_lora_lr = trial.suggest_float("adv_lora_lr", 10e-6, 2e-3, log=True)
     ret_lora_lr = trial.suggest_float("ret_lora_lr", 10e-6, 1e-3, log=True)
     unl_loss_fn = loss_fns[trial.suggest_categorical("unl_loss_fn", loss_fns.keys())]
-    ret_loss_fn = loss_fns[trial.suggest_categorical("ret_loss_fn", loss_fns.keys())]
+    ret_loss_fn = loss_fns["cross_entropy"]
+    # ret_loss_fn = loss_fns[trial.suggest_categorical("ret_loss_fn", loss_fns.keys())]
     disrupt_loss_fn = loss_fns[trial.suggest_categorical("disrupt_loss_fn", loss_fns.keys())]  # fmt: skip
     forget_amp = trial.suggest_float("forget_amp", 0.5, 1.5)
     retain_amp = trial.suggest_float("retain_amp", 1, 2.5)
@@ -127,9 +128,23 @@ def objective(trial):
         # ! actual relearning step
         # todo: after some evals, definitely remove this complication
         model.zero_grad(set_to_none=True)
-        loss = disrupt_loss_fn(model(r_input_ids), r_input_ids)
+        loss = ret_loss_fn(model(r_input_ids), r_input_ids)
         loss.backward()
         ret_optimizer.step()
+
+        # # ! retain with helper lora
+        # peft_model.set_adapter(["ret_lora"])
+        # only_grad_on(model, interven_params + ret_lora_params)
+        # model.zero_grad(set_to_none=True)
+        # loss = ret_loss_fn(model(r_input_ids), r_input_ids)
+        # loss.backward()
+        # # ! update disruption scores
+        # for param in interven_params:
+        #     param.disruption_score *= config.disruption_score_decay
+        #     param.disruption_score += param.grad.abs() ** retain_amp
+        # if step <= config.disruption_score_warmup:
+        #     continue
+        # ret_optimizer.step()
 
         # ! unlearn on the base model
         peft_model.set_adapter(["ret_lora", "adv_lora"])
