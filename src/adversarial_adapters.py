@@ -10,7 +10,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from utils.data_loading import dataset_loaders
 from utils.git import add_tag_to_current_commit, commit_hash, is_repo_clean
 from utils.model_operations import *
-from utils.training import loss_fns, set_seeds
+from utils.training import loss_fns, save_script_and_attach_logger, set_seeds
 
 config = SimpleNamespace(
     # Model/data configs
@@ -181,22 +181,20 @@ def objective(trial):
 
             logging.info(f"{step:4} " + " ".join(f"{v:11.2f}" for v in res.values()))
 
+            # prune if retain performance broken
             if res["base_retain"] > init_retain + 0.1:
                 logging.error("Retain performance broken")
                 trial.set_user_attr("retain_broken", True)
                 raise optuna.TrialPruned()
-                # trial.set_user_attr("steps", step)
-                # return init_forget - 0.3
+            # prune if base forget loss doesn't improve
+            if step >= 30 and res["base_forget"] < init_forget + 0.05:
+                logging.info("Forget loss stalled")
+                raise optuna.TrialPruned()
+            # early stop if adversarial lora is defeaten
             if res["adv_forget"] > 10:
                 logging.error("Adversarial LoRA defeaten")
                 trial.set_user_attr("lora_defeaten", True)
                 break
-            # early stopping if base forget loss doesn't improve
-            if step >= 30 and res["base_forget"] < init_forget + 0.05:
-                logging.info("Forget loss stalled")
-                raise optuna.TrialPruned()
-                # trial.set_user_attr("steps", step)
-                # return res["base_forget"]
         # # ! eval relearning
         # if step % 50 == 0:
         #     collapsed_model = copy_model_and_collapse_loras(peft_model)
@@ -214,12 +212,13 @@ def objective(trial):
 # %%
 assert is_repo_clean()
 study = optuna.create_study(
-    study_name="pythia-14m/oscar_pl/wikitext",
+    study_name="pythia-14m:oscar_pl:wikitext",
     storage="sqlite:///../results/aa_hyperparam_robustness.sqlite3",
     direction="maximize",
     # load_if_exists=True,  # This allows resuming existing studies
 )
 add_tag_to_current_commit(study.study_name)
+save_script_and_attach_logger(__file__, study.study_name)
 study.set_metric_names(["forget_loss"])
 study.set_user_attr("commit_hash", commit_hash())
 for k, v in config.__dict__.items():

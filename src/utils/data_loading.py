@@ -92,3 +92,15 @@ dataset_loaders = dict(
     oscar_en=lambda tokenizer: load_one_oscar_shard("en", tokenizer),
     oscar_pl=lambda tokenizer: load_one_oscar_shard("pl", tokenizer),
 )
+# # %%
+
+# beavertails = load_dataset("PKU-Alignment/BeaverTails")
+# split = beavertails["330k_train"]
+# category = "animal_abuse"
+# beaver_category = split.filter(lambda ex: ex["category"][category])
+# # safe_examples = split.filter(lambda ex: ex["is_safe"])
+# # %%
+# ex = beaver_category[0]
+# print(ex["prompt"])
+# print(ex["response"])
+

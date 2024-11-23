@@ -18,12 +18,14 @@ def set_seeds(seed):
     random.seed(seed)
 
 
-def save_script_and_attach_logger(file_name):
+def save_script_and_attach_logger(file_name, study_name):
     # for reproducibility save the file state and append output into it
     # save script
-    folder = repo_root() / "results" / datetime.now().strftime("%Y-%m-%d")
+    # folder = repo_root() / "results" / datetime.now().strftime("%Y-%m-%d")
+    folder = repo_root() / "results" / "logs"
     folder.mkdir(parents=True, exist_ok=True)
-    path = folder / f"{datetime.now().strftime('%H:%M:%S')}_{Path(file_name).stem}.log"
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    path = folder / f"{timestamp} {study_name} {Path(file_name).stem}.log"
     shutil.copy(file_name, path)
     # attach logger
     for h in logging.getLogger().handlers[1:]:
