@@ -1,4 +1,5 @@
 import re
+import json
 
 from datasets import IterableDataset, IterableDatasetDict, load_dataset
 
@@ -41,19 +42,19 @@ def prepare_dataset(raw_dataset, tokenizer, preprocess_fn=lambda ex: {}):
     return dataset
 
 
-# def load_one_oscar_shard(lang, tokenizer):
-#     # only use one ~600MB shard
-#     # also, streaming would make splitting too slow
-#     return prepare_dataset(
-#         load_dataset(
-#             "text",
-#             split="train",  # train is the only split in oscar
-#             data_files=f"hf://datasets/oscar-corpus/OSCAR-2301/{lang}_meta/{lang}_meta_part_1.jsonl.zst",
-#         ),
-#         tokenizer,
-#         # process the raw data, following OSCAR-2301.py
-#         lambda ex: {"text": json.loads(ex["text"])["content"]},
-#     )
+def load_one_oscar_shard(lang, tokenizer):
+    # only use one ~600MB shard
+    # also, streaming would make splitting too slow
+    return prepare_dataset(
+        load_dataset(
+            "text",
+            split="train",  # train is the only split in oscar
+            data_files=f"hf://datasets/oscar-corpus/OSCAR-2301/{lang}_meta/{lang}_meta_part_1.jsonl.zst",
+        ),
+        tokenizer,
+        # process the raw data, following OSCAR-2301.py
+        lambda ex: {"text": json.loads(ex["text"])["content"]},
+    )
 
 
 def load_wikitext(tokenizer):
@@ -88,6 +89,6 @@ def load_python_dataset(tokenizer):
 dataset_loaders = dict(
     wikitext=load_wikitext,
     python=load_python_dataset,
-    # oscar_en=lambda tokenizer: load_one_oscar_shard("en", tokenizer),
-    # oscar_pl=lambda tokenizer: load_one_oscar_shard("pl", tokenizer),
+    oscar_en=lambda tokenizer: load_one_oscar_shard("en", tokenizer),
+    oscar_pl=lambda tokenizer: load_one_oscar_shard("pl", tokenizer),
 )

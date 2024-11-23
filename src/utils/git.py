@@ -12,12 +12,12 @@ def commit_hash() -> str:
 
 
 def is_repo_clean() -> bool:
-    """check that git repository has no uncommitted changes"""
+    """Check that git repository has no uncommitted changes."""
     staged = subprocess.run(["git", "diff", "--staged", "--quiet"]).returncode == 0
     unstaged = subprocess.run(["git", "diff", "--quiet"]).returncode == 0
     return staged and unstaged
 
 
 def add_tag_to_current_commit(tag: str) -> None:
-    """note that if this tag already exists, it will be moved to the current commit"""
-    subprocess.run(["git", "tag", "-f", tag], check=True)
+    """Add a git tag to the current commit. Fails if the tag already exists."""
+    subprocess.run(["git", "tag", tag], check=True)

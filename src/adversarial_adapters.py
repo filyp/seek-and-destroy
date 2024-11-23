@@ -14,15 +14,15 @@ from utils.training import loss_fns, set_seeds
 
 config = SimpleNamespace(
     # Model/data configs
-    # model_id="EleutherAI/pythia-14m",
+    model_id="EleutherAI/pythia-14m",
     # model_id="EleutherAI/pythia-70m",
-    model_id="HuggingFaceTB/SmolLM-135M",
-    forget_set_name="python",
+    # model_id="HuggingFaceTB/SmolLM-135M",
+    # forget_set_name="python",
+    forget_set_name="oscar_pl",
     lora_config=dict(
         r=4,
         lora_dropout=0.1,
-        # target_modules=["query_key_value", "dense", "dense_h_to_4h", "dense_4h_to_h"],
-        target_modules=["up_proj", "down_proj", "gate_proj", "q_proj", "k_proj", "v_proj", "o_proj"],  # fmt: skip
+        target_modules=["query_key_value", "dense", "dense_h_to_4h", "dense_4h_to_h"],        # target_modules=["up_proj", "down_proj", "gate_proj", "q_proj", "k_proj", "v_proj", "o_proj"],  # fmt: skip
     ),
     # Training constants
     unlearn_steps=100,
@@ -32,8 +32,8 @@ config = SimpleNamespace(
     relearn_steps=50,
     relearn_lr=3e-4,
     relearn_batch_size=16,
-    # relearn_lora_conf=dict(r=1, target_modules=["dense_h_to_4h"]),
-    relearn_lora_conf=dict(r=1, target_modules=["up_proj"]),
+    relearn_lora_conf=dict(r=1, target_modules=["dense_h_to_4h"], lora_dropout=0.1),
+    # relearn_lora_conf=dict(r=1, target_modules=["up_proj"], lora_dropout=0.1),
     # Default tunable params
     disruption_score_decay=0.95,
     disruption_score_warmup=10,
@@ -65,17 +65,17 @@ logging.info(f"init forget: {init_forget:6.2f}    init retain: {init_retain:6.2f
 def objective(trial):
     # ! parameters
     quantile = trial.suggest_float("quantile", 1e-4, 1e-1, log=True)
-    unlearn_lr = trial.suggest_float("unlearn_lr", 1e-5, 1e-3, log=True)
-    adv_lora_lr = trial.suggest_float("adv_lora_lr", 1e-5, 2e-3, log=True)
+    adv_lora_lr = trial.suggest_float("adv_lora_lr", 3e-4, 3e-3, log=True)
     ret_lora_lr = trial.suggest_float("ret_lora_lr", 1e-5, 1e-3, log=True)
+    unlearn_lr = trial.suggest_float("unlearn_lr", 1e-5, 1e-3, log=True)
+    forget_amp = 1  # trial.suggest_float("forget_amp", 0.5, 1.5)
+    retain_amp = 1.5  # trial.suggest_float("retain_amp", 1, 2.5)
     unl_loss_fn = loss_fns[trial.suggest_categorical("unl_loss_fn", loss_fns.keys())]
     ret_loss_fn = loss_fns["cross_entropy"]
     # ret_loss_fn = loss_fns[trial.suggest_categorical("ret_loss_fn", loss_fns.keys())]
     disrupt_loss_fn = loss_fns[trial.suggest_categorical("disrupt_loss_fn", loss_fns.keys())]  # fmt: skip
-    forget_amp = trial.suggest_float("forget_amp", 0.5, 1.5)
-    retain_amp = trial.suggest_float("retain_amp", 1, 2.5)
-    mask_fn = lambda param: param.disruption_score / param.grad.abs() ** forget_amp
 
+    mask_fn = lambda param: param.disruption_score / param.grad.abs() ** forget_amp
     trial.set_user_attr("lora_defeaten", False)
     trial.set_user_attr("retain_broken", False)
 
@@ -184,8 +184,9 @@ def objective(trial):
             if res["base_retain"] > init_retain + 0.1:
                 logging.error("Retain performance broken")
                 trial.set_user_attr("retain_broken", True)
-                # raise optuna.TrialPruned()
-                return init_forget - 0.3
+                raise optuna.TrialPruned()
+                # trial.set_user_attr("steps", step)
+                # return init_forget - 0.3
             if res["adv_forget"] > 10:
                 logging.error("Adversarial LoRA defeaten")
                 trial.set_user_attr("lora_defeaten", True)
@@ -193,7 +194,9 @@ def objective(trial):
             # early stopping if base forget loss doesn't improve
             if step >= 30 and res["base_forget"] < init_forget + 0.05:
                 logging.info("Forget loss stalled")
-                return res["base_forget"]
+                raise optuna.TrialPruned()
+                # trial.set_user_attr("steps", step)
+                # return res["base_forget"]
         # # ! eval relearning
         # if step % 50 == 0:
         #     collapsed_model = copy_model_and_collapse_loras(peft_model)
@@ -211,7 +214,7 @@ def objective(trial):
 # %%
 assert is_repo_clean()
 study = optuna.create_study(
-    study_name="9param_100/50s_noprune_Smol135_wikitext",
+    study_name="pythia-14m/oscar_pl/wikitext",
     storage="sqlite:///../results/aa_hyperparam_robustness.sqlite3",
     direction="maximize",
     # load_if_exists=True,  # This allows resuming existing studies
@@ -221,7 +224,7 @@ study.set_metric_names(["forget_loss"])
 study.set_user_attr("commit_hash", commit_hash())
 for k, v in config.__dict__.items():
     study.set_user_attr(k, v)
-study.optimize(objective, n_trials=10000)
+study.optimize(objective, n_trials=5000)
 
 # %%
 # test_params = {
