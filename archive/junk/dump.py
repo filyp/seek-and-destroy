@@ -308,5 +308,14 @@ if stats["adv_forget"] > 500 and (i + 1) % 10 == 0:
 # target_modules=["gate_proj", "down_proj", "up_proj", "q_proj", "v_proj", "k_proj", "o_proj"],
 
 
+# # Plot optimization history
+# fig = vis.plot_optimization_history(study)
+# fig.show()
 
+# # Plot parameter importance
+# fig = vis.plot_param_importances(study)
+# fig.show()
 
+# # Plot parameter relationships
+# fig = vis.plot_parallel_coordinate(study)
+# fig.show()

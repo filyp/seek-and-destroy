@@ -15,3 +15,6 @@ torch
 torcheval
 transformers
 wandb
+plotly
+nbformat
+kaleido

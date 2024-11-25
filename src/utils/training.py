@@ -88,5 +88,8 @@ class MockTrial:
     def suggest_categorical(self, name, *args, **kwargs):
         return self.params[name]
 
+    def suggest_int(self, name, *args, **kwargs):
+        return int(self.params[name])
+
     def set_user_attr(self, *args, **kwargs):
         pass

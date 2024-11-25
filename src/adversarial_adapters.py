@@ -3,12 +3,13 @@ import logging
 from types import SimpleNamespace
 
 import optuna
+import optuna.visualization as vis
 import torch as pt
 from peft import LoraConfig, get_peft_model
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from utils.data_loading import dataset_loaders
-from utils.git import add_tag_to_current_commit, commit_hash, is_repo_clean
+from utils.git import add_tag_to_current_commit, commit_hash, is_repo_clean, repo_root
 from utils.model_operations import *
 from utils.training import MockTrial, loss_fns, save_script_and_attach_logger, set_seeds
 
@@ -25,7 +26,7 @@ config = SimpleNamespace(
         target_modules=["query_key_value", "dense", "dense_h_to_4h", "dense_4h_to_h"],        # target_modules=["up_proj", "down_proj", "gate_proj", "q_proj", "k_proj", "v_proj", "o_proj"],  # fmt: skip
     ),
     # Training constants
-    # unlearn_steps=100,
+    unlearn_steps=200,
     batch_size=16,
     eval_batch_size=32,
     # Relearning params
@@ -64,17 +65,16 @@ logging.info(f"init forget: {init_forget:6.2f}    init retain: {init_retain:6.2f
 # %%
 def objective(trial):
     # ! parameters
-    quantile = trial.suggest_float("quantile", 5e-3, 1, log=True)
-    adv_lora_lr = trial.suggest_float("adv_lora_lr", 8e-4, 1.6e-3, log=True)
-    ret_lora_lr = trial.suggest_float("ret_lora_lr", 2e-5, 1e-4, log=True)
-    unlearn_lr = trial.suggest_float("unlearn_lr", 1e-3, 5e-2, log=True)
+    quantile = trial.suggest_float("quantile", 0.05, 0.15, log=True)
+    adv_lora_lr = trial.suggest_float("adv_lora_lr", 8e-4, 1.2e-3, log=True)
+    ret_lora_lr = trial.suggest_float("ret_lora_lr", 3e-5, 6e-5, log=True)
+    unlearn_lr = trial.suggest_float("unlearn_lr", 5e-3, 2e-2, log=True)
     forget_amp = 1  # trial.suggest_float("forget_amp", 0.5, 1.5)
-    retain_amp = trial.suggest_float("retain_amp", 1.3, 1.7)
+    retain_amp = trial.suggest_float("retain_amp", 1.5, 1.7)
     # unl_loss_fn = loss_fns[trial.suggest_categorical("unl_loss_fn", loss_fns.keys())]
     unl_loss_fn = loss_fns["clipped_correct_logit"]
     ret_loss_fn = loss_fns["cross_entropy"]
     # disrupt_loss_fn = loss_fns[trial.suggest_categorical("disrupt_loss_fn", loss_fns.keys())]  # fmt: skip
-    unlearn_steps = trial.suggest_int("unlearn_steps", 80, 100, step=10)
 
     mask_fn = lambda param: param.disruption_score / param.grad.abs() ** forget_amp
     trial.set_user_attr("lora_defeaten", False)
@@ -109,7 +109,7 @@ def objective(trial):
     # %
     # ! unlearning loop
     logging.info("step      base_f      base_r       adv_f      adv_r")
-    for step in range(1, 1 + unlearn_steps):
+    for step in range(1, 1 + config.unlearn_steps):
         model.train()
         f_input_ids = get_batch(forget_iter, config.batch_size)
         r_input_ids = get_batch(retain_iter, config.batch_size)
@@ -201,7 +201,7 @@ def objective(trial):
 # %%
 assert is_repo_clean()
 study = optuna.create_study(
-    study_name="pythia-14m,oscar_pl,normalize_grads,better_ranges",
+    study_name="pythia-14m,oscar_pl,normalize_grads,200_steps",
     storage="sqlite:///../results/aa_hyperparam_robustness.sqlite3",
     direction="maximize",
     # load_if_exists=True,  # This allows resuming existing studies
@@ -215,36 +215,44 @@ for k, v in config.__dict__.items():
 study.optimize(objective, n_trials=3000)
 
 # # %%
+# # ! plot the slices for each hyperparam
 # study = optuna.load_study(
-#     study_name="pythia-14m/oscar_pl/wikitext",
+#     study_name="pythia-14m,oscar_pl,normalize_grads,better_ranges",
 #     storage="sqlite:///../results/aa_hyperparam_robustness.sqlite3",
 # )
-# trials = study.get_trials()
-# # uninterrupted_trials = [
-# #     t for t in trials if t.user_attrs.get("steps", 0) == config.unlearn_steps
-# # ]
-# finished_trials = [t for t in trials if t.state == optuna.trial.TrialState.COMPLETE]
 
-# # worst_to_best = sorted(uninterrupted_trials, key=lambda t: t.value)
+# # Plot slice plot for each parameter
+# fig = vis.plot_slice(
+#     study,
+#     params=["quantile", "adv_lora_lr", "ret_lora_lr", "unlearn_lr", "retain_amp"],
+#     target_name="Final forget loss",
+# )
+# fig.update_layout(
+#     title={
+#         "text": "pythia-14m oscar_pl normalized_grads",
+#         "xanchor": "center",
+#         "x": 0.5,
+#         "y": 0.95,
+#     },
+#     template="plotly_white",
+#     font=dict(family="Times New Roman", size=20),
+#     title_font_size=30,
+# )
+# # save the figure
+# save_path = repo_root() / "paper" / "Figures" / f"{fig.layout.title.text}.png"
+# fig.write_image(str(save_path))
+
+# fig.show()
+
+# # %%
+# # ! rerun the best trial, with more steps
+# trials = study.get_trials()
+# finished_trials = [t for t in trials if t.state == optuna.trial.TrialState.COMPLETE]
 # worst_to_best = sorted(finished_trials, key=lambda t: t.value)
 
-# # %%
-# # rerun the best trial, with more steps
-# config.unlearn_steps = 30
+# config.unlearn_steps = 150
 # config.relearn_steps = 100
 
-# best = worst_to_best[-1]
-
-# best_params = deepcopy(best.params)
-# # config.lora_config["target_modules"] = ["dense"]
-# # config.lora_config["target_modules"] = ["query_key_value"]
-# best_params["unlearn_lr"] *= 3000
-# # best_params["adv_lora_lr"] = 0
-# # best_params["unlearn_lr"] /= 1.5
-# # best_params["ret_lora_lr"] /= 2
-
+# best_params = deepcopy(worst_to_best[-1].params)
 # result = objective(MockTrial(best_params))
 # logging.info(f"Final result: {result}")
-
-# # %%
-# best.params
