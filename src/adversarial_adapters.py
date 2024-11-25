@@ -64,12 +64,12 @@ logging.info(f"init forget: {init_forget:6.2f}    init retain: {init_retain:6.2f
 # %%
 def objective(trial):
     # ! parameters
-    quantile = trial.suggest_float("quantile", 1e-4, 1e-1, log=True)
-    adv_lora_lr = trial.suggest_float("adv_lora_lr", 3e-4, 3e-3, log=True)
-    ret_lora_lr = trial.suggest_float("ret_lora_lr", 1e-5, 1e-3, log=True)
-    unlearn_lr = trial.suggest_float("unlearn_lr", 1e-2, 1e2, log=True)
+    quantile = trial.suggest_float("quantile", 5e-3, 1, log=True)
+    adv_lora_lr = trial.suggest_float("adv_lora_lr", 8e-4, 1.6e-3, log=True)
+    ret_lora_lr = trial.suggest_float("ret_lora_lr", 2e-5, 1e-4, log=True)
+    unlearn_lr = trial.suggest_float("unlearn_lr", 1e-3, 5e-2, log=True)
     forget_amp = 1  # trial.suggest_float("forget_amp", 0.5, 1.5)
-    retain_amp = 1.5  # trial.suggest_float("retain_amp", 1, 2)
+    retain_amp = trial.suggest_float("retain_amp", 1.3, 1.7)
     # unl_loss_fn = loss_fns[trial.suggest_categorical("unl_loss_fn", loss_fns.keys())]
     unl_loss_fn = loss_fns["clipped_correct_logit"]
     ret_loss_fn = loss_fns["cross_entropy"]
@@ -184,6 +184,7 @@ def objective(trial):
             if res["adv_forget"] > 10:
                 logging.error("Adversarial LoRA defeaten")
                 trial.set_user_attr("lora_defeaten", True)
+                logging.info(f"Hyperparameters: {trial.params}")
                 raise optuna.TrialPruned()
             # prune if nan
             if any(pt.isnan(v) for v in res.values()):
@@ -200,7 +201,7 @@ def objective(trial):
 # %%
 assert is_repo_clean()
 study = optuna.create_study(
-    study_name="pythia-14m,oscar_pl,normalize_grads",
+    study_name="pythia-14m,oscar_pl,normalize_grads,better_ranges",
     storage="sqlite:///../results/aa_hyperparam_robustness.sqlite3",
     direction="maximize",
     # load_if_exists=True,  # This allows resuming existing studies
@@ -211,7 +212,7 @@ study.set_metric_names(["forget_loss"])
 study.set_user_attr("commit_hash", commit_hash())
 for k, v in config.__dict__.items():
     study.set_user_attr(k, v)
-study.optimize(objective, n_trials=1000)
+study.optimize(objective, n_trials=3000)
 
 # # %%
 # study = optuna.load_study(
