@@ -10,7 +10,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from utils.data_loading import dataset_loaders
 from utils.git import add_tag_to_current_commit, commit_hash, is_repo_clean
 from utils.model_operations import *
-from utils.training import loss_fns, save_script_and_attach_logger, set_seeds
+from utils.training import MockTrial, loss_fns, save_script_and_attach_logger, set_seeds
 
 config = SimpleNamespace(
     # Model/data configs
@@ -25,11 +25,11 @@ config = SimpleNamespace(
         target_modules=["query_key_value", "dense", "dense_h_to_4h", "dense_4h_to_h"],        # target_modules=["up_proj", "down_proj", "gate_proj", "q_proj", "k_proj", "v_proj", "o_proj"],  # fmt: skip
     ),
     # Training constants
-    unlearn_steps=100,
+    # unlearn_steps=100,
     batch_size=16,
     eval_batch_size=32,
     # Relearning params
-    relearn_steps=50,
+    relearn_steps=100,
     relearn_lr=3e-4,
     relearn_batch_size=16,
     relearn_lora_conf=dict(r=1, target_modules=["dense_h_to_4h"], lora_dropout=0.1),
@@ -67,13 +67,14 @@ def objective(trial):
     quantile = trial.suggest_float("quantile", 1e-4, 1e-1, log=True)
     adv_lora_lr = trial.suggest_float("adv_lora_lr", 3e-4, 3e-3, log=True)
     ret_lora_lr = trial.suggest_float("ret_lora_lr", 1e-5, 1e-3, log=True)
-    unlearn_lr = trial.suggest_float("unlearn_lr", 1e-5, 1e-3, log=True)
+    unlearn_lr = trial.suggest_float("unlearn_lr", 1e-2, 1e2, log=True)
     forget_amp = 1  # trial.suggest_float("forget_amp", 0.5, 1.5)
-    retain_amp = 1.5  # trial.suggest_float("retain_amp", 1, 2.5)
-    unl_loss_fn = loss_fns[trial.suggest_categorical("unl_loss_fn", loss_fns.keys())]
+    retain_amp = 1.5  # trial.suggest_float("retain_amp", 1, 2)
+    # unl_loss_fn = loss_fns[trial.suggest_categorical("unl_loss_fn", loss_fns.keys())]
+    unl_loss_fn = loss_fns["clipped_correct_logit"]
     ret_loss_fn = loss_fns["cross_entropy"]
-    # ret_loss_fn = loss_fns[trial.suggest_categorical("ret_loss_fn", loss_fns.keys())]
-    disrupt_loss_fn = loss_fns[trial.suggest_categorical("disrupt_loss_fn", loss_fns.keys())]  # fmt: skip
+    # disrupt_loss_fn = loss_fns[trial.suggest_categorical("disrupt_loss_fn", loss_fns.keys())]  # fmt: skip
+    unlearn_steps = trial.suggest_int("unlearn_steps", 80, 100, step=10)
 
     mask_fn = lambda param: param.disruption_score / param.grad.abs() ** forget_amp
     trial.set_user_attr("lora_defeaten", False)
@@ -108,7 +109,7 @@ def objective(trial):
     # %
     # ! unlearning loop
     logging.info("step      base_f      base_r       adv_f      adv_r")
-    for step in range(1, 1 + config.unlearn_steps):
+    for step in range(1, 1 + unlearn_steps):
         model.train()
         f_input_ids = get_batch(forget_iter, config.batch_size)
         r_input_ids = get_batch(retain_iter, config.batch_size)
@@ -117,7 +118,7 @@ def objective(trial):
         peft_model.set_adapter(["ret_lora"])
         only_grad_on(model, interven_params + ret_lora_params)
         model.zero_grad(set_to_none=True)
-        loss = disrupt_loss_fn(model(r_input_ids), r_input_ids)
+        loss = ret_loss_fn(model(r_input_ids), r_input_ids)
         loss.backward()
         # ! update disruption scores
         for param in interven_params:
@@ -125,26 +126,10 @@ def objective(trial):
             param.disruption_score += param.grad.abs() ** retain_amp
         if step <= config.disruption_score_warmup:
             continue
-        # ! actual relearning step
-        # todo: after some evals, definitely remove this complication
-        model.zero_grad(set_to_none=True)
-        loss = ret_loss_fn(model(r_input_ids), r_input_ids)
-        loss.backward()
-        ret_optimizer.step()
-
-        # # ! retain with helper lora
-        # peft_model.set_adapter(["ret_lora"])
-        # only_grad_on(model, interven_params + ret_lora_params)
         # model.zero_grad(set_to_none=True)
         # loss = ret_loss_fn(model(r_input_ids), r_input_ids)
         # loss.backward()
-        # # ! update disruption scores
-        # for param in interven_params:
-        #     param.disruption_score *= config.disruption_score_decay
-        #     param.disruption_score += param.grad.abs() ** retain_amp
-        # if step <= config.disruption_score_warmup:
-        #     continue
-        # ret_optimizer.step()
+        ret_optimizer.step()
 
         # ! unlearn on the base model
         peft_model.set_adapter(["ret_lora", "adv_lora"])
@@ -159,6 +144,11 @@ def objective(trial):
         for param in interven_params:
             mask = mask_fn(param) < threshold
             param.grad *= mask
+        # ! normalize gradients
+        grad_norm = sum(p.grad.norm() ** 2 for p in interven_params) ** 0.5
+        for p in interven_params:
+            p.grad /= grad_norm
+        # logging.info(f"gnorm: {grad_norm:6.2f}")
         base_optimizer.step()
 
         # ! relearn with adversarial lora
@@ -190,17 +180,15 @@ def objective(trial):
             if step >= 30 and res["base_forget"] < init_forget + 0.05:
                 logging.info("Forget loss stalled")
                 raise optuna.TrialPruned()
-            # early stop if adversarial lora is defeaten
+            # prune if adversarial lora is defeaten
             if res["adv_forget"] > 10:
                 logging.error("Adversarial LoRA defeaten")
                 trial.set_user_attr("lora_defeaten", True)
-                break
-        # # ! eval relearning
-        # if step % 50 == 0:
-        #     collapsed_model = copy_model_and_collapse_loras(peft_model)
-        #     relearn(collapsed_model, config, forget_set, retain_set)
-
-    trial.set_user_attr("steps", step)
+                raise optuna.TrialPruned()
+            # prune if nan
+            if any(pt.isnan(v) for v in res.values()):
+                logging.error("NaN in eval results")
+                raise optuna.TrialPruned()
 
     # %
     # ! final bigger eval relearning
@@ -212,31 +200,50 @@ def objective(trial):
 # %%
 assert is_repo_clean()
 study = optuna.create_study(
-    study_name="pythia-14m:oscar_pl:wikitext",
+    study_name="pythia-14m,oscar_pl,normalize_grads",
     storage="sqlite:///../results/aa_hyperparam_robustness.sqlite3",
     direction="maximize",
     # load_if_exists=True,  # This allows resuming existing studies
 )
-add_tag_to_current_commit(study.study_name)
+# add_tag_to_current_commit(study.study_name)
 save_script_and_attach_logger(__file__, study.study_name)
 study.set_metric_names(["forget_loss"])
 study.set_user_attr("commit_hash", commit_hash())
 for k, v in config.__dict__.items():
     study.set_user_attr(k, v)
-study.optimize(objective, n_trials=5000)
+study.optimize(objective, n_trials=1000)
 
-# %%
-# test_params = {
-#     "quantile": 0.005,
-#     "unlearn_lr": 30e-6,
-#     "adv_lora_lr": 3e-4,
-#     "ret_lora_lr": 3e-4,
-#     "unl_loss_fn": "clipped_correct_logit",
-#     "ret_loss_fn": "cross_entropy",
-#     "forget_amp": 1.0,
-#     "retain_amp": 1.7,
-# }
-# config.unlearn_steps = 300
+# # %%
+# study = optuna.load_study(
+#     study_name="pythia-14m/oscar_pl/wikitext",
+#     storage="sqlite:///../results/aa_hyperparam_robustness.sqlite3",
+# )
+# trials = study.get_trials()
+# # uninterrupted_trials = [
+# #     t for t in trials if t.user_attrs.get("steps", 0) == config.unlearn_steps
+# # ]
+# finished_trials = [t for t in trials if t.state == optuna.trial.TrialState.COMPLETE]
 
-# result = objective(MockTrial(test_params))
+# # worst_to_best = sorted(uninterrupted_trials, key=lambda t: t.value)
+# worst_to_best = sorted(finished_trials, key=lambda t: t.value)
+
+# # %%
+# # rerun the best trial, with more steps
+# config.unlearn_steps = 30
+# config.relearn_steps = 100
+
+# best = worst_to_best[-1]
+
+# best_params = deepcopy(best.params)
+# # config.lora_config["target_modules"] = ["dense"]
+# # config.lora_config["target_modules"] = ["query_key_value"]
+# best_params["unlearn_lr"] *= 3000
+# # best_params["adv_lora_lr"] = 0
+# # best_params["unlearn_lr"] /= 1.5
+# # best_params["ret_lora_lr"] /= 2
+
+# result = objective(MockTrial(best_params))
 # logging.info(f"Final result: {result}")
+
+# # %%
+# best.params
