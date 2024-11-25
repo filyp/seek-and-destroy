@@ -65,10 +65,10 @@ logging.info(f"init forget: {init_forget:6.2f}    init retain: {init_retain:6.2f
 # %%
 def objective(trial):
     # ! parameters
-    quantile = trial.suggest_float("quantile", 0.05, 0.15, log=True)
+    quantile = trial.suggest_float("quantile", 0.01, 0.15, log=True)
     adv_lora_lr = trial.suggest_float("adv_lora_lr", 8e-4, 1.2e-3, log=True)
-    ret_lora_lr = trial.suggest_float("ret_lora_lr", 3e-5, 6e-5, log=True)
-    unlearn_lr = trial.suggest_float("unlearn_lr", 5e-3, 2e-2, log=True)
+    ret_lora_lr = trial.suggest_float("ret_lora_lr", 1e-5, 6e-5, log=True)
+    unlearn_lr = trial.suggest_float("unlearn_lr", 2e-3, 2e-2, log=True)
     forget_amp = 1  # trial.suggest_float("forget_amp", 0.5, 1.5)
     retain_amp = trial.suggest_float("retain_amp", 1.5, 1.7)
     # unl_loss_fn = loss_fns[trial.suggest_categorical("unl_loss_fn", loss_fns.keys())]
@@ -201,7 +201,7 @@ def objective(trial):
 # %%
 assert is_repo_clean()
 study = optuna.create_study(
-    study_name="pythia-14m,oscar_pl,normalize_grads,200_steps",
+    study_name="pythia-14m,oscar_pl,normalize_grads,200_steps,lowered_range",
     storage="sqlite:///../results/aa_hyperparam_robustness.sqlite3",
     direction="maximize",
     # load_if_exists=True,  # This allows resuming existing studies
