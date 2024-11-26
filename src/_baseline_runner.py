@@ -6,9 +6,9 @@ import optuna
 import torch as pt
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from utils.baseline_losses import baseline_loss_fns
+# from utils.baseline_losses import baseline_loss_fns
 from utils.data_loading import dataset_loaders
-from utils.git import add_tag_to_current_commit, commit_hash, is_repo_clean
+from utils.git_and_reproducibility import *
 from utils.model_operations import *
 from utils.training import loss_fns, set_seeds
 
@@ -132,7 +132,7 @@ def objective(trial):
 assert is_repo_clean()
 study = optuna.create_study(
     study_name="change_me",
-    storage="sqlite:///../results/baselines.sqlite3",
+    storage=f"sqlite:///{repo_root() / "results" / "db.sqlite3"}",
     direction="maximize",
     # load_if_exists=True,  # this allows resuming existing studies
 )
@@ -142,3 +142,5 @@ study.set_user_attr("commit_hash", commit_hash())
 for k, v in config.__dict__.items():
     study.set_user_attr(k, v)
 study.optimize(objective, n_trials=10000)
+
+# %%

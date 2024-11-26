@@ -1,0 +1,45 @@
+import logging
+import shutil
+import subprocess
+from datetime import datetime
+from pathlib import Path
+
+
+def repo_root() -> Path:
+    raw_root = subprocess.check_output(["git", "rev-parse", "--show-toplevel"])
+    return Path(raw_root.decode("utf-8").strip())
+
+
+def commit_hash() -> str:
+    return subprocess.check_output(["git", "rev-parse", "HEAD"]).decode("utf-8").strip()
+
+
+def is_repo_clean() -> bool:
+    """Check that git repository has no uncommitted changes."""
+    staged = subprocess.run(["git", "diff", "--staged", "--quiet"]).returncode == 0
+    unstaged = subprocess.run(["git", "diff", "--quiet"]).returncode == 0
+    return staged and unstaged
+
+
+def add_tag_to_current_commit(tag: str) -> None:
+    """Add a git tag to the current commit. Fails if the tag already exists."""
+    subprocess.run(["git", "tag", tag], check=True)
+
+
+def save_script_and_attach_logger(file_name, study_name):
+    # for reproducibility save the file state and append output into it
+    # save script
+    # folder = repo_root() / "results" / datetime.now().strftime("%Y-%m-%d")
+    folder = repo_root() / "results" / "logs"
+    folder.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    path = folder / f"{timestamp} {study_name} {Path(file_name).stem}.log"
+    shutil.copy(file_name, path)
+    # attach logger
+    for h in logging.getLogger().handlers[1:]:
+        logging.root.removeHandler(h)
+    file_handler = logging.FileHandler(path)
+    formatter = logging.Formatter("# %(asctime)s %(levelname)s  %(message)s")
+    file_handler.setFormatter(formatter)
+    logging.root.addHandler(file_handler)
+    logging.info(f"commit hash: {commit_hash()}")

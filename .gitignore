@@ -8,3 +8,4 @@ results
 src/db.sqlite3
 paper
 archive/old_results
+adversarial_adapters.py.lprof

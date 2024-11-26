@@ -9,10 +9,10 @@ import torch as pt
 from peft import LoraConfig, get_peft_model
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from utils.data_loading import dataset_loaders
-from utils.git import add_tag_to_current_commit, commit_hash, is_repo_clean, repo_root
+from utils.data_loading import dataset_loaders, get_batch
+from utils.git_and_reproducibility import *
 from utils.model_operations import *
-from utils.training import MockTrial, loss_fns, save_script_and_attach_logger, set_seeds
+from utils.training import MockTrial, loss_fns, set_seeds
 
 config = SimpleNamespace(
     # Model/data configs
@@ -71,16 +71,16 @@ logging.info(f"init forget: {init_forget:6.2f}    init retain: {init_retain:6.2f
 # %%
 def objective(trial):
     # ! parameters
-    quantile = trial.suggest_float("quantile", 0.01, 0.1, log=True)
-    adv_lora_lr = trial.suggest_float("adv_lora_lr", 1e-4, 1e-3, log=True)
-    ret_lora_lr = trial.suggest_float("ret_lora_lr", 2e-5, 3e-4, log=True)
-    unlearn_lr = trial.suggest_float("unlearn_lr", 3e-3, 3e-2, log=True)
+    quantile = trial.suggest_float("quantile", 0.03, 0.3, log=True)
+    adv_lora_lr = trial.suggest_float("adv_lora_lr", 1e-4, 2e-3, log=True)
+    ret_lora_lr = trial.suggest_float("ret_lora_lr", 2e-5, 1e-3, log=True)
+    unlearn_lr = trial.suggest_float("unlearn_lr", 0.01, 1, log=True)
     unlearn_lr_mult = trial.suggest_float("unlearn_lr_mult", 1, 1.02)
     forget_amp = 1  # trial.suggest_float("forget_amp", 0.5, 1.5)
     retain_amp = 1.6  # trial.suggest_float("retain_amp", 1.5, 1.7)
     # unl_loss_fn = loss_fns[trial.suggest_categorical("unl_loss_fn", loss_fns.keys())]
     unl_loss_fn = loss_fns["cross_entropy"]
-    adv_lora_rank = trial.suggest_int("adv_lora_rank", 1, 2)
+    adv_lora_rank = trial.suggest_int("adv_lora_rank", 1, 3)
 
     mask_fn = lambda param: param.disruption_score / param.grad.abs() ** forget_amp
     trial.set_user_attr("lora_defeaten", False)
@@ -158,7 +158,6 @@ def objective(trial):
         grad_norm = sum(p.grad.norm() ** 2 for p in interven_params) ** 0.5
         for p in interven_params:
             p.grad /= grad_norm
-        # logging.info(f"gnorm: {grad_norm:6.2f}")
         base_optimizer.step()
 
         # ! relearn with adversarial lora
@@ -187,7 +186,7 @@ def objective(trial):
                 trial.set_user_attr("retain_broken", True)
                 raise optuna.TrialPruned()
             # prune if base forget loss doesn't improve
-            if step >= 30 and res["base_forget"] < init_forget + 0.05:
+            if step >= 20 and res["base_forget"] < init_forget + 1:
                 logging.info("Forget loss stalled")
                 raise optuna.TrialPruned()
             # prune if adversarial lora is defeaten
@@ -213,8 +212,8 @@ if __name__ == "__main__":
     assert is_repo_clean()
     dd_mm = datetime.now().strftime("%d.%m")
     study = optuna.create_study(
-        study_name=f"{dd_mm},pl,dont_terminate_on_alora_break",
-        storage="sqlite:///../results/db.sqlite3",
+        study_name=f"{dd_mm},pl,dont_terminate_on_alora_break,better_range",
+        storage=f"sqlite:///{repo_root() / "results" / "db.sqlite3"}",
         direction="maximize",
         # load_if_exists=True,  # This allows resuming existing studies
     )

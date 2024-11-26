@@ -1,6 +1,7 @@
-import re
 import json
+import re
 
+import torch as pt
 from datasets import IterableDataset, IterableDatasetDict, load_dataset
 
 
@@ -8,6 +9,10 @@ def looping_iter(iterable):
     # like itertools.cycle, but will not eat memory by storing element copies
     while True:
         yield from iterable
+
+
+def get_batch(iter, n):
+    return pt.cat([next(iter)["input_ids"] for _ in range(n)])
 
 
 def prepare_dataset(raw_dataset, tokenizer, preprocess_fn=lambda ex: {}):
@@ -92,7 +97,7 @@ dataset_loaders = dict(
     oscar_en=lambda tokenizer: load_one_oscar_shard("en", tokenizer),
     oscar_pl=lambda tokenizer: load_one_oscar_shard("pl", tokenizer),
 )
-# # %%
+
 
 # beavertails = load_dataset("PKU-Alignment/BeaverTails")
 # split = beavertails["330k_train"]
@@ -104,3 +109,20 @@ dataset_loaders = dict(
 # print(ex["prompt"])
 # print(ex["response"])
 
+
+class CachedBatches:
+    def __init__(self, base_iter, batch_size):
+        self.base_iter = base_iter
+        self.batch_size = batch_size
+        self.cache = []
+
+    def fresh_iterator(self):
+        yield from self.cache
+        while True:
+            new_item = get_batch(self.base_iter, self.batch_size)
+            self.cache.append(new_item)
+            yield new_item
+
+
+# retain_cached_iter = CachedBatches(retain_iter, 16)
+# retain_iter = retain_cached_iter.fresh_iterator()

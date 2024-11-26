@@ -1,12 +1,6 @@
-import logging
 import random
-import shutil
-from datetime import datetime
-from pathlib import Path
 
 import torch as pt
-
-from utils.git import commit_hash, repo_root
 
 
 # --- Setup and Environment ---
@@ -18,30 +12,7 @@ def set_seeds(seed):
     random.seed(seed)
 
 
-def save_script_and_attach_logger(file_name, study_name):
-    # for reproducibility save the file state and append output into it
-    # save script
-    # folder = repo_root() / "results" / datetime.now().strftime("%Y-%m-%d")
-    folder = repo_root() / "results" / "logs"
-    folder.mkdir(parents=True, exist_ok=True)
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    path = folder / f"{timestamp} {study_name} {Path(file_name).stem}.log"
-    shutil.copy(file_name, path)
-    # attach logger
-    for h in logging.getLogger().handlers[1:]:
-        logging.root.removeHandler(h)
-    file_handler = logging.FileHandler(path)
-    formatter = logging.Formatter("# %(asctime)s %(levelname)s  %(message)s")
-    file_handler.setFormatter(formatter)
-    logging.root.addHandler(file_handler)
-    logging.info(f"commit hash: {commit_hash()}")
-
-
 # --- Training Utilities ---
-def get_batch(iter, n):
-    return pt.cat([next(iter)["input_ids"] for _ in range(n)])
-
-
 def eval_loss(model, batch):
     model.eval()
     with pt.no_grad():

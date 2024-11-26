@@ -4,8 +4,8 @@ from copy import deepcopy
 import torch as pt
 from peft import LoraConfig, get_peft_model
 
-from utils.data_loading import looping_iter
-from utils.training import cross_entropy_loss, eval_loss, get_batch
+from utils.data_loading import looping_iter, get_batch
+from utils.training import cross_entropy_loss, eval_loss
 
 
 def only_grad_on(model, params_to_grad):
