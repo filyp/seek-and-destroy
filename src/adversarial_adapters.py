@@ -18,8 +18,8 @@ config = SimpleNamespace(
     model_id="EleutherAI/pythia-14m",
     # model_id="EleutherAI/pythia-70m",
     # model_id="HuggingFaceTB/SmolLM-135M",
-    # forget_set_name="python",
-    forget_set_name="oscar_pl",
+    forget_set_name="python",
+    # forget_set_name="oscar_pl",
     adv_lora_config=dict(
         lora_dropout=0.1,
         target_modules=["dense_h_to_4h", "dense_4h_to_h", "query_key_value", "dense"],
@@ -222,7 +222,7 @@ def objective(trial):
 if __name__ == "__main__":
     dd_mm = datetime.now().strftime("%d.%m")
     study = optuna.create_study(
-        study_name=f"{dd_mm},pl,dont_terminate_on_alora_break,better_range7",
+        study_name=f"{dd_mm},python,dont_terminate_on_alora_break,same_range_as_prev",
         storage=get_storage(),
         direction="maximize",
         # load_if_exists=True,
