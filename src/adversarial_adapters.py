@@ -34,7 +34,7 @@ config = SimpleNamespace(
     unlearn_steps=50,
     batch_size=16,
     # Relearning params
-    relearn_steps=30,
+    relearn_steps=50,
     relearn_lr=3e-4,
     eval_batch_size=16,
     relearn_lora_conf=dict(r=1, target_modules=["dense_h_to_4h"], lora_dropout=0.1),
@@ -93,7 +93,8 @@ def objective(trial):
     forget_iter = forget_batches.fresh_iterator()
     retain_iter = retain_batches.fresh_iterator()
 
-    # load model
+    # load model (copy from memory for speed)
+    # note: to save memory you may want to load from_pretrained instead
     model = deepcopy(base_model)
     # add loras
     adv_lora_config = LoraConfig(r=adv_lora_rank, **config.adv_lora_config)
@@ -215,7 +216,7 @@ def objective(trial):
 if __name__ == "__main__":
     dd_mm = datetime.now().strftime("%d.%m")
     study = optuna.create_study(
-        study_name=f"{dd_mm},pl,dont_terminate_on_alora_break,better_range4",
+        study_name=f"{dd_mm},pl,dont_terminate_on_alora_break,better_range5",
         storage=get_storage(),
         direction="maximize",
         # load_if_exists=True,
