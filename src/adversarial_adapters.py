@@ -21,14 +21,12 @@ config = SimpleNamespace(
     # forget_set_name="python",
     forget_set_name="oscar_pl",
     adv_lora_config=dict(
-        # r=4,
         lora_dropout=0.1,
-        target_modules=["query_key_value", "dense", "dense_h_to_4h", "dense_4h_to_h"],
+        target_modules=["dense_h_to_4h", "dense_4h_to_h", "query_key_value", "dense"],
     ),
     ret_lora_config=dict(
-        r=4,
         lora_dropout=0.1,
-        target_modules=["query_key_value", "dense", "dense_h_to_4h", "dense_4h_to_h"],
+        target_modules=["dense_h_to_4h", "dense_4h_to_h", "query_key_value", "dense"],
     ),
     # Training constants
     unlearn_steps=50,
@@ -71,18 +69,23 @@ logging.info(f"init forget: {init_forget:6.2f}    init retain: {init_retain:6.2f
 # %%
 def objective(trial):
     # ! parameters
-    quantile = trial.suggest_float("quantile", 0.0003, 0.1, log=True)
-    adv_lora_lr = trial.suggest_float("adv_lora_lr", 1e-4, 2e-3, log=True)
-    ret_lora_lr = trial.suggest_float("ret_lora_lr", 1e-5, 2e-3, log=True)
-    unlearn_lr = trial.suggest_float("unlearn_lr", 0.01, 0.3, log=True)
-    unlearn_lr_mult = trial.suggest_float("unlearn_lr_mult", 0.99, 1.01)
-    forget_amp = trial.suggest_float("forget_amp", 0.7, 1.3)
-    retain_amp = trial.suggest_float("retain_amp", 1.5, 1.7)
-    unl_loss_fn = loss_fns[trial.suggest_categorical("unl_loss_fn", loss_fns.keys())]
-    # unl_loss_fn = loss_fns["correct_logit"]
-    adv_lora_rank = trial.suggest_int("adv_lora_rank", 1, 8)
+    quantile = trial.suggest_float("quantile", 0.01, 0.1, log=True)
+    adv_lora_lr = trial.suggest_float("adv_lora_lr", 1e-4, 1e-3, log=True)
+    ret_lora_lr = trial.suggest_float("ret_lora_lr", 1e-4, 1e-3, log=True)
+    unlearn_lr = trial.suggest_float("unlearn_lr", 0.01, 0.04, log=True)
+    unlearn_lr_mult = 1  # trial.suggest_float("unlearn_lr_mult", 0.99, 1.01)
+    forget_amp = trial.suggest_float("forget_amp", 1, 1.6)
+    retain_amp = 1.6  # trial.suggest_float("retain_amp", 1.5, 1.8)
+    # unl_loss_fn = loss_fns[trial.suggest_categorical("unl_loss_fn", loss_fns.keys())]
+    unl_loss_fn = loss_fns["correct_logit"]
+    adv_lora_rank = 3  # trial.suggest_int("adv_lora_rank", 1, 4)
+    ret_lora_rank = trial.suggest_int("ret_lora_rank", 1, 3)
 
-    disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.5, 0.90)
+    target_modules = ["dense", "query_key_value", "dense_h_to_4h"]
+    if trial.suggest_categorical("mod_down_proj", [True, False]):
+        target_modules.append("dense_4h_to_h")
+
+    disruption_score_decay = 0.7
 
     mask_fn = lambda param: param.disruption_score / param.grad.abs() ** forget_amp
     trial.set_user_attr("lora_defeaten", False)
@@ -97,15 +100,17 @@ def objective(trial):
     # note: to save memory you may want to load from_pretrained instead
     model = deepcopy(base_model)
     # add loras
-    adv_lora_config = LoraConfig(r=adv_lora_rank, **config.adv_lora_config)
-    peft_model = get_peft_model(
-        model, adv_lora_config, adapter_name="adv_lora", mixed=True
-    )
+    adv_lora_c = LoraConfig(r=adv_lora_rank, **config.adv_lora_config)
+    peft_model = get_peft_model(model, adv_lora_c, adapter_name="adv_lora", mixed=True)
     model = peft_model.model
-    ret_lora_config = LoraConfig(**config.ret_lora_config)
+    ret_lora_config = LoraConfig(r=ret_lora_rank, **config.ret_lora_config)
     peft_model.add_adapter("ret_lora", ret_lora_config)
 
-    interven_params = [p for n, p in model.named_parameters() if ".base_layer.weight" in n]  # fmt: skip
+    interven_params = [
+        p
+        for n, p in model.named_parameters()
+        if any(m + ".base_layer.weight" in n for m in target_modules)
+    ]
     adv_lora_params = [p for n, p in model.named_parameters() if ".adv_lora." in n]
     ret_lora_params = [p for n, p in model.named_parameters() if ".ret_lora." in n]
 
@@ -217,7 +222,7 @@ def objective(trial):
 if __name__ == "__main__":
     dd_mm = datetime.now().strftime("%d.%m")
     study = optuna.create_study(
-        study_name=f"{dd_mm},pl,dont_terminate_on_alora_break,better_range6",
+        study_name=f"{dd_mm},pl,dont_terminate_on_alora_break,better_range7",
         storage=get_storage(),
         direction="maximize",
         # load_if_exists=True,
