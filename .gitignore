@@ -1,5 +1,7 @@
-venv
+.env
 .venv
+secret.json
+venv
 __pycache__
 wandb
 models

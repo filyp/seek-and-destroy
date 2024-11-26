@@ -1,8 +1,11 @@
+import json
 import logging
 import shutil
 import subprocess
 from datetime import datetime
 from pathlib import Path
+
+import optuna
 
 
 def repo_root() -> Path:
@@ -43,3 +46,20 @@ def save_script_and_attach_logger(file_name, study_name):
     file_handler.setFormatter(formatter)
     logging.root.addHandler(file_handler)
     logging.info(f"commit hash: {commit_hash()}")
+
+
+def get_storage():
+    secrets_file = repo_root() / "secret.json"
+    if not secrets_file.exists():
+        return (f"sqlite:///{repo_root() / "results" / "db.sqlite3"}",)
+
+    db_url = json.load(open(secrets_file))["db_url"]
+    return optuna.storages.RDBStorage(
+        url=db_url,
+        engine_kwargs={
+            "pool_size": 20,
+            "max_overflow": 0,
+            "pool_pre_ping": True,
+            "connect_args": {"sslmode": "require"},
+        },
+    )

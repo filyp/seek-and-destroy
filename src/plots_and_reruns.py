@@ -3,9 +3,7 @@ from adversarial_adapters import *
 
 # ! plot the slices for each hyperparam
 # get the latest study
-db_path = f"sqlite:///{repo_root() / 'results' / 'db.sqlite3'}"
-storage = optuna.storages.RDBStorage(url=db_path)
-# url="sqlite:///../archive/old_results/aa_hyperparam_robustness.sqlite3"
+storage = get_storage()
 study_summaries = optuna.study.get_all_study_summaries(storage)
 latest_study = max(study_summaries, key=lambda s: s.datetime_start)
 study = optuna.load_study(study_name=latest_study.study_name, storage=storage)

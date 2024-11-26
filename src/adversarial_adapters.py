@@ -71,18 +71,18 @@ logging.info(f"init forget: {init_forget:6.2f}    init retain: {init_retain:6.2f
 # %%
 def objective(trial):
     # ! parameters
-    quantile = trial.suggest_float("quantile", 0.0001, 0.01, log=True)
+    quantile = trial.suggest_float("quantile", 0.001, 0.1, log=True)
     adv_lora_lr = trial.suggest_float("adv_lora_lr", 1e-4, 1e-3, log=True)
     ret_lora_lr = trial.suggest_float("ret_lora_lr", 1e-5, 1e-3, log=True)
-    unlearn_lr = trial.suggest_float("unlearn_lr", 0.003, 0.3, log=True)
+    unlearn_lr = trial.suggest_float("unlearn_lr", 0.01, 0.1, log=True)
     unlearn_lr_mult = trial.suggest_float("unlearn_lr_mult", 0.99, 1.01)
     forget_amp = 1  # trial.suggest_float("forget_amp", 0.5, 1.5)
-    retain_amp = 1.6  # trial.suggest_float("retain_amp", 1.5, 1.7)
-    # unl_loss_fn = loss_fns[trial.suggest_categorical("unl_loss_fn", loss_fns.keys())]
-    unl_loss_fn = loss_fns["correct_logit"]
-    adv_lora_rank = trial.suggest_int("adv_lora_rank", 1, 3)
+    retain_amp = trial.suggest_float("retain_amp", 1.5, 1.7)
+    unl_loss_fn = loss_fns[trial.suggest_categorical("unl_loss_fn", loss_fns.keys())]
+    # unl_loss_fn = loss_fns["correct_logit"]
+    adv_lora_rank = trial.suggest_int("adv_lora_rank", 1, 6)
 
-    disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.8, 0.99)
+    disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.5, 0.95)
 
     mask_fn = lambda param: param.disruption_score / param.grad.abs() ** forget_amp
     trial.set_user_attr("lora_defeaten", False)
@@ -215,8 +215,8 @@ def objective(trial):
 if __name__ == "__main__":
     dd_mm = datetime.now().strftime("%d.%m")
     study = optuna.create_study(
-        study_name=f"{dd_mm},pl,dont_terminate_on_alora_break,better_range3",
-        storage=f"sqlite:///{repo_root() / "results" / "db.sqlite3"}",
+        study_name=f"{dd_mm},pl,dont_terminate_on_alora_break,better_range4",
+        storage=get_storage(),
         direction="maximize",
         # load_if_exists=True,
     )
