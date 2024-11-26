@@ -1,5 +1,6 @@
 # %%
 import logging
+from datetime import datetime
 from types import SimpleNamespace
 
 import optuna
@@ -23,12 +24,12 @@ config = SimpleNamespace(
     adv_lora_config=dict(
         # r=4,
         lora_dropout=0.1,
-        target_modules=["query_key_value", "dense", "dense_h_to_4h", "dense_4h_to_h"],        # target_modules=["up_proj", "down_proj", "gate_proj", "q_proj", "k_proj", "v_proj", "o_proj"],  # fmt: skip
+        target_modules=["query_key_value", "dense", "dense_h_to_4h", "dense_4h_to_h"],
     ),
     ret_lora_config=dict(
         r=4,
         lora_dropout=0.1,
-        target_modules=["query_key_value", "dense", "dense_h_to_4h", "dense_4h_to_h"],        # target_modules=["up_proj", "down_proj", "gate_proj", "q_proj", "k_proj", "v_proj", "o_proj"],  # fmt: skip
+        target_modules=["query_key_value", "dense", "dense_h_to_4h", "dense_4h_to_h"],
     ),
     # Training constants
     unlearn_steps=100,
@@ -70,18 +71,16 @@ logging.info(f"init forget: {init_forget:6.2f}    init retain: {init_retain:6.2f
 # %%
 def objective(trial):
     # ! parameters
-    quantile = trial.suggest_float("quantile", 0.001, 0.2, log=True)
-    adv_lora_lr = trial.suggest_float("adv_lora_lr", 3e-4, 1.5e-3, log=True)
-    ret_lora_lr = trial.suggest_float("ret_lora_lr", 1e-5, 3e-4, log=True)
-    unlearn_lr = trial.suggest_float("unlearn_lr", 1e-3, 1e-1, log=True)
-    unlearn_lr_mult = trial.suggest_float("unlearn_lr_mult", 0.25, 4, log=True)
-    unlearn_lr_mult = unlearn_lr_mult ** (1 / config.unlearn_steps)
+    quantile = trial.suggest_float("quantile", 0.01, 0.1, log=True)
+    adv_lora_lr = trial.suggest_float("adv_lora_lr", 1e-4, 1e-3, log=True)
+    ret_lora_lr = trial.suggest_float("ret_lora_lr", 2e-5, 3e-4, log=True)
+    unlearn_lr = trial.suggest_float("unlearn_lr", 3e-3, 3e-2, log=True)
+    unlearn_lr_mult = trial.suggest_float("unlearn_lr_mult", 1, 1.02)
     forget_amp = 1  # trial.suggest_float("forget_amp", 0.5, 1.5)
-    retain_amp = trial.suggest_float("retain_amp", 1.5, 7)
-    unl_loss_fn = loss_fns[trial.suggest_categorical("unl_loss_fn", loss_fns.keys())]
-    ret_loss_fn = loss_fns["cross_entropy"]
-    # disrupt_loss_fn = loss_fns[trial.suggest_categorical("disrupt_loss_fn", loss_fns.keys())]  # fmt: skip
-    adv_lora_rank = trial.suggest_int("adv_lora_rank", 1, 3)
+    retain_amp = 1.6  # trial.suggest_float("retain_amp", 1.5, 1.7)
+    # unl_loss_fn = loss_fns[trial.suggest_categorical("unl_loss_fn", loss_fns.keys())]
+    unl_loss_fn = loss_fns["cross_entropy"]
+    adv_lora_rank = trial.suggest_int("adv_lora_rank", 1, 2)
 
     mask_fn = lambda param: param.disruption_score / param.grad.abs() ** forget_amp
     trial.set_user_attr("lora_defeaten", False)
@@ -128,7 +127,7 @@ def objective(trial):
         peft_model.set_adapter(["ret_lora"])
         only_grad_on(model, interven_params + ret_lora_params)
         model.zero_grad(set_to_none=True)
-        loss = ret_loss_fn(model(r_input_ids), r_input_ids)
+        loss = loss_fns["cross_entropy"](model(r_input_ids), r_input_ids)
         loss.backward()
         # ! update disruption scores
         for param in interven_params:
@@ -137,7 +136,7 @@ def objective(trial):
         if step <= config.disruption_score_warmup:
             continue
         # model.zero_grad(set_to_none=True)
-        # loss = ret_loss_fn(model(r_input_ids), r_input_ids)
+        # loss = loss_fns["cross_entropy"](model(r_input_ids), r_input_ids)
         # loss.backward()
         ret_optimizer.step()
 
@@ -192,7 +191,7 @@ def objective(trial):
                 logging.info("Forget loss stalled")
                 raise optuna.TrialPruned()
             # prune if adversarial lora is defeaten
-            if res["adv_forget"] > 10:
+            if res["adv_forget"] > 50:
                 logging.error("Adversarial LoRA defeaten")
                 trial.set_user_attr("lora_defeaten", True)
                 logging.info(f"Hyperparameters: {trial.params}")
@@ -210,60 +209,19 @@ def objective(trial):
 
 
 # %%
-assert is_repo_clean()
-study = optuna.create_study(
-    study_name="pythia-14m,oscar_pl,normalize_grads,100_steps,rank,schedule,losses",
-    storage="sqlite:///../results/aa_hyperparam_robustness.sqlite3",
-    direction="maximize",
-    # load_if_exists=True,  # This allows resuming existing studies
-)
-# add_tag_to_current_commit(study.study_name)
-save_script_and_attach_logger(__file__, study.study_name)
-study.set_metric_names(["forget_loss"])
-study.set_user_attr("commit_hash", commit_hash())
-for k, v in config.__dict__.items():
-    study.set_user_attr(k, v)
-study.optimize(objective, n_trials=3000)
-
-# # %%
-# # ! plot the slices for each hyperparam
-# study = optuna.load_study(
-#     study_name="pythia-14m,oscar_pl,normalize_grads,better_ranges",
-#     storage="sqlite:///../results/aa_hyperparam_robustness.sqlite3",
-# )
-
-# # Plot slice plot for each parameter
-# fig = vis.plot_slice(
-#     study,
-#     params=["quantile", "adv_lora_lr", "ret_lora_lr", "unlearn_lr", "retain_amp"],
-#     target_name="Final forget loss",
-# )
-# fig.update_layout(
-#     title={
-#         "text": "pythia-14m oscar_pl normalized_grads",
-#         "xanchor": "center",
-#         "x": 0.5,
-#         "y": 0.95,
-#     },
-#     template="plotly_white",
-#     font=dict(family="Times New Roman", size=20),
-#     title_font_size=30,
-# )
-# # save the figure
-# save_path = repo_root() / "paper" / "Figures" / f"{fig.layout.title.text}.png"
-# fig.write_image(str(save_path))
-
-# fig.show()
-
-# # %%
-# # ! rerun the best trial, with more steps
-# trials = study.get_trials()
-# finished_trials = [t for t in trials if t.state == optuna.trial.TrialState.COMPLETE]
-# worst_to_best = sorted(finished_trials, key=lambda t: t.value)
-
-# config.unlearn_steps = 150
-# config.relearn_steps = 100
-
-# best_params = deepcopy(worst_to_best[-1].params)
-# result = objective(MockTrial(best_params))
-# logging.info(f"Final result: {result}")
+if __name__ == "__main__":
+    assert is_repo_clean()
+    dd_mm = datetime.now().strftime("%d.%m")
+    study = optuna.create_study(
+        study_name=f"{dd_mm},pl,dont_terminate_on_alora_break",
+        storage="sqlite:///../results/db.sqlite3",
+        direction="maximize",
+        # load_if_exists=True,  # This allows resuming existing studies
+    )
+    # add_tag_to_current_commit(study.study_name)
+    save_script_and_attach_logger(__file__, study.study_name)
+    study.set_metric_names(["forget_loss"])
+    study.set_user_attr("commit_hash", commit_hash())
+    for k, v in config.__dict__.items():
+        study.set_user_attr(k, v)
+    study.optimize(objective, n_trials=3000)
