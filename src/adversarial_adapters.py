@@ -31,7 +31,7 @@ config = SimpleNamespace(
         target_modules=["query_key_value", "dense", "dense_h_to_4h", "dense_4h_to_h"],
     ),
     # Training constants
-    unlearn_steps=30,
+    unlearn_steps=50,
     batch_size=16,
     # Relearning params
     relearn_steps=30,
@@ -72,7 +72,7 @@ logging.info(f"init forget: {init_forget:6.2f}    init retain: {init_retain:6.2f
 # %%
 def objective(trial):
     # ! parameters
-    quantile = trial.suggest_float("quantile", 0.01, 0.3, log=True)
+    quantile = trial.suggest_float("quantile", 0.001, 0.3, log=True)
     adv_lora_lr = trial.suggest_float("adv_lora_lr", 1e-4, 1e-3, log=True)
     ret_lora_lr = trial.suggest_float("ret_lora_lr", 1e-5, 1e-3, log=True)
     unlearn_lr = trial.suggest_float("unlearn_lr", 0.01, 0.3, log=True)
@@ -214,7 +214,7 @@ def objective(trial):
 if __name__ == "__main__":
     dd_mm = datetime.now().strftime("%d.%m")
     study = optuna.create_study(
-        study_name=f"{dd_mm},pl,dont_terminate_on_alora_break,better_range,fixed",
+        study_name=f"{dd_mm},pl,dont_terminate_on_alora_break,better_range2",
         storage=f"sqlite:///{repo_root() / "results" / "db.sqlite3"}",
         direction="maximize",
         # load_if_exists=True,
