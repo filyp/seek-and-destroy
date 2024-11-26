@@ -40,7 +40,6 @@ config = SimpleNamespace(
     relearn_lora_conf=dict(r=1, target_modules=["dense_h_to_4h"], lora_dropout=0.1),
     # relearn_lora_conf=dict(r=1, target_modules=["up_proj"], lora_dropout=0.1),
     # Default tunable params
-    disruption_score_decay=0.95,
     disruption_score_warmup=10,
 )
 
@@ -63,25 +62,27 @@ forget_val_batches = CachedBatches(forget_set["validation"], config.eval_batch_s
 r_eval_batch = next(retain_val_batches.fresh_iterator())
 f_eval_batch = next(forget_val_batches.fresh_iterator())
 
-model = AutoModelForCausalLM.from_pretrained(config.model_id)
-init_forget = eval_loss(model, f_eval_batch)
-init_retain = eval_loss(model, r_eval_batch)
+base_model = AutoModelForCausalLM.from_pretrained(config.model_id)
+init_forget = eval_loss(base_model, f_eval_batch)
+init_retain = eval_loss(base_model, r_eval_batch)
 logging.info(f"init forget: {init_forget:6.2f}    init retain: {init_retain:6.2f}")
 
 
 # %%
 def objective(trial):
     # ! parameters
-    quantile = trial.suggest_float("quantile", 0.001, 0.3, log=True)
+    quantile = trial.suggest_float("quantile", 0.0001, 0.01, log=True)
     adv_lora_lr = trial.suggest_float("adv_lora_lr", 1e-4, 1e-3, log=True)
     ret_lora_lr = trial.suggest_float("ret_lora_lr", 1e-5, 1e-3, log=True)
-    unlearn_lr = trial.suggest_float("unlearn_lr", 0.01, 0.3, log=True)
-    unlearn_lr_mult = trial.suggest_float("unlearn_lr_mult", 1, 1.01)
+    unlearn_lr = trial.suggest_float("unlearn_lr", 0.003, 0.3, log=True)
+    unlearn_lr_mult = trial.suggest_float("unlearn_lr_mult", 0.99, 1.01)
     forget_amp = 1  # trial.suggest_float("forget_amp", 0.5, 1.5)
     retain_amp = 1.6  # trial.suggest_float("retain_amp", 1.5, 1.7)
     # unl_loss_fn = loss_fns[trial.suggest_categorical("unl_loss_fn", loss_fns.keys())]
     unl_loss_fn = loss_fns["correct_logit"]
     adv_lora_rank = trial.suggest_int("adv_lora_rank", 1, 3)
+
+    disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.8, 0.99)
 
     mask_fn = lambda param: param.disruption_score / param.grad.abs() ** forget_amp
     trial.set_user_attr("lora_defeaten", False)
@@ -93,7 +94,7 @@ def objective(trial):
     retain_iter = retain_batches.fresh_iterator()
 
     # load model
-    model = AutoModelForCausalLM.from_pretrained(config.model_id)
+    model = deepcopy(base_model)
     # add loras
     adv_lora_config = LoraConfig(r=adv_lora_rank, **config.adv_lora_config)
     peft_model = get_peft_model(
@@ -132,7 +133,7 @@ def objective(trial):
         loss.backward()
         # ! update disruption scores
         for param in interven_params:
-            param.disruption_score *= config.disruption_score_decay
+            param.disruption_score *= disruption_score_decay
             param.disruption_score += param.grad.abs() ** retain_amp
         if step <= config.disruption_score_warmup:
             continue
@@ -214,7 +215,7 @@ def objective(trial):
 if __name__ == "__main__":
     dd_mm = datetime.now().strftime("%d.%m")
     study = optuna.create_study(
-        study_name=f"{dd_mm},pl,dont_terminate_on_alora_break,better_range2",
+        study_name=f"{dd_mm},pl,dont_terminate_on_alora_break,better_range3",
         storage=f"sqlite:///{repo_root() / "results" / "db.sqlite3"}",
         direction="maximize",
         # load_if_exists=True,
@@ -225,4 +226,4 @@ if __name__ == "__main__":
     study.set_user_attr("is_repo_clean", is_repo_clean())
     for k, v in config.__dict__.items():
         study.set_user_attr(k, v)
-    study.optimize(objective, n_trials=3000)
+    study.optimize(objective, n_trials=10000)
