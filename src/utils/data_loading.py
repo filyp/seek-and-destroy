@@ -112,7 +112,8 @@ dataset_loaders = dict(
 
 class CachedBatches:
     def __init__(self, base_iter, batch_size):
-        self.base_iter = base_iter
+        assert isinstance(base_iter, IterableDataset)
+        self.base_iter = looping_iter(base_iter)
         self.batch_size = batch_size
         self.cache = []
 

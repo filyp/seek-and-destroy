@@ -4,7 +4,7 @@ from copy import deepcopy
 import torch as pt
 from peft import LoraConfig, get_peft_model
 
-from utils.data_loading import looping_iter, get_batch
+from utils.data_loading import get_batch, looping_iter
 from utils.training import cross_entropy_loss, eval_loss
 
 
@@ -39,20 +39,16 @@ def copy_model_and_collapse_loras(peft_model):
     return collapsed
 
 
-def relearn(model, config, forget_set, retain_set):
-    forget_iter = looping_iter(forget_set["validation"])
-    retain_iter = looping_iter(retain_set["validation"])
-    f_eval_batch = get_batch(iter(forget_set["validation"]), config.eval_batch_size)
-    r_eval_batch = get_batch(iter(retain_set["validation"]), config.eval_batch_size)
+def relearn(model, config, retain_val_iter, forget_val_iter):
+    f_eval_batch = next(forget_val_iter)
+    r_eval_batch = next(retain_val_iter)
 
     # add relearning lora
     lora_config = LoraConfig(**config.relearn_lora_conf)
     peft_model = get_peft_model(model, lora_config, adapter_name="relearning_lora")
     model = peft_model.model
 
-    optimizer = pt.optim.Adam(
-        model.parameters(), lr=config.relearn_lr, betas=(0.9, 0.999)
-    )
+    optimizer = pt.optim.SGD(model.parameters(), lr=config.relearn_lr)
 
     # ! relearning loop
     logging.info("")
@@ -60,8 +56,8 @@ def relearn(model, config, forget_set, retain_set):
         # standard forward, backward, and update
         model.train()
         optimizer.zero_grad(set_to_none=True)
-        f_input_ids = get_batch(forget_iter, config.relearn_batch_size)
-        r_input_ids = get_batch(retain_iter, config.relearn_batch_size)
+        f_input_ids = next(forget_val_iter)
+        r_input_ids = next(retain_val_iter)
         loss_forget = cross_entropy_loss(model(f_input_ids), f_input_ids)
         loss_retain = cross_entropy_loss(model(r_input_ids), r_input_ids)
         (loss_forget + loss_retain).backward()

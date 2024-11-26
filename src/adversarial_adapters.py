@@ -4,12 +4,11 @@ from datetime import datetime
 from types import SimpleNamespace
 
 import optuna
-import optuna.visualization as vis
 import torch as pt
 from peft import LoraConfig, get_peft_model
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from utils.data_loading import dataset_loaders, get_batch
+from utils.data_loading import CachedBatches, dataset_loaders
 from utils.git_and_reproducibility import *
 from utils.model_operations import *
 from utils.training import MockTrial, loss_fns, set_seeds
@@ -32,13 +31,12 @@ config = SimpleNamespace(
         target_modules=["query_key_value", "dense", "dense_h_to_4h", "dense_4h_to_h"],
     ),
     # Training constants
-    unlearn_steps=100,
+    unlearn_steps=30,
     batch_size=16,
-    eval_batch_size=32,
     # Relearning params
-    relearn_steps=100,
+    relearn_steps=30,
     relearn_lr=3e-4,
-    relearn_batch_size=16,
+    eval_batch_size=16,
     relearn_lora_conf=dict(r=1, target_modules=["dense_h_to_4h"], lora_dropout=0.1),
     # relearn_lora_conf=dict(r=1, target_modules=["up_proj"], lora_dropout=0.1),
     # Default tunable params
@@ -58,9 +56,12 @@ logging.basicConfig(
 tokenizer = AutoTokenizer.from_pretrained(config.model_id)
 retain_set = dataset_loaders["wikitext"](tokenizer)
 forget_set = dataset_loaders[config.forget_set_name](tokenizer)
-
-f_eval_batch = get_batch(iter(forget_set["validation"]), config.eval_batch_size)
-r_eval_batch = get_batch(iter(retain_set["validation"]), config.eval_batch_size)
+retain_batches = CachedBatches(retain_set["train"], config.batch_size)
+forget_batches = CachedBatches(forget_set["train"], config.batch_size)
+retain_val_batches = CachedBatches(retain_set["validation"], config.eval_batch_size)
+forget_val_batches = CachedBatches(forget_set["validation"], config.eval_batch_size)
+r_eval_batch = next(retain_val_batches.fresh_iterator())
+f_eval_batch = next(forget_val_batches.fresh_iterator())
 
 model = AutoModelForCausalLM.from_pretrained(config.model_id)
 init_forget = eval_loss(model, f_eval_batch)
@@ -71,15 +72,15 @@ logging.info(f"init forget: {init_forget:6.2f}    init retain: {init_retain:6.2f
 # %%
 def objective(trial):
     # ! parameters
-    quantile = trial.suggest_float("quantile", 0.03, 0.3, log=True)
-    adv_lora_lr = trial.suggest_float("adv_lora_lr", 1e-4, 2e-3, log=True)
-    ret_lora_lr = trial.suggest_float("ret_lora_lr", 2e-5, 1e-3, log=True)
-    unlearn_lr = trial.suggest_float("unlearn_lr", 0.01, 1, log=True)
-    unlearn_lr_mult = trial.suggest_float("unlearn_lr_mult", 1, 1.02)
+    quantile = trial.suggest_float("quantile", 0.01, 0.3, log=True)
+    adv_lora_lr = trial.suggest_float("adv_lora_lr", 1e-4, 1e-3, log=True)
+    ret_lora_lr = trial.suggest_float("ret_lora_lr", 1e-5, 1e-3, log=True)
+    unlearn_lr = trial.suggest_float("unlearn_lr", 0.01, 0.3, log=True)
+    unlearn_lr_mult = trial.suggest_float("unlearn_lr_mult", 1, 1.01)
     forget_amp = 1  # trial.suggest_float("forget_amp", 0.5, 1.5)
     retain_amp = 1.6  # trial.suggest_float("retain_amp", 1.5, 1.7)
     # unl_loss_fn = loss_fns[trial.suggest_categorical("unl_loss_fn", loss_fns.keys())]
-    unl_loss_fn = loss_fns["cross_entropy"]
+    unl_loss_fn = loss_fns["correct_logit"]
     adv_lora_rank = trial.suggest_int("adv_lora_rank", 1, 3)
 
     mask_fn = lambda param: param.disruption_score / param.grad.abs() ** forget_amp
@@ -88,8 +89,8 @@ def objective(trial):
 
     set_seeds(42)  # note: something is still undeterministic!
     # prepare data iterators
-    forget_iter = looping_iter(forget_set["train"])
-    retain_iter = looping_iter(retain_set["train"])
+    forget_iter = forget_batches.fresh_iterator()
+    retain_iter = retain_batches.fresh_iterator()
 
     # load model
     model = AutoModelForCausalLM.from_pretrained(config.model_id)
@@ -108,8 +109,8 @@ def objective(trial):
 
     # initialize optimizers
     base_optimizer = pt.optim.SGD(interven_params, lr=unlearn_lr)
-    adv_optimizer = pt.optim.Adam(adv_lora_params, lr=adv_lora_lr)
-    ret_optimizer = pt.optim.Adam(ret_lora_params, lr=ret_lora_lr)
+    adv_optimizer = pt.optim.SGD(adv_lora_params, lr=adv_lora_lr)
+    ret_optimizer = pt.optim.SGD(ret_lora_params, lr=ret_lora_lr)
 
     # initialize disruption scores
     for param in interven_params:
@@ -120,8 +121,8 @@ def objective(trial):
     logging.info("step      base_f      base_r       adv_f      adv_r")
     for step in range(1, 1 + config.unlearn_steps):
         model.train()
-        f_input_ids = get_batch(forget_iter, config.batch_size)
-        r_input_ids = get_batch(retain_iter, config.batch_size)
+        f_input_ids = next(forget_iter)
+        r_input_ids = next(retain_iter)
 
         # ! retain with helper lora
         peft_model.set_adapter(["ret_lora"])
@@ -203,24 +204,25 @@ def objective(trial):
     # %
     # ! final bigger eval relearning
     collapsed_model = copy_model_and_collapse_loras(peft_model)
-    forget_loss = relearn(collapsed_model, config, forget_set, retain_set)
+    retain_val_iter = retain_val_batches.fresh_iterator()
+    forget_val_iter = forget_val_batches.fresh_iterator()
+    forget_loss = relearn(collapsed_model, config, retain_val_iter, forget_val_iter)
     return forget_loss
 
 
 # %%
 if __name__ == "__main__":
-    assert is_repo_clean()
     dd_mm = datetime.now().strftime("%d.%m")
     study = optuna.create_study(
-        study_name=f"{dd_mm},pl,dont_terminate_on_alora_break,better_range",
+        study_name=f"{dd_mm},pl,dont_terminate_on_alora_break,better_range,fixed",
         storage=f"sqlite:///{repo_root() / "results" / "db.sqlite3"}",
         direction="maximize",
-        # load_if_exists=True,  # This allows resuming existing studies
+        # load_if_exists=True,
     )
-    # add_tag_to_current_commit(study.study_name)
     save_script_and_attach_logger(__file__, study.study_name)
     study.set_metric_names(["forget_loss"])
     study.set_user_attr("commit_hash", commit_hash())
+    study.set_user_attr("is_repo_clean", is_repo_clean())
     for k, v in config.__dict__.items():
         study.set_user_attr(k, v)
     study.optimize(objective, n_trials=3000)
