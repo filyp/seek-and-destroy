@@ -20,13 +20,18 @@ config = SimpleNamespace(
     # model_id="HuggingFaceTB/SmolLM-135M",
     # forget_set_name="python",
     forget_set_name="oscar_pl",
-    lora_config=dict(
+    adv_lora_config=dict(
+        # r=4,
+        lora_dropout=0.1,
+        target_modules=["query_key_value", "dense", "dense_h_to_4h", "dense_4h_to_h"],        # target_modules=["up_proj", "down_proj", "gate_proj", "q_proj", "k_proj", "v_proj", "o_proj"],  # fmt: skip
+    ),
+    ret_lora_config=dict(
         r=4,
         lora_dropout=0.1,
         target_modules=["query_key_value", "dense", "dense_h_to_4h", "dense_4h_to_h"],        # target_modules=["up_proj", "down_proj", "gate_proj", "q_proj", "k_proj", "v_proj", "o_proj"],  # fmt: skip
     ),
     # Training constants
-    unlearn_steps=200,
+    unlearn_steps=100,
     batch_size=16,
     eval_batch_size=32,
     # Relearning params
@@ -65,16 +70,18 @@ logging.info(f"init forget: {init_forget:6.2f}    init retain: {init_retain:6.2f
 # %%
 def objective(trial):
     # ! parameters
-    quantile = trial.suggest_float("quantile", 0.01, 0.15, log=True)
-    adv_lora_lr = trial.suggest_float("adv_lora_lr", 8e-4, 1.2e-3, log=True)
-    ret_lora_lr = trial.suggest_float("ret_lora_lr", 1e-5, 6e-5, log=True)
-    unlearn_lr = trial.suggest_float("unlearn_lr", 2e-3, 2e-2, log=True)
+    quantile = trial.suggest_float("quantile", 0.001, 0.2, log=True)
+    adv_lora_lr = trial.suggest_float("adv_lora_lr", 3e-4, 1.5e-3, log=True)
+    ret_lora_lr = trial.suggest_float("ret_lora_lr", 1e-5, 3e-4, log=True)
+    unlearn_lr = trial.suggest_float("unlearn_lr", 1e-3, 1e-1, log=True)
+    unlearn_lr_mult = trial.suggest_float("unlearn_lr_mult", 0.25, 4, log=True)
+    unlearn_lr_mult = unlearn_lr_mult ** (1 / config.unlearn_steps)
     forget_amp = 1  # trial.suggest_float("forget_amp", 0.5, 1.5)
-    retain_amp = trial.suggest_float("retain_amp", 1.5, 1.7)
-    # unl_loss_fn = loss_fns[trial.suggest_categorical("unl_loss_fn", loss_fns.keys())]
-    unl_loss_fn = loss_fns["clipped_correct_logit"]
+    retain_amp = trial.suggest_float("retain_amp", 1.5, 7)
+    unl_loss_fn = loss_fns[trial.suggest_categorical("unl_loss_fn", loss_fns.keys())]
     ret_loss_fn = loss_fns["cross_entropy"]
     # disrupt_loss_fn = loss_fns[trial.suggest_categorical("disrupt_loss_fn", loss_fns.keys())]  # fmt: skip
+    adv_lora_rank = trial.suggest_int("adv_lora_rank", 1, 3)
 
     mask_fn = lambda param: param.disruption_score / param.grad.abs() ** forget_amp
     trial.set_user_attr("lora_defeaten", False)
@@ -88,10 +95,13 @@ def objective(trial):
     # load model
     model = AutoModelForCausalLM.from_pretrained(config.model_id)
     # add loras
-    lora_config = LoraConfig(**config.lora_config)
-    peft_model = get_peft_model(model, lora_config, adapter_name="adv_lora", mixed=True)
+    adv_lora_config = LoraConfig(r=adv_lora_rank, **config.adv_lora_config)
+    peft_model = get_peft_model(
+        model, adv_lora_config, adapter_name="adv_lora", mixed=True
+    )
     model = peft_model.model
-    peft_model.add_adapter("ret_lora", lora_config)
+    ret_lora_config = LoraConfig(**config.ret_lora_config)
+    peft_model.add_adapter("ret_lora", ret_lora_config)
 
     interven_params = [p for n, p in model.named_parameters() if ".base_layer.weight" in n]  # fmt: skip
     adv_lora_params = [p for n, p in model.named_parameters() if ".adv_lora." in n]
@@ -132,6 +142,7 @@ def objective(trial):
         ret_optimizer.step()
 
         # ! unlearn on the base model
+        base_optimizer.param_groups[0]["lr"] *= unlearn_lr_mult
         peft_model.set_adapter(["ret_lora", "adv_lora"])
         only_grad_on(model, interven_params)
         model.zero_grad(set_to_none=True)
@@ -201,7 +212,7 @@ def objective(trial):
 # %%
 assert is_repo_clean()
 study = optuna.create_study(
-    study_name="pythia-14m,oscar_pl,normalize_grads,200_steps,lowered_range",
+    study_name="pythia-14m,oscar_pl,normalize_grads,100_steps,rank,schedule,losses",
     storage="sqlite:///../results/aa_hyperparam_robustness.sqlite3",
     direction="maximize",
     # load_if_exists=True,  # This allows resuming existing studies
