@@ -69,21 +69,30 @@ logging.info(f"init forget: {init_forget:6.2f}    init retain: {init_retain:6.2f
 # %%
 def objective(trial):
     # ! parameters
-    quantile = trial.suggest_float("quantile", 0.01, 0.1, log=True)
-    adv_lora_lr = trial.suggest_float("adv_lora_lr", 1e-4, 1e-3, log=True)
-    ret_lora_lr = trial.suggest_float("ret_lora_lr", 1e-4, 1e-3, log=True)
-    unlearn_lr = trial.suggest_float("unlearn_lr", 0.01, 0.04, log=True)
+    quantile = trial.suggest_float("quantile", 0.01, 0.05, log=True)
+    adv_lora_lr = 1.5e-4  # trial.suggest_float("adv_lora_lr", 1e-4, 1e-3, log=True)
+    ret_lora_lr = 7e-4  # trial.suggest_float("ret_lora_lr", 1e-4, 1e-3, log=True)
+    unlearn_lr = trial.suggest_float("unlearn_lr", 0.01, 0.1, log=True)
     unlearn_lr_mult = 1  # trial.suggest_float("unlearn_lr_mult", 0.99, 1.01)
-    forget_amp = trial.suggest_float("forget_amp", 1, 1.6)
+    forget_amp = 1.2  # trial.suggest_float("forget_amp", 1, 1.6)
     retain_amp = 1.6  # trial.suggest_float("retain_amp", 1.5, 1.8)
     # unl_loss_fn = loss_fns[trial.suggest_categorical("unl_loss_fn", loss_fns.keys())]
     unl_loss_fn = loss_fns["correct_logit"]
     adv_lora_rank = 3  # trial.suggest_int("adv_lora_rank", 1, 4)
-    ret_lora_rank = trial.suggest_int("ret_lora_rank", 1, 3)
+    ret_lora_rank = 3  # trial.suggest_int("ret_lora_rank", 1, 3)
 
-    target_modules = ["dense", "query_key_value", "dense_h_to_4h"]
+    # decide which modules to attack
+    target_modules = [] 
     if trial.suggest_categorical("mod_down_proj", [True, False]):
         target_modules.append("dense_4h_to_h")
+    if trial.suggest_categorical("mod_up_proj", [True, False]):
+        target_modules.append("dense_h_to_4h")
+    if trial.suggest_categorical("mod_attn", [True, False]):
+        target_modules.append("query_key_value")
+    if trial.suggest_categorical("mod_attn_out", [True, False]):
+        target_modules.append("dense")
+    if not target_modules:
+        raise optuna.TrialPruned()
 
     disruption_score_decay = 0.7
 
@@ -219,10 +228,12 @@ def objective(trial):
 
 
 # %%
+info = f"{config.forget_set_name},{config.unlearn_steps}-{config.relearn_steps}"
+study_name = f"{info},which_target_modules"
 if __name__ == "__main__":
-    dd_mm = datetime.now().strftime("%d.%m")
+    assert is_repo_clean()
     study = optuna.create_study(
-        study_name=f"{dd_mm},python,dont_terminate_on_alora_break,same_range_as_prev",
+        study_name=study_name,
         storage=get_storage(),
         direction="maximize",
         # load_if_exists=True,
@@ -230,7 +241,7 @@ if __name__ == "__main__":
     save_script_and_attach_logger(__file__, study.study_name)
     study.set_metric_names(["forget_loss"])
     study.set_user_attr("commit_hash", commit_hash())
-    study.set_user_attr("is_repo_clean", is_repo_clean())
     for k, v in config.__dict__.items():
         study.set_user_attr(k, v)
     study.optimize(objective, n_trials=10000)
+
