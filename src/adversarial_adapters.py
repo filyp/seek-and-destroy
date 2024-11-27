@@ -18,8 +18,8 @@ config = SimpleNamespace(
     model_id="EleutherAI/pythia-14m",
     # model_id="EleutherAI/pythia-70m",
     # model_id="HuggingFaceTB/SmolLM-135M",
-    forget_set_name="python",
-    # forget_set_name="oscar_pl",
+    # forget_set_name="python",
+    forget_set_name="oscar_pl",
     adv_lora_config=dict(
         lora_dropout=0.1,
         target_modules=["dense_h_to_4h", "dense_4h_to_h", "query_key_value", "dense"],
@@ -243,5 +243,5 @@ if __name__ == "__main__":
     study.set_user_attr("commit_hash", commit_hash())
     for k, v in config.__dict__.items():
         study.set_user_attr(k, v)
-    study.optimize(objective, n_trials=10000)
+    study.optimize(objective, n_trials=1000)
 
