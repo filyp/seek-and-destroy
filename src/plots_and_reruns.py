@@ -7,8 +7,10 @@ from adversarial_adapters import *
 storage = get_storage()
 
 study_summaries = optuna.study.get_all_study_summaries(storage)
-latest_study = max(study_summaries, key=lambda s: s.datetime_start)
+sorted_studies = sorted(study_summaries, key=lambda s: s.datetime_start)
+latest_study = sorted_studies[-1]
 study = optuna.load_study(study_name=latest_study.study_name, storage=storage)
+print(study.study_name)
 
 # study_name = "26.11,pl,dont_terminate_on_alora_break,better_range7"
 # study = optuna.load_study(study_name=study_name, storage=storage)
