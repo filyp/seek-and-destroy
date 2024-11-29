@@ -21,16 +21,15 @@ config = SimpleNamespace(
     forget_set_name="python",
     # forget_set_name="oscar_pl",
     adv_lora_config=dict(
-        # todo dropouts have never been tuned
-        lora_dropout=0.1,
+        # lora_dropout=0.1,
         target_modules=["dense_h_to_4h", "dense_4h_to_h", "query_key_value", "dense"],
     ),
     ret_lora_config=dict(
-        lora_dropout=0.1,
+        # lora_dropout=0.1,
         target_modules=["dense_h_to_4h", "dense_4h_to_h", "query_key_value", "dense"],
     ),
     # Training constants
-    unlearn_steps=200,
+    # unlearn_steps=200,
     batch_size=16,
     # Relearning params
     relearn_steps=50,
@@ -71,30 +70,38 @@ logging.info(f"init forget: {init_forget:6.2f}    init retain: {init_retain:6.2f
 def objective(trial):
     # ! parameters
     quantile = trial.suggest_float("quantile", 0.01, 0.05, log=True)
-    adv_lora_lr = trial.suggest_float("adv_lora_lr", 1e-4, 3e-4, log=True)
-    ret_lora_lr = 7e-4  # trial.suggest_float("ret_lora_lr", 1e-4, 1e-3, log=True)
+    adv_lora_lr = trial.suggest_float("adv_lora_lr", 3e-5, 3e-4, log=True)
+    ret_lora_lr = trial.suggest_float("ret_lora_lr", 1e-4, 1e-3, log=True)
     unlearn_lr = trial.suggest_float("unlearn_lr", 0.01, 0.1, log=True)
-    unlearn_lr_mult = trial.suggest_float("unlearn_lr_mult", 0.98, 1.02)
-    forget_amp = trial.suggest_float("forget_amp", 0.9, 1.3)
-    retain_amp = 1.6  # trial.suggest_float("retain_amp", 1.5, 1.8)
-    # unl_loss_fn = loss_fns[trial.suggest_categorical("unl_loss_fn", loss_fns.keys())]
-    unl_loss_fn = loss_fns["correct_logit"]
-    adv_lora_rank = 3  # trial.suggest_int("adv_lora_rank", 1, 4)
-    ret_lora_rank = 3  # trial.suggest_int("ret_lora_rank", 1, 3)
+    unlearn_lr_mult = trial.suggest_float("unlearn_lr_mult", 0.99, 1.01)
+    forget_amp = trial.suggest_float("forget_amp", 0.8, 1.2)
+    retain_amp = trial.suggest_float("retain_amp", 1.4, 1.8)
+    unl_loss_fn = loss_fns[trial.suggest_categorical("unl_loss_fn", loss_fns.keys())]
+    ret_lora_rank = trial.suggest_int("ret_lora_rank", 2, 4)
+    ret_lora_dropout = trial.suggest_float("ret_lora_dropout", 0.0, 0.1)
+    adv_lora_rank = trial.suggest_int("adv_lora_rank", 2, 4)
+    adv_lora_dropout = trial.suggest_float("adv_lora_dropout", 0.0, 0.1)
 
-    # # decide which modules to attack
-    # target_modules = [] 
-    # if trial.suggest_categorical("mod_down_proj", [True, False]):
-    #     target_modules.append("dense_4h_to_h")
-    # if trial.suggest_categorical("mod_up_proj", [True, False]):
-    #     target_modules.append("dense_h_to_4h")
-    # if trial.suggest_categorical("mod_attn", [True, False]):
-    #     target_modules.append("query_key_value")
-    # if trial.suggest_categorical("mod_attn_out", [True, False]):
-    #     target_modules.append("dense")
-    # if not target_modules:
-    #     raise optuna.TrialPruned()
-    target_modules = ["dense_4h_to_h", "dense"]  # for python keep these two
+    # sample number of steps from loglog distribution, between 10 and 1000
+    log_steps = trial.suggest_float("log_steps", 1, 3, log=True)
+    num_steps = int(round(10**log_steps, -1))
+    logging.info(f"{num_steps=}")
+    if num_steps <= config.disruption_score_warmup:
+        raise optuna.TrialPruned()
+
+    # target_modules = ["dense_4h_to_h", "dense"]  # for python keep these two
+    # decide which modules to attack
+    target_modules = []
+    if trial.suggest_categorical("mod_down_proj", [True, False]):
+        target_modules.append("dense_4h_to_h")
+    if trial.suggest_categorical("mod_up_proj", [True, False]):
+        target_modules.append("dense_h_to_4h")
+    if trial.suggest_categorical("mod_attn", [True, False]):
+        target_modules.append("query_key_value")
+    if trial.suggest_categorical("mod_attn_out", [True, False]):
+        target_modules.append("dense")
+    if not target_modules:
+        raise optuna.TrialPruned()
 
     disruption_score_decay = 0.7
 
@@ -111,10 +118,14 @@ def objective(trial):
     # note: to save memory you may want to load from_pretrained instead
     model = deepcopy(base_model)
     # add loras
-    adv_lora_c = LoraConfig(r=adv_lora_rank, **config.adv_lora_config)
+    adv_lora_c = LoraConfig(
+        r=adv_lora_rank, lora_dropout=adv_lora_dropout, **config.adv_lora_config
+    )
     peft_model = get_peft_model(model, adv_lora_c, adapter_name="adv_lora", mixed=True)
     model = peft_model.model
-    ret_lora_config = LoraConfig(r=ret_lora_rank, **config.ret_lora_config)
+    ret_lora_config = LoraConfig(
+        r=ret_lora_rank, lora_dropout=ret_lora_dropout, **config.ret_lora_config
+    )
     peft_model.add_adapter("ret_lora", ret_lora_config)
 
     interven_params = [
@@ -138,7 +149,7 @@ def objective(trial):
     # %
     # ! unlearning loop
     logging.info("step      base_f      base_r       adv_f      adv_r")
-    for step in range(1, 1 + config.unlearn_steps):
+    for step in range(1, 1 + num_steps):
         model.train()
         f_input_ids = next(forget_iter)
         r_input_ids = next(retain_iter)
@@ -230,8 +241,8 @@ def objective(trial):
 
 
 # %%
-info = f"{config.forget_set_name},{config.unlearn_steps}-{config.relearn_steps}"
-study_name = f"{info},more_steps_with_best_values"
+info = f"{config.forget_set_name},{config.relearn_steps}rs"
+study_name = f"{info},17params,loglog_steps_10_1000"
 if __name__ == "__main__":
     assert is_repo_clean()
     study = optuna.create_study(
@@ -246,4 +257,3 @@ if __name__ == "__main__":
     for k, v in config.__dict__.items():
         study.set_user_attr(k, v)
     study.optimize(objective, n_trials=1000)
-
