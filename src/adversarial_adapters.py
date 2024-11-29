@@ -32,13 +32,13 @@ config = SimpleNamespace(
     # unlearn_steps=200,
     batch_size=16,
     # Relearning params
-    relearn_steps=50,
+    relearn_steps=100,
     relearn_lr=3e-4,
     eval_batch_size=16,
     relearn_lora_conf=dict(r=1, target_modules=["dense_h_to_4h"], lora_dropout=0.1),
     # relearn_lora_conf=dict(r=1, target_modules=["up_proj"], lora_dropout=0.1),
     # Default tunable params
-    disruption_score_warmup=10,
+    # disruption_score_warmup=10,
 )
 
 pt.set_default_device("cuda")
@@ -70,23 +70,25 @@ logging.info(f"init forget: {init_forget:6.2f}    init retain: {init_retain:6.2f
 def objective(trial):
     # ! parameters
     quantile = trial.suggest_float("quantile", 0.01, 0.05, log=True)
-    adv_lora_lr = trial.suggest_float("adv_lora_lr", 3e-5, 3e-4, log=True)
-    ret_lora_lr = trial.suggest_float("ret_lora_lr", 1e-4, 1e-3, log=True)
-    unlearn_lr = trial.suggest_float("unlearn_lr", 0.01, 0.1, log=True)
+    adv_lora_lr = trial.suggest_float("adv_lora_lr", 5e-5, 2e-4, log=True)
+    ret_lora_lr = trial.suggest_float("ret_lora_lr", 1e-4, 5e-4, log=True)
+    unlearn_lr = trial.suggest_float("unlearn_lr", 0.01, 0.05, log=True)
     unlearn_lr_mult = trial.suggest_float("unlearn_lr_mult", 0.99, 1.01)
     forget_amp = trial.suggest_float("forget_amp", 0.8, 1.2)
-    retain_amp = trial.suggest_float("retain_amp", 1.4, 1.8)
+    retain_amp = trial.suggest_float("retain_amp", 1, 1.6)
     unl_loss_fn = loss_fns[trial.suggest_categorical("unl_loss_fn", loss_fns.keys())]
-    ret_lora_rank = trial.suggest_int("ret_lora_rank", 2, 4)
+    ret_lora_rank = trial.suggest_int("ret_lora_rank", 1, 3)
     ret_lora_dropout = trial.suggest_float("ret_lora_dropout", 0.0, 0.1)
-    adv_lora_rank = trial.suggest_int("adv_lora_rank", 2, 4)
+    adv_lora_rank = trial.suggest_int("adv_lora_rank", 3, 8)
     adv_lora_dropout = trial.suggest_float("adv_lora_dropout", 0.0, 0.1)
+
+    disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.0, 0.95)
+    disruption_score_warmup = trial.suggest_int("disruption_score_warmup", 1, 20)
 
     # sample number of steps from loglog distribution, between 10 and 1000
     log_steps = trial.suggest_float("log_steps", 1, 3, log=True)
     num_steps = int(round(10**log_steps, -1))
-    logging.info(f"{num_steps=}")
-    if num_steps <= config.disruption_score_warmup:
+    if num_steps <= disruption_score_warmup:
         raise optuna.TrialPruned()
 
     # target_modules = ["dense_4h_to_h", "dense"]  # for python keep these two
@@ -103,7 +105,7 @@ def objective(trial):
     if not target_modules:
         raise optuna.TrialPruned()
 
-    disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.0, 0.95)
+    logging.info(f"{trial.params}")
 
     mask_fn = lambda param: param.disruption_score / param.grad.abs() ** forget_amp
     trial.set_user_attr("lora_defeaten", False)
@@ -164,7 +166,7 @@ def objective(trial):
         for param in interven_params:
             param.disruption_score *= disruption_score_decay
             param.disruption_score += param.grad.abs() ** retain_amp
-        if step <= config.disruption_score_warmup:
+        if step <= disruption_score_warmup:
             continue
         # model.zero_grad(set_to_none=True)
         # loss = loss_fns["cross_entropy"](model(r_input_ids), r_input_ids)
@@ -242,7 +244,7 @@ def objective(trial):
 
 # %%
 info = f"{config.forget_set_name},{config.relearn_steps}rs"
-study_name = f"{info},18params,loglog_steps_10_1000"
+study_name = f"{info},19params,loglog_steps_10_1000,better_ranges"
 if __name__ == "__main__":
     assert is_repo_clean()
     study = optuna.create_study(
