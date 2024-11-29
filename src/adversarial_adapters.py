@@ -103,7 +103,7 @@ def objective(trial):
     if not target_modules:
         raise optuna.TrialPruned()
 
-    disruption_score_decay = 0.7
+    disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.0, 0.95)
 
     mask_fn = lambda param: param.disruption_score / param.grad.abs() ** forget_amp
     trial.set_user_attr("lora_defeaten", False)
@@ -242,7 +242,7 @@ def objective(trial):
 
 # %%
 info = f"{config.forget_set_name},{config.relearn_steps}rs"
-study_name = f"{info},17params,loglog_steps_10_1000"
+study_name = f"{info},18params,loglog_steps_10_1000"
 if __name__ == "__main__":
     assert is_repo_clean()
     study = optuna.create_study(
