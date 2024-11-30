@@ -3,6 +3,7 @@ from copy import deepcopy
 
 import torch as pt
 from peft import LoraConfig, get_peft_model
+import wandb
 
 from utils.data_loading import get_batch, looping_iter
 from utils.training import cross_entropy_loss, eval_loss
@@ -49,6 +50,8 @@ def relearn(model, config, retain_val_iter, forget_val_iter):
     model = peft_model.model
 
     optimizer = pt.optim.SGD(model.parameters(), lr=config.relearn_lr)
+    
+    # wandb.init(project="adversarial_adaptation2", group="high_lr")
 
     # ! relearning loop
     logging.info("")
@@ -67,6 +70,7 @@ def relearn(model, config, retain_val_iter, forget_val_iter):
             f_loss = eval_loss(model, f_eval_batch)
             r_loss = eval_loss(model, r_eval_batch)
             logging.info(f"{step:4d} {f_loss:11.2f} {r_loss:11.2f}   <   RELEARNING")
+            # wandb.log({"forget_loss": f_loss, "retain_loss": r_loss}, step=step)
 
     logging.info("")
     return eval_loss(model, f_eval_batch)

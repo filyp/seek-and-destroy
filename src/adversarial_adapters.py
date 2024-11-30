@@ -32,11 +32,10 @@ config = SimpleNamespace(
     # unlearn_steps=200,
     batch_size=16,
     # Relearning params
-    relearn_steps=100,
+    relearn_steps=50,
     relearn_lr=3e-4,
     eval_batch_size=16,
-    relearn_lora_conf=dict(r=1, target_modules=["dense_h_to_4h"], lora_dropout=0.1),
-    # relearn_lora_conf=dict(r=1, target_modules=["up_proj"], lora_dropout=0.1),
+    relearn_lora_conf=dict(r=1, target_modules="all-linear", lora_dropout=0.1),
     # Default tunable params
     # disruption_score_warmup=10,
 )
@@ -69,21 +68,23 @@ logging.info(f"init forget: {init_forget:6.2f}    init retain: {init_retain:6.2f
 # %%
 def objective(trial):
     # ! parameters
-    quantile = trial.suggest_float("quantile", 0.01, 0.05, log=True)
+    quantile = trial.suggest_float("quantile", 0.001, 0.05, log=True)
     adv_lora_lr = trial.suggest_float("adv_lora_lr", 5e-5, 2e-4, log=True)
     ret_lora_lr = trial.suggest_float("ret_lora_lr", 1e-4, 5e-4, log=True)
-    unlearn_lr = trial.suggest_float("unlearn_lr", 0.01, 0.05, log=True)
+    unlearn_lr = trial.suggest_float("unlearn_lr", 0.01, 0.2, log=True)
     unlearn_lr_mult = trial.suggest_float("unlearn_lr_mult", 0.99, 1.01)
     forget_amp = trial.suggest_float("forget_amp", 0.8, 1.2)
-    retain_amp = trial.suggest_float("retain_amp", 1, 1.6)
+    retain_amp = trial.suggest_float("retain_amp", 1, 2)
     unl_loss_fn = loss_fns[trial.suggest_categorical("unl_loss_fn", loss_fns.keys())]
-    ret_lora_rank = trial.suggest_int("ret_lora_rank", 1, 3)
+    ret_lora_rank = trial.suggest_int("ret_lora_rank", 1, 5)
     ret_lora_dropout = trial.suggest_float("ret_lora_dropout", 0.0, 0.1)
-    adv_lora_rank = trial.suggest_int("adv_lora_rank", 3, 8)
+    adv_lora_rank = trial.suggest_int("adv_lora_rank", 1, 5)
     adv_lora_dropout = trial.suggest_float("adv_lora_dropout", 0.0, 0.1)
 
     disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.0, 0.95)
     disruption_score_warmup = trial.suggest_int("disruption_score_warmup", 1, 20)
+    
+    unlearn_lr_backoff = trial.suggest_float("unlearn_lr_backoff", 0.9, 1)
 
     # sample number of steps from loglog distribution, between 10 and 1000
     log_steps = trial.suggest_float("log_steps", 1, 3, log=True)
@@ -111,7 +112,7 @@ def objective(trial):
     trial.set_user_attr("lora_defeaten", False)
     trial.set_user_attr("retain_broken", False)
 
-    set_seeds(42)  # note: something is still undeterministic!
+    # set_seeds(42)  # note: something is still undeterministic!
     # prepare data iterators
     forget_iter = forget_batches.fresh_iterator()
     retain_iter = retain_batches.fresh_iterator()
@@ -150,6 +151,8 @@ def objective(trial):
 
     # %
     # ! unlearning loop
+    res = {}
+    _steps_with_broken_retain = 0
     logging.info("step      base_f      base_r       adv_f      adv_r")
     for step in range(1, 1 + num_steps):
         model.train()
@@ -174,24 +177,36 @@ def objective(trial):
         ret_optimizer.step()
 
         # ! unlearn on the base model
-        base_optimizer.param_groups[0]["lr"] *= unlearn_lr_mult
-        peft_model.set_adapter(["ret_lora", "adv_lora"])
-        only_grad_on(model, interven_params)
-        model.zero_grad(set_to_none=True)
-        loss = unl_loss_fn(model(f_input_ids), f_input_ids)
-        loss.backward()
-        # ! get threshold
-        final_scores = [mask_fn(p) for p in interven_params]
-        threshold = get_threshold(quantile, final_scores)
-        # ! apply mask
-        for param in interven_params:
-            mask = mask_fn(param) < threshold
-            param.grad *= mask
-        # ! normalize gradients
-        grad_norm = sum(p.grad.norm() ** 2 for p in interven_params) ** 0.5
-        for p in interven_params:
-            p.grad /= grad_norm
-        base_optimizer.step()
+        if res.get("base_retain", 0) < init_retain + 0.1:
+            _steps_with_broken_retain = 0
+
+            base_optimizer.param_groups[0]["lr"] *= unlearn_lr_mult
+            peft_model.set_adapter(["ret_lora", "adv_lora"])
+            only_grad_on(model, interven_params)
+            model.zero_grad(set_to_none=True)
+            loss = unl_loss_fn(model(f_input_ids), f_input_ids)
+            loss.backward()
+            # ! get threshold
+            final_scores = [mask_fn(p) for p in interven_params]
+            threshold = get_threshold(quantile, final_scores)
+            # ! apply mask
+            for param in interven_params:
+                mask = mask_fn(param) < threshold
+                param.grad *= mask
+            # ! normalize gradients
+            grad_norm = sum(p.grad.norm() ** 2 for p in interven_params) ** 0.5
+            for p in interven_params:
+                p.grad /= grad_norm
+            base_optimizer.step()
+        else:
+            _steps_with_broken_retain += 1
+            base_optimizer.param_groups[0]["lr"] *= unlearn_lr_backoff
+            if step % 10 == 1:
+                logging.info(f"step {step} - broken retain")
+            if _steps_with_broken_retain > 50:
+                logging.error("Retain performance broken for 50 steps")
+                trial.set_user_attr("retain_broken", True)
+                raise optuna.TrialPruned()
 
         # ! relearn with adversarial lora
         peft_model.set_adapter(["ret_lora", "adv_lora"])
@@ -213,13 +228,8 @@ def objective(trial):
 
             logging.info(f"{step:4} " + " ".join(f"{v:11.2f}" for v in res.values()))
 
-            # prune if retain performance broken
-            if res["base_retain"] > init_retain + 0.1:
-                logging.error("Retain performance broken")
-                trial.set_user_attr("retain_broken", True)
-                raise optuna.TrialPruned()
             # prune if base forget loss doesn't improve
-            if step >= 20 and res["base_forget"] < init_forget + 1:
+            if step >= 30 and res["base_forget"] < init_forget + 0.5:
                 logging.info("Forget loss stalled")
                 raise optuna.TrialPruned()
             # prune if adversarial lora is defeaten
@@ -233,6 +243,10 @@ def objective(trial):
                 logging.error("NaN in eval results")
                 raise optuna.TrialPruned()
 
+    if res["base_retain"] > init_retain + 0.1:
+        logging.info("Retain performance still broken")
+        raise optuna.TrialPruned()
+
     # %
     # ! final bigger eval relearning
     collapsed_model = copy_model_and_collapse_loras(peft_model)
@@ -244,7 +258,7 @@ def objective(trial):
 
 # %%
 info = f"{config.forget_set_name},{config.relearn_steps}rs"
-study_name = f"{info},19params,loglog_steps_10_1000,better_ranges"
+study_name = f"{info},20params,loglog_steps_10_1000"
 if __name__ == "__main__":
     assert is_repo_clean()
     study = optuna.create_study(
@@ -258,4 +272,4 @@ if __name__ == "__main__":
     study.set_user_attr("commit_hash", commit_hash())
     for k, v in config.__dict__.items():
         study.set_user_attr(k, v)
-    study.optimize(objective, n_trials=1000)
+    study.optimize(objective, n_trials=10000)
