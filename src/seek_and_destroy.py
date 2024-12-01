@@ -27,7 +27,7 @@ config = SimpleNamespace(
     eval_batch_size=16,
     relearn_lora_conf=dict(r=1, target_modules="all-linear", lora_dropout=0.05),
     # Default tunable params
-    disruption_score_warmup=20,
+    disruption_score_warmup=10,
 )
 
 pt.set_default_device("cuda")
@@ -62,9 +62,9 @@ circuit = pt.load(repo_root() / "circuits" / config.model_id / _circuit_name)
 def objective(trial):
     global best_value
     # ! parameters
-    quantile = trial.suggest_float("quantile", 0.001, 0.05, log=True)
-    unlearn_lr = trial.suggest_float("unlearn_lr", 0.001, 0.1, log=True)
-    retain_amp = trial.suggest_float("retain_amp", 1, 1.4)
+    quantile = trial.suggest_float("quantile", 0.0001, 0.01, log=True)
+    unlearn_lr = trial.suggest_float("unlearn_lr", 0.001, 0.01, log=True)
+    retain_amp = trial.suggest_float("retain_amp", 1, 1.5)
     forget_amp = trial.suggest_float("forget_amp", 1, 1.2)
     disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.0, 0.95)
     unlearn_steps = trial.suggest_int("unlearn_steps", 30, 200, step=10)
