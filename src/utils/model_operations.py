@@ -26,13 +26,14 @@ def get_threshold(quantile, disruption_scores):
     return pt.cat([s.flatten() for s in disruption_scores]).kthvalue(k).values
 
 
-def copy_model_and_collapse_loras(peft_model):
+def copy_model_and_collapse_loras(peft_model, delete_adv=True):
     """
     Creates a copy of the model with retention LoRA merged and adversarial LoRA removed.
     """
     peft_model_copy = deepcopy(peft_model)
     # delete adversarial lora
-    peft_model_copy.delete_adapter("adv_lora")
+    if delete_adv:
+        peft_model_copy.delete_adapter("adv_lora")
     # merge and unload helper lora
     peft_model_copy.set_adapter(["ret_lora"])
     collapsed = peft_model_copy.merge_and_unload()

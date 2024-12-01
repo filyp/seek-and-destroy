@@ -22,7 +22,7 @@ config = SimpleNamespace(
         target_modules=["dense_h_to_4h", "dense_4h_to_h", "query_key_value", "dense"],
     ),
     # Training constants
-    unlearn_steps=200,
+    unlearn_steps=100,
     batch_size=16,
     # Relearning params
     relearn_steps=50,
@@ -66,10 +66,11 @@ circuit = pt.load(repo_root() / "circuits" / config.model_id / _circuit_name)
 
 # %%
 def objective(trial):
+    global best_value
     # ! parameters
-    quantile = trial.suggest_float("quantile", 0.001, 0.05, log=True)
+    quantile = trial.suggest_float("quantile", 0.0003, 0.05, log=True)
     ret_lora_lr = trial.suggest_float("ret_lora_lr", 1e-4, 5e-4, log=True)
-    unlearn_lr = trial.suggest_float("unlearn_lr", 0.01, 0.2, log=True)
+    unlearn_lr = trial.suggest_float("unlearn_lr", 0.00001, 0.001, log=True)
     unlearn_lr_mult = trial.suggest_float("unlearn_lr_mult", 0.99, 1.01)
     forget_amp = trial.suggest_float("forget_amp", 0.8, 1.2)
     retain_amp = trial.suggest_float("retain_amp", 1, 2)
@@ -95,7 +96,7 @@ def objective(trial):
     if not target_modules:
         raise optuna.TrialPruned()
 
-    logging.info(f"{trial.params}")
+    #     logging.info(f"{trial.params}")
 
     # set_seeds(42)  # note: something is still undeterministic!
     # prepare data iterators
@@ -110,7 +111,7 @@ def objective(trial):
     ret_lora_c = LoraConfig(
         r=ret_lora_rank, lora_dropout=ret_lora_dropout, **config.ret_lora_config
     )
-    peft_model = get_peft_model(model, ret_lora_c, adapter_name="adv_lora", mixed=True)
+    peft_model = get_peft_model(model, ret_lora_c, adapter_name="ret_lora", mixed=True)
     model = peft_model.model
 
     interven_params = [
@@ -132,16 +133,17 @@ def objective(trial):
     # initialize mask
     mask_fn = lambda param: param.disruption_score / param.to_forget.abs() ** forget_amp
     for n, p in model.named_parameters():
-        if p not in interven_params:
+        if "lora" in n:
             continue
-        p.to_forget = circuit[n]
+        n = n.replace(".base_layer", "")
+        if n in circuit:
+            p.to_forget = circuit[n]
     assert all(p.to_forget.shape == p.shape for p in interven_params)
 
     # %
     # ! unlearning loop
     res = {}
-    _steps_with_broken_retain = 0
-    logging.info("step      base_f      base_r       adv_f      adv_r")
+    logging.info("step      base_f      base_r")
     for step in range(1, 1 + config.unlearn_steps):
         model.train()
         f_input_ids = next(forget_iter)
@@ -159,15 +161,10 @@ def objective(trial):
             param.disruption_score += param.grad.abs() ** retain_amp
         if step <= disruption_score_warmup:
             continue
-        # model.zero_grad(set_to_none=True)
-        # loss = loss_fns["cross_entropy"](model(r_input_ids), r_input_ids)
-        # loss.backward()
         ret_optimizer.step()
 
         # ! unlearn on the base model
         if res.get("base_retain", 0) < init_retain + 0.1:
-            _steps_with_broken_retain = 0
-
             base_optimizer.param_groups[0]["lr"] *= unlearn_lr_mult
 
             # ! copy gradients
@@ -182,19 +179,15 @@ def objective(trial):
             for param in interven_params:
                 mask = mask_fn(param) < threshold
                 param.grad *= mask
-            # ! normalize gradients
-            grad_norm = sum(p.grad.norm() ** 2 for p in interven_params) ** 0.5
-            for p in interven_params:
-                p.grad /= grad_norm
+            # # ! normalize gradients
+            # grad_norm = sum(p.grad.norm() ** 2 for p in interven_params) ** 0.5
+            # for p in interven_params:
+            #     p.grad /= grad_norm
             base_optimizer.step()
         else:
-            _steps_with_broken_retain += 1
             base_optimizer.param_groups[0]["lr"] *= unlearn_lr_backoff
             if step % 10 == 1:
                 logging.info(f"step {step} - broken retain")
-            if _steps_with_broken_retain > 50:
-                logging.error("Retain performance broken for 50 steps")
-                raise optuna.TrialPruned()
 
         # ! eval
         if step % 10 == 0:
@@ -202,20 +195,12 @@ def objective(trial):
             peft_model.set_adapter(["ret_lora"])
             res["base_forget"] = eval_loss(model, f_eval_batch)
             res["base_retain"] = eval_loss(model, r_eval_batch)
-            peft_model.set_adapter(["ret_lora", "adv_lora"])
-            res["adv_forget"] = eval_loss(model, f_eval_batch)
-            res["adv_retain"] = eval_loss(model, r_eval_batch)
 
             logging.info(f"{step:4} " + " ".join(f"{v:11.2f}" for v in res.values()))
 
             # prune if base forget loss doesn't improve
             if step >= 30 and res["base_forget"] < init_forget + 0.5:
                 logging.info("Forget loss stalled")
-                raise optuna.TrialPruned()
-            # prune if adversarial lora is defeaten
-            if res["adv_forget"] > 50:
-                logging.error("Adversarial LoRA defeaten")
-                logging.info(f"Hyperparameters: {trial.params}")
                 raise optuna.TrialPruned()
             # prune if nan
             if any(pt.isnan(v) for v in res.values()):
@@ -228,7 +213,7 @@ def objective(trial):
 
     # %
     # ! final bigger eval relearning
-    collapsed_model = copy_model_and_collapse_loras(peft_model)
+    collapsed_model = copy_model_and_collapse_loras(peft_model, delete_adv=False)
     retain_val_iter = retain_val_batches.fresh_iterator()
     forget_val_iter = forget_val_batches.fresh_iterator()
     forget_loss = relearn(collapsed_model, config, retain_val_iter, forget_val_iter)
@@ -236,14 +221,14 @@ def objective(trial):
     if forget_loss > best_value:
         logging.info(f"New best model with forget loss {forget_loss}")
         best_value = forget_loss
-        collapsed_model = copy_model_and_collapse_loras(peft_model)
+        collapsed_model = copy_model_and_collapse_loras(peft_model, delete_adv=False)
         pt.save(collapsed_model.state_dict(), best_model_path)
     return forget_loss
 
 
 # %%
 info = f"S&D,{config.forget_set_name},{config.relearn_steps}rs"
-study_name = f"{info},first"
+study_name = f"{info},100us,no_norm"
 if __name__ == "__main__":
     assert is_repo_clean()
     study = optuna.create_study(
@@ -258,5 +243,3 @@ if __name__ == "__main__":
     for k, v in config.__dict__.items():
         study.set_user_attr(k, v)
     study.optimize(objective, n_trials=10000)
-
-# %%
