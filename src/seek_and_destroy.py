@@ -70,7 +70,7 @@ def objective(trial):
     # ! parameters
     quantile = trial.suggest_float("quantile", 0.001, 0.05, log=True)
     ret_lora_lr = trial.suggest_float("ret_lora_lr", 1e-4, 5e-4, log=True)
-    unlearn_lr = trial.suggest_float("unlearn_lr", 0.0001, 0.002, log=True)
+    unlearn_lr = trial.suggest_float("unlearn_lr", 0.01, 0.2, log=True)
     unlearn_lr_mult = trial.suggest_float("unlearn_lr_mult", 0.99, 1.01)
     forget_amp = trial.suggest_float("forget_amp", 0.8, 1.2)
     retain_amp = trial.suggest_float("retain_amp", 1, 1.6)
@@ -179,10 +179,10 @@ def objective(trial):
             for param in interven_params:
                 mask = mask_fn(param) < threshold
                 param.grad *= mask
-            # # ! normalize gradients
-            # grad_norm = sum(p.grad.norm() ** 2 for p in interven_params) ** 0.5
-            # for p in interven_params:
-            #     p.grad /= grad_norm
+            # ! normalize gradients
+            grad_norm = sum(p.grad.norm() ** 2 for p in interven_params) ** 0.5
+            for p in interven_params:
+                p.grad /= grad_norm
             base_optimizer.step()
         else:
             base_optimizer.param_groups[0]["lr"] *= unlearn_lr_backoff
@@ -228,7 +228,7 @@ def objective(trial):
 
 # %%
 info = f"S&D,{config.forget_set_name},{config.relearn_steps}rs"
-study_name = f"{info},300us,no_norm"
+study_name = f"{info},300us,norm"
 if __name__ == "__main__":
     assert is_repo_clean()
     study = optuna.create_study(
