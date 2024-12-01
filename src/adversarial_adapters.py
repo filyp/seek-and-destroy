@@ -65,6 +65,9 @@ init_retain = eval_loss(base_model, r_eval_batch)
 logging.info(f"init forget: {init_forget:6.2f}    init retain: {init_retain:6.2f}")
 
 
+best_model_path = repo_root() / "models" / "best_model.pt"
+best_value = 0
+
 # %%
 def objective(trial):
     # ! parameters
@@ -253,6 +256,12 @@ def objective(trial):
     retain_val_iter = retain_val_batches.fresh_iterator()
     forget_val_iter = forget_val_batches.fresh_iterator()
     forget_loss = relearn(collapsed_model, config, retain_val_iter, forget_val_iter)
+    # save best model
+    if forget_loss > best_value:
+        logging.info(f"New best model with forget loss {forget_loss}")
+        best_value = forget_loss
+        collapsed_model = copy_model_and_collapse_loras(peft_model)
+        pt.save(collapsed_model.state_dict(), best_model_path)
     return forget_loss
 
 

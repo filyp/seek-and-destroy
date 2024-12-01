@@ -39,15 +39,20 @@ finished_trials = [t for t in trials if t.state == optuna.trial.TrialState.COMPL
 worst_to_best = sorted(finished_trials, key=lambda t: t.value)
 
 # config.unlearn_steps = 300
-config.relearn_steps = 100
-
 best_params = deepcopy(worst_to_best[-1].params)
 # best_params["unlearn_lr"] *= 0.3
 # best_params["ret_lora_lr"] = 0.001
 # best_params["quantile"] = 0.007
 
+# %%
+best_params
+# %%
+worst_to_best[-1].value
+# %%
+
+config.relearn_steps = 1000
 i = 0
-while i < 10:
+while i < 1:
     try:
         objective(MockTrial(best_params))
         i += 1
