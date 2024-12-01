@@ -41,10 +41,20 @@ def clipped_correct_logit_loss(output, input_ids):
     return true_logits.clip(min=0).mean()
 
 
+def neg_cross_entropy_loss(output, input_ids):
+    return -cross_entropy_loss(output, input_ids)
+
+
+def entropy_loss(output, input_ids):
+    # todo
+    raise NotImplementedError("Not implemented")
+
+
 loss_fns = dict(
     cross_entropy=cross_entropy_loss,
     clipped_correct_logit=clipped_correct_logit_loss,
     correct_logit=correct_logit_loss,
+    neg_cross_entropy=neg_cross_entropy_loss,
 )
 
 
