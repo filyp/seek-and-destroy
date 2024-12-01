@@ -25,12 +25,12 @@ config = SimpleNamespace(
     unlearn_steps=300,
     batch_size=16,
     # Relearning params
-    relearn_steps=50,
+    relearn_steps=100,
     relearn_lr=3e-4,
     eval_batch_size=16,
     relearn_lora_conf=dict(r=1, target_modules="all-linear", lora_dropout=0.1),
     # Default tunable params
-    # disruption_score_warmup=10,
+    disruption_score_warmup=10,
 )
 
 pt.set_default_device("cuda")
@@ -71,14 +71,14 @@ def objective(trial):
     quantile = trial.suggest_float("quantile", 0.001, 0.05, log=True)
     ret_lora_lr = trial.suggest_float("ret_lora_lr", 1e-4, 5e-4, log=True)
     unlearn_lr = trial.suggest_float("unlearn_lr", 0.01, 0.2, log=True)
-    unlearn_lr_mult = trial.suggest_float("unlearn_lr_mult", 0.99, 1.01)
-    forget_amp = trial.suggest_float("forget_amp", 0.8, 1.2)
-    retain_amp = trial.suggest_float("retain_amp", 1, 1.6)
+    unlearn_lr_mult = 1 # trial.suggest_float("unlearn_lr_mult", 0.99, 1.01)
+    forget_amp = trial.suggest_float("forget_amp", 1, 1.2)
+    retain_amp = trial.suggest_float("retain_amp", 1, 1.4)
     ret_lora_rank = trial.suggest_int("ret_lora_rank", 1, 5)
     ret_lora_dropout = trial.suggest_float("ret_lora_dropout", 0.0, 0.1)
 
     disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.0, 0.95)
-    disruption_score_warmup = trial.suggest_int("disruption_score_warmup", 1, 20)
+    # disruption_score_warmup = trial.suggest_int("disruption_score_warmup", 1, 20)
 
     unlearn_lr_backoff = trial.suggest_float("unlearn_lr_backoff", 0.9, 1)
 
@@ -144,6 +144,7 @@ def objective(trial):
     # ! unlearning loop
     res = {}
     logging.info("step      base_f      base_r")
+    _steps_with_broken_retain = 0
     for step in range(1, 1 + config.unlearn_steps):
         model.train()
         f_input_ids = next(forget_iter)
@@ -159,12 +160,13 @@ def objective(trial):
         for param in interven_params:
             param.disruption_score *= disruption_score_decay
             param.disruption_score += param.grad.abs() ** retain_amp
-        if step <= disruption_score_warmup:
+        if step <= config.disruption_score_warmup:
             continue
         ret_optimizer.step()
 
         # ! unlearn on the base model
         if res.get("base_retain", 0) < init_retain + 0.1:
+            _steps_with_broken_retain = 0
             base_optimizer.param_groups[0]["lr"] *= unlearn_lr_mult
 
             # ! copy gradients
@@ -185,9 +187,15 @@ def objective(trial):
                 p.grad /= grad_norm
             base_optimizer.step()
         else:
+            _steps_with_broken_retain += 1
             base_optimizer.param_groups[0]["lr"] *= unlearn_lr_backoff
             if step % 10 == 1:
                 logging.info(f"step {step} - broken retain")
+            if _steps_with_broken_retain > 50:
+                logging.error("Retain performance broken for 50 steps")
+                trial.set_user_attr("retain_broken", True)
+                raise optuna.TrialPruned()
+
 
         # ! eval
         if step % 10 == 0:
@@ -228,7 +236,7 @@ def objective(trial):
 
 # %%
 info = f"S&D,{config.forget_set_name},{config.relearn_steps}rs"
-study_name = f"{info},300us,norm"
+study_name = f"{info},300us,norm,prune_broken_retain,better_ranges"
 if __name__ == "__main__":
     assert is_repo_clean()
     study = optuna.create_study(
