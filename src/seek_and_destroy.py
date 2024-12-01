@@ -22,7 +22,7 @@ config = SimpleNamespace(
         target_modules=["dense_h_to_4h", "dense_4h_to_h", "query_key_value", "dense"],
     ),
     # Training constants
-    unlearn_steps=100,
+    unlearn_steps=300,
     batch_size=16,
     # Relearning params
     relearn_steps=50,
@@ -68,12 +68,12 @@ circuit = pt.load(repo_root() / "circuits" / config.model_id / _circuit_name)
 def objective(trial):
     global best_value
     # ! parameters
-    quantile = trial.suggest_float("quantile", 0.0003, 0.05, log=True)
+    quantile = trial.suggest_float("quantile", 0.001, 0.05, log=True)
     ret_lora_lr = trial.suggest_float("ret_lora_lr", 1e-4, 5e-4, log=True)
-    unlearn_lr = trial.suggest_float("unlearn_lr", 0.00001, 0.001, log=True)
+    unlearn_lr = trial.suggest_float("unlearn_lr", 0.0001, 0.002, log=True)
     unlearn_lr_mult = trial.suggest_float("unlearn_lr_mult", 0.99, 1.01)
     forget_amp = trial.suggest_float("forget_amp", 0.8, 1.2)
-    retain_amp = trial.suggest_float("retain_amp", 1, 2)
+    retain_amp = trial.suggest_float("retain_amp", 1, 1.6)
     ret_lora_rank = trial.suggest_int("ret_lora_rank", 1, 5)
     ret_lora_dropout = trial.suggest_float("ret_lora_dropout", 0.0, 0.1)
 
@@ -228,7 +228,7 @@ def objective(trial):
 
 # %%
 info = f"S&D,{config.forget_set_name},{config.relearn_steps}rs"
-study_name = f"{info},100us,no_norm"
+study_name = f"{info},300us,no_norm"
 if __name__ == "__main__":
     assert is_repo_clean()
     study = optuna.create_study(
