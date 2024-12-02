@@ -56,6 +56,7 @@ def relearn(model, config, retain_val_iter, forget_val_iter):
 
     # ! relearning loop
     logging.info("")
+    f_losses = []
     for step in range(1, 1 + config.relearn_steps):
         # standard forward, backward, and update
         model.train()
@@ -71,7 +72,8 @@ def relearn(model, config, retain_val_iter, forget_val_iter):
             f_loss = eval_loss(model, f_eval_batch)
             r_loss = eval_loss(model, r_eval_batch)
             logging.info(f"{step:4d} {f_loss:11.2f} {r_loss:11.2f}   <   RELEARNING")
+            f_losses.append(f_loss)
             # wandb.log({"forget_loss": f_loss, "retain_loss": r_loss}, step=step)
 
     logging.info("")
-    return eval_loss(model, f_eval_batch)
+    return f_losses

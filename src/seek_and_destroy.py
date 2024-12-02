@@ -18,13 +18,14 @@ config = SimpleNamespace(
     model_id="EleutherAI/pythia-14m",
     forget_set_name="python",
     # Training constants
-    unlearn_steps=200,
+    unlearn_steps=1000,
     batch_size=16,
+    eval_relearn_every=100,
     # Relearning params
-    relearn_steps=20,
-    relearn_lr=1e-4,
+    relearn_steps=30,
+    relearn_lr=4e-4,
     eval_batch_size=16,
-    relearn_lora_conf=dict(r=3, target_modules="all-linear", lora_dropout=0.05),
+    relearn_lora_conf=dict(r=4, target_modules="all-linear", lora_dropout=0.0),
     # Default tunable params
     disruption_score_warmup=10,
 )
@@ -60,11 +61,13 @@ circuit = pt.load(repo_root() / "circuits" / config.model_id / _circuit_name)
 # %%
 def objective(trial):
     # ! parameters
-    quantile = trial.suggest_float("quantile", 0.0005, 0.003, log=True)
-    unlearning_rate = trial.suggest_float("unlearning_rate", 0.0003, 0.003, log=True)
-    relearning_rate = trial.suggest_float("relearning_rate", 0.0001, 0.001, log=True)
+    quantile = trial.suggest_float("quantile", 0.0001, 0.01, log=True)
+    quantile_mult = trial.suggest_float("quantile_mult", 0.999, 1.001)
+    unlearning_rate = trial.suggest_float("unlearning_rate", 0.0003, 0.03, log=True)
+    unlearning_rate_mult = trial.suggest_float("unlearning_rate_mult", 0.999, 1.001)
 
-    retain_amp = trial.suggest_float("retain_amp", 1.2, 1.4)
+    relearning_rate = trial.suggest_float("relearning_rate", 0.0001, 0.001, log=True)
+    retain_amp = trial.suggest_float("retain_amp", 1, 1.6)
     forget_amp = trial.suggest_float("forget_amp", 1, 1.2)
     disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.0, 0.9)
 
@@ -94,6 +97,8 @@ def objective(trial):
     for step in range(1, 1 + config.unlearn_steps):
         model.train()
         r_input_ids = next(retain_iter)
+        quantile *= quantile_mult
+        unlearning_rate *= unlearning_rate_mult
 
         # ! update disruption scores
         model.zero_grad(set_to_none=True)
@@ -107,7 +112,7 @@ def objective(trial):
         optimizer.param_groups[0]["lr"] = relearning_rate
         optimizer.step()
 
-        if res.get("retain_loss_acceptable", True):
+        if res.get("retain_loss_ok", True):
             # it it's unacceptable, we only retain, not unlearn
             # ! unlearn on the base model
             # get threshold
@@ -126,28 +131,31 @@ def objective(trial):
             res = {}
             res["forget_loss"] = eval_loss(model, f_eval_batch)
             res["retain_loss"] = eval_loss(model, r_eval_batch)
-            res["retain_loss_acceptable"] = res["retain_loss"] < init_retain + 0.1
+            res["retain_loss_ok"] = res["retain_loss"] < init_retain + 0.05
             logging.info(f"{step:4} " + " ".join(f"{v:11.2f}" for v in res.values()))
             assert not any(pt.isnan(v) for v in res.values())
 
         # ! eval loss after short relearning
-        if step % 50 == 0:
-            forget_loss = relearn(
+        if step % config.eval_relearn_every == 0:
+            forget_losses = relearn(
                 deepcopy(model),
                 config,
                 retain_val_batches.fresh_iterator(),
                 forget_val_batches.fresh_iterator(),
             )
             # prune if trial isn't promising
-            trial.report(forget_loss, step)
+            trial.report(forget_losses[-1], step)
             if trial.should_prune():
                 raise optuna.TrialPruned()
+            if res["retain_loss"] > init_retain + 0.1:
+                logging.info(f"Pruning trial because retain loss is too high")
+                raise optuna.TrialPruned()
 
-    return forget_loss
+    return forget_losses[-1]
 
 
 # %%
-info = f"S&D,{config.forget_set_name},{config.relearn_steps}rs"
+info = f"S&D,{config.forget_set_name},{config.unlearn_steps}us,{config.relearn_steps}rs"
 study_name = f"{info},pruning"
 if __name__ == "__main__":
     assert is_repo_clean()
@@ -156,7 +164,7 @@ if __name__ == "__main__":
         storage=get_storage(),
         direction="maximize",
         # load_if_exists=True,
-        pruner=optuna.pruners.PercentilePruner(75)
+        pruner=optuna.pruners.MedianPruner(),
     )
     save_script_and_attach_logger(__file__, study.study_name)
     study.set_metric_names(["forget_loss"])
@@ -164,3 +172,32 @@ if __name__ == "__main__":
     for k, v in config.__dict__.items():
         study.set_user_attr(k, v)
     study.optimize(objective, n_trials=10000)
+
+
+# %%
+# config.relearn_steps = 50
+# config.relearn_lr = 2e-4
+# config.relearn_lora_conf = dict(r=4, target_modules="all-linear", lora_dropout=0.0)
+
+# import matplotlib.pyplot as plt
+# plt.figure(figsize=(10,6))
+# plt.ylim(3, 20)
+
+# for run in range(4):
+#     f_losses = relearn(
+#         deepcopy(model),
+#         config,
+#         retain_val_batches.fresh_iterator(),
+#         forget_val_batches.fresh_iterator(),
+#     )
+#     # convert to cpu numpy
+#     f_losses = pt.tensor(f_losses).cpu().numpy()
+#     # Assuming relearn returns losses per step
+#     plt.plot(f_losses, label=f'Run {run+1}')
+
+# plt.xlabel('Step')
+# plt.ylabel('Loss')
+# plt.title('Multiple Relearning Runs')
+# plt.legend()
+# plt.grid(True)
+# plt.show()
