@@ -64,9 +64,12 @@ _circuit_dir = repo_root() / "circuits" / config.model_id.replace("/", "_")
 _circuit_name = f"{config.forget_set_name}_correct_logit.pt"
 circuit = pt.load(_circuit_dir / _circuit_name, weights_only=True)
 
+best_model_path = repo_root() / "models" / "best_model.pt"
+best_value = 0
 
 # %%
 def objective(trial):
+    global best_value
     # ! parameters
     quantile = trial.suggest_float("quantile", 0.0001, 0.01, log=True)
     quantile_mult = trial.suggest_float("quantile_mult", 0.998, 1.002)
@@ -176,11 +179,20 @@ def objective(trial):
                 retain_val_batches.fresh_iterator(),
                 forget_val_batches.fresh_iterator(),
             )
+            forget_loss = forget_losses[-1]
             # prune if trial isn't promising
-            trial.report(forget_losses[-1], step)
+            trial.report(forget_loss, step)
             if trial.should_prune():
                 raise optuna.TrialPruned()
-    return forget_losses[-1]
+
+    # save best model
+    if forget_loss > best_value:
+        logging.info(f"New best model with forget loss {forget_loss}")
+        best_value = forget_loss
+        model_copy = copy_model_and_collapse_loras(peft_model, delete_adv=False)
+        pt.save(model_copy.state_dict(), best_model_path)
+
+    return forget_loss
 
 
 # %%
