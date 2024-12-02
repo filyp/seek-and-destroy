@@ -25,8 +25,12 @@ config = SimpleNamespace(
     use_ret_lora=True,
     # Relearning params
     relearn_steps=30,
-    relearn_lr=2e-4,
     eval_batch_size=16,
+    # relearn_lr too high is unstable, too low is slow and we need longer evals
+    # if evals are too short we risk some of them not yet breaking through the gap
+    #    (the gap is described in appendix)
+    # no dropout seems to make relearn runs more consistent
+    relearn_lr=2e-4,
     relearn_lora_conf=dict(r=4, target_modules="all-linear", lora_dropout=0.0),
     # Default tunable params
     disruption_score_warmup=10,
@@ -187,7 +191,7 @@ if __name__ == "__main__":
         storage=get_storage(),
         direction="maximize",
         # load_if_exists=True,
-        pruner=optuna.pruners.MedianPruner(),
+        pruner=optuna.pruners.PercentilePruner(75),
     )
     save_script_and_attach_logger(__file__, study.study_name)
     study.set_metric_names(["forget_loss"])
