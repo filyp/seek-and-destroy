@@ -21,11 +21,9 @@ config = SimpleNamespace(
     unlearn_steps=1000,
     batch_size=16,
     eval_relearn_every=100,
-    ret_lora_config=dict(lora_dropout=0.05, target_modules="all-linear"),
-    use_ret_lora=True,
     # Relearning params
     relearn_steps=30,
-    relearn_lr=2e-4,
+    relearn_lr=4e-4,
     eval_batch_size=16,
     relearn_lora_conf=dict(r=4, target_modules="all-linear", lora_dropout=0.0),
     # Default tunable params
@@ -69,41 +67,39 @@ def objective(trial):
     unlearning_rate = trial.suggest_float("unlearning_rate", 0.0003, 0.03, log=True)
     unlearning_rate_mult = trial.suggest_float("unlearning_rate_mult", 0.999, 1.001)
 
-    retaining_rate = trial.suggest_float("retaining_rate", 0.0001, 0.001, log=True)
+    relearning_rate = trial.suggest_float("relearning_rate", 0.0001, 0.001, log=True)
     retain_amp = trial.suggest_float("retain_amp", 1, 1.6)
     forget_amp = trial.suggest_float("forget_amp", 1, 1.2)
     disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.0, 0.9)
-    ret_lora_rank = trial.suggest_int("ret_lora_rank", 1, 5)
+
+    # ret_lora_lr = 1e-4  #trial.suggest_float("ret_lora_lr", 1e-4, 5e-4, log=True)
+    # ret_lora_rank = 3  # trial.suggest_int("ret_lora_rank", 1, 5)
 
     # prepare data iterators
     retain_iter = retain_batches.fresh_iterator()
     # load model (copy from memory for speed)
     model = deepcopy(base_model)
 
-    # get params to intervene on and initialize disruption scores
+    # # add lora
+    # ret_lora_c = LoraConfig(r=ret_lora_rank, **config.ret_lora_config)
+    # peft_model = get_peft_model(model, ret_lora_c, adapter_name="ret_lora", mixed=True)
+    # model = peft_model.model
+
     target_modules = ["dense_4h_to_h", "dense"]  # for python keep these two
     interven_params = []
     for name, param in model.named_parameters():
+        # if any(f"{m}.base_layer.weight" in name for m in target_modules):
         if any(f"{m}.weight" in name for m in target_modules):
             interven_params.append(param)
             # initialize disruption scores
             param.disruption_score = pt.zeros_like(param)
             # initialize to_forget
             param.to_forget = circuit[name]
-
-    # add lora
-    ret_lora_c = LoraConfig(r=ret_lora_rank, **config.ret_lora_config)
-    peft_model = get_peft_model(model, ret_lora_c, adapter_name="ret_lora", mixed=True)
-    model = peft_model.model
-    # require grad for all params despite having lora
-    for param in model.parameters():
-        param.requires_grad = True
+    # ret_lora_params = [p for n, p in model.named_parameters() if ".ret_lora." in n]
+    # ... more for lora
 
     # initialize optimizers
-    _ret_lora_params = [p for n, p in model.named_parameters() if ".ret_lora." in n]
-    ret_optimizer = pt.optim.SGD(_ret_lora_params, lr=retaining_rate)
-    base_optimizer = pt.optim.SGD(interven_params, lr=unlearning_rate)
-
+    optimizer = pt.optim.SGD(interven_params)
     # initialize mask
     mask_fn = lambda param: param.disruption_score / param.to_forget.abs() ** forget_amp
 
@@ -125,12 +121,8 @@ def objective(trial):
             param.disruption_score += param.grad.abs() ** retain_amp
         if step <= config.disruption_score_warmup:
             continue
-        if config.use_ret_lora:
-            ret_optimizer.param_groups[0]["lr"] = retaining_rate
-            ret_optimizer.step()
-        else:
-            base_optimizer.param_groups[0]["lr"] = unlearning_rate
-            base_optimizer.step()
+        optimizer.param_groups[0]["lr"] = relearning_rate
+        optimizer.step()
 
         if res.get("retain_loss_ok", True):
             # it it's unacceptable, we only retain, not unlearn
@@ -143,8 +135,8 @@ def objective(trial):
             for param in interven_params:
                 mask = mask_fn(param) < threshold
                 param.grad = mask * param.to_forget
-            base_optimizer.param_groups[0]["lr"] = unlearning_rate
-            base_optimizer.step()
+            optimizer.param_groups[0]["lr"] = unlearning_rate
+            optimizer.step()
 
         # ! eval current loss
         if step % 10 == 0:
@@ -160,12 +152,8 @@ def objective(trial):
 
         # ! eval loss after short relearning
         if step % config.eval_relearn_every == 0:
-            if config.use_ret_lora:
-                model_copy = copy_model_and_collapse_loras(peft_model, delete_adv=False)
-            else:
-                model_copy = deepcopy(model)
             forget_losses = relearn(
-                model_copy,
+                deepcopy(model),
                 config,
                 retain_val_batches.fresh_iterator(),
                 forget_val_batches.fresh_iterator(),
@@ -179,7 +167,7 @@ def objective(trial):
 
 # %%
 info = f"S&D,{config.forget_set_name},{config.unlearn_steps}us,{config.relearn_steps}rs"
-study_name = f"{info},pruning,ret_lora"
+study_name = f"{info},pruning"
 if __name__ == "__main__":
     assert is_repo_clean()
     study = optuna.create_study(
