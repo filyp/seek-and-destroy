@@ -54,8 +54,9 @@ init_forget = eval_loss(base_model, f_eval_batch)
 init_retain = eval_loss(base_model, r_eval_batch)
 logging.info(f"init forget: {init_forget:6.2f}    init retain: {init_retain:6.2f}")
 
+_circuit_dir = repo_root() / "circuits" / config.model_id.replace("/", "_")
 _circuit_name = f"{config.forget_set_name}_correct_logit.pt"
-circuit = pt.load(repo_root() / "circuits" / config.model_id / _circuit_name)
+circuit = pt.load(_circuit_dir / _circuit_name, weights_only=True)
 
 
 # %%
@@ -134,6 +135,9 @@ def objective(trial):
             res["retain_loss_ok"] = res["retain_loss"] < init_retain + 0.05
             logging.info(f"{step:4} " + " ".join(f"{v:11.2f}" for v in res.values()))
             assert not any(pt.isnan(v) for v in res.values())
+            if res["retain_loss"] > init_retain + 0.1:
+                logging.info(f"Pruning trial because retain loss is too high")
+                raise optuna.TrialPruned()
 
         # ! eval loss after short relearning
         if step % config.eval_relearn_every == 0:
@@ -147,10 +151,6 @@ def objective(trial):
             trial.report(forget_losses[-1], step)
             if trial.should_prune():
                 raise optuna.TrialPruned()
-            if res["retain_loss"] > init_retain + 0.1:
-                logging.info(f"Pruning trial because retain loss is too high")
-                raise optuna.TrialPruned()
-
     return forget_losses[-1]
 
 

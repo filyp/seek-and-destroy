@@ -56,9 +56,7 @@ batch_iter = cached_batches.fresh_iterator()
 loss_fn = loss_fns[loss_fn_name]
 circuit = get_circuit(batch_iter, loss_fn)
 
+circuit_dir = repo_root() / "circuits" / model_id.replace("/", "_")
+circuit_dir.mkdir(parents=True, exist_ok=True)
 circuit_name = f"{dataset_name}_{loss_fn_name}.pt"
-(repo_root() / "circuits" / model_id).mkdir(parents=True, exist_ok=True)
-pt.save(
-    circuit,
-    repo_root() / "circuits" / model_id / circuit_name,
-)
+pt.save(circuit, circuit_dir / circuit_name)
