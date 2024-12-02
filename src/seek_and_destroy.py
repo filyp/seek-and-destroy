@@ -19,13 +19,13 @@ config = SimpleNamespace(
     forget_set_name="python",
     # Training constants
     unlearn_steps=1000,
-    batch_size=16,
+    batch_size=32,
     eval_relearn_every=100,
     ret_lora_config=dict(lora_dropout=0.05, target_modules="all-linear"),
     use_ret_lora=True,
     # Relearning params
-    relearn_steps=30,
-    eval_batch_size=16,
+    relearn_steps=40,
+    eval_batch_size=32,
     # relearn_lr too high is unstable, too low is slow and we need longer evals
     # if evals are too short we risk some of them not yet breaking through the gap
     #    (the gap is described in appendix)
@@ -69,15 +69,16 @@ circuit = pt.load(_circuit_dir / _circuit_name, weights_only=True)
 def objective(trial):
     # ! parameters
     quantile = trial.suggest_float("quantile", 0.0001, 0.01, log=True)
-    quantile_mult = trial.suggest_float("quantile_mult", 0.999, 1.001)
-    unlearning_rate = trial.suggest_float("unlearning_rate", 0.0003, 0.03, log=True)
-    unlearning_rate_mult = trial.suggest_float("unlearning_rate_mult", 0.999, 1.001)
+    quantile_mult = trial.suggest_float("quantile_mult", 0.998, 1.002)
+    unlearning_rate = trial.suggest_float("unlearning_rate", 0.0005, 0.01, log=True)
+    unlearning_rate_mult = trial.suggest_float("unlearning_rate_mult", 0.998, 1.002)
+    retaining_rate = trial.suggest_float("retaining_rate", 0.0003, 0.001, log=True)
+    retaining_rate_mult = trial.suggest_float("retaining_rate_mult", 0.998, 1.002)
 
-    retaining_rate = trial.suggest_float("retaining_rate", 0.0001, 0.001, log=True)
-    retain_amp = trial.suggest_float("retain_amp", 1, 1.6)
+    retain_amp = trial.suggest_float("retain_amp", 1.3, 1.8)
     forget_amp = trial.suggest_float("forget_amp", 1, 1.2)
-    disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.0, 0.9)
-    ret_lora_rank = trial.suggest_int("ret_lora_rank", 1, 5)
+    disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.0, 0.5)
+    ret_lora_rank = trial.suggest_int("ret_lora_rank", 1, 10)
 
     # prepare data iterators
     retain_iter = retain_batches.fresh_iterator()
@@ -119,6 +120,7 @@ def objective(trial):
         r_input_ids = next(retain_iter)
         quantile *= quantile_mult
         unlearning_rate *= unlearning_rate_mult
+        retaining_rate *= retaining_rate_mult
 
         # ! update disruption scores
         model.zero_grad(set_to_none=True)
@@ -183,7 +185,7 @@ def objective(trial):
 
 # %%
 info = f"S&D,{config.forget_set_name},{config.unlearn_steps}us,{config.relearn_steps}rs"
-study_name = f"{info},pruning,ret_lora"
+study_name = f"{info},pruning,ret_lora,better_ranges"
 if __name__ == "__main__":
     assert is_repo_clean()
     study = optuna.create_study(
@@ -199,32 +201,3 @@ if __name__ == "__main__":
     for k, v in config.__dict__.items():
         study.set_user_attr(k, v)
     study.optimize(objective, n_trials=10000)
-
-
-# %%
-# config.relearn_steps = 50
-# config.relearn_lr = 2e-4
-# config.relearn_lora_conf = dict(r=4, target_modules="all-linear", lora_dropout=0.0)
-
-# import matplotlib.pyplot as plt
-# plt.figure(figsize=(10,6))
-# plt.ylim(3, 20)
-
-# for run in range(4):
-#     f_losses = relearn(
-#         deepcopy(model),
-#         config,
-#         retain_val_batches.fresh_iterator(),
-#         forget_val_batches.fresh_iterator(),
-#     )
-#     # convert to cpu numpy
-#     f_losses = pt.tensor(f_losses).cpu().numpy()
-#     # Assuming relearn returns losses per step
-#     plt.plot(f_losses, label=f'Run {run+1}')
-
-# plt.xlabel('Step')
-# plt.ylabel('Loss')
-# plt.title('Multiple Relearning Runs')
-# plt.legend()
-# plt.grid(True)
-# plt.show()

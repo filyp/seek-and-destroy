@@ -319,3 +319,31 @@ if stats["adv_forget"] > 500 and (i + 1) % 10 == 0:
 # # Plot parameter relationships
 # fig = vis.plot_parallel_coordinate(study)
 # fig.show()
+
+# %%
+# config.relearn_steps = 50
+# config.relearn_lr = 2e-4
+# config.relearn_lora_conf = dict(r=4, target_modules="all-linear", lora_dropout=0.0)
+
+# import matplotlib.pyplot as plt
+# plt.figure(figsize=(10,6))
+# plt.ylim(3, 20)
+
+# for run in range(4):
+#     f_losses = relearn(
+#         deepcopy(model),
+#         config,
+#         retain_val_batches.fresh_iterator(),
+#         forget_val_batches.fresh_iterator(),
+#     )
+#     # convert to cpu numpy
+#     f_losses = pt.tensor(f_losses).cpu().numpy()
+#     # Assuming relearn returns losses per step
+#     plt.plot(f_losses, label=f'Run {run+1}')
+
+# plt.xlabel('Step')
+# plt.ylabel('Loss')
+# plt.title('Multiple Relearning Runs')
+# plt.legend()
+# plt.grid(True)
+# plt.show()
