@@ -50,7 +50,8 @@ def objective(trial):
         eval_batch_size=16,
         relearn_lr=trial.suggest_float("relearn_lr", 1e-5, 3e-3, log=True),
         relearn_lora_conf=dict(
-            r=trial.suggest_int("relearn_lora_rank", 1, 16),
+            # r=trial.suggest_int("relearn_lora_rank", 1, 16),
+            r=1,
             lora_alpha=trial.suggest_int("relearn_lora_alpha", 1, 16),
             lora_dropout=trial.suggest_float("relearn_lora_dropout", 0.0, 0.1),
             target_modules="all-linear",
@@ -65,7 +66,7 @@ def objective(trial):
     return forget_losses[-1]
 
 study = optuna.create_study(
-    study_name="relearning,500steps",
+    study_name="relearning,500steps,rank1",
     storage=get_storage(),
     direction="minimize",
 )

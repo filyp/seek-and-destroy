@@ -12,3 +12,4 @@ paper
 archive/old_results
 adversarial_adapters.py.lprof
 secret_inactive.json
+**/db.sqlite3

@@ -52,7 +52,9 @@ def get_storage():
     """Use DB URL defined in secret.json if it exists, otherwise use local DB."""
     secrets_file = repo_root() / "secret.json"
     if not secrets_file.exists():
-        return f"sqlite:///{repo_root() / "results" / "db.sqlite3"}"
+        # return f"sqlite:///{repo_root() / 'results' / 'db.sqlite3'}"
+        # for running in WSL, this worked:
+        return "sqlite:///db.sqlite3"
 
     db_url = json.load(open(secrets_file))["db_url"]
     return optuna.storages.RDBStorage(
