@@ -178,7 +178,8 @@ def objective(trial):
         retain_val_batches.fresh_iterator(),
         forget_val_batches.fresh_iterator(),
     )
-    forget_loss = forget_losses[-1]
+    # use min rather than last, in case it anomalously increases
+    forget_loss = min(forget_losses)
     trial.set_user_attr("relearning_results", forget_losses)
 
     # save best model

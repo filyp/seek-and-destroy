@@ -46,11 +46,12 @@ best_model.load_state_dict(pt.load(best_model_path, weights_only=True))
 def objective(trial):
     relearning_config = SimpleNamespace(
         # Relearning params
-        relearn_steps=300,
+        relearn_steps=500,
         eval_batch_size=16,
-        relearn_lr=trial.suggest_float("relearn_lr", 1e-5, 1e-3, log=True),
+        relearn_lr=trial.suggest_float("relearn_lr", 1e-5, 3e-3, log=True),
         relearn_lora_conf=dict(
             r=trial.suggest_int("relearn_lora_rank", 1, 16),
+            lora_alpha=trial.suggest_int("relearn_lora_alpha", 1, 16),
             lora_dropout=trial.suggest_float("relearn_lora_dropout", 0.0, 0.1),
             target_modules="all-linear",
         ),
@@ -64,9 +65,9 @@ def objective(trial):
     return forget_losses[-1]
 
 study = optuna.create_study(
-    study_name="relearning",
+    study_name="relearning,500steps",
     storage=get_storage(),
     direction="minimize",
 )
 study.set_metric_names(["forget_loss"])
-study.optimize(objective, n_trials=1000)
+study.optimize(objective, n_trials=100)
