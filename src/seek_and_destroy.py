@@ -180,10 +180,10 @@ def objective(trial):
                 forget_val_batches.fresh_iterator(),
             )
             forget_loss = forget_losses[-1]
-            # prune if trial isn't promising
-            trial.report(forget_loss, step)
-            if trial.should_prune():
-                raise optuna.TrialPruned()
+            # # prune if trial isn't promising
+            # trial.report(forget_loss, step)
+            # if trial.should_prune():
+            #     raise optuna.TrialPruned()
 
     # save best model
     if forget_loss > best_value:
@@ -197,7 +197,7 @@ def objective(trial):
 
 # %%
 info = f"S&D,{config.forget_set_name},{config.unlearn_steps}us,{config.relearn_steps}rs"
-study_name = f"{info},pruning,ret_lora,better_ranges"
+study_name = f"{info},no_pruning,ret_lora,better_ranges"
 if __name__ == "__main__":
     assert is_repo_clean()
     study = optuna.create_study(
@@ -205,7 +205,7 @@ if __name__ == "__main__":
         storage=get_storage(),
         direction="maximize",
         # load_if_exists=True,
-        pruner=optuna.pruners.PercentilePruner(75),
+        # pruner=optuna.pruners.PercentilePruner(75),
     )
     save_script_and_attach_logger(__file__, study.study_name)
     study.set_metric_names(["forget_loss"])

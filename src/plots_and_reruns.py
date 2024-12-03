@@ -60,3 +60,17 @@ while i < 1:
         pass
 
 # %%
+
+# # %%
+# best_model_path = repo_root() / "models" / "best_model.pt"
+# best_model = AutoModelForCausalLM.from_pretrained(config.model_id)
+# best_model.load_state_dict(pt.load(best_model_path, weights_only=True))
+
+# # %%
+# config.relearn_steps = 1000
+# forget_losses = relearn(
+#     deepcopy(best_model),
+#     config,
+#     retain_val_batches.fresh_iterator(),
+#     forget_val_batches.fresh_iterator(),
+# )
