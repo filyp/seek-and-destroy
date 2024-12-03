@@ -6,6 +6,8 @@ from adversarial_adapters import *
 # get the latest study
 storage = get_storage()
 
+# %%
+
 study_summaries = optuna.study.get_all_study_summaries(storage)
 sorted_studies = sorted(study_summaries, key=lambda s: s.datetime_start)
 latest_study = sorted_studies[-1]
@@ -15,22 +17,22 @@ print(study.study_name)
 # study_name = "python,200-50,more_steps_with_best_values"
 # study = optuna.load_study(study_name=study_name, storage=storage)
 
-# # %%
-# # ! plot the slices for each hyperparam
-# fig = vis.plot_slice(study, target_name="Final forget loss")
-# # params=["quantile", "adv_lora_lr", "ret_lora_lr", "unlearn_lr", "retain_amp"],
-# fig.update_layout(
-#     title={"text": study.study_name, "xanchor": "center", "x": 0.5, "y": 0.95},
-#     template="plotly_white",
-#     font=dict(family="Times New Roman", size=20),
-#     title_font_size=30,
-# )
-# # save the figure
-# save_path = repo_root() / "paper" / "Figures" / f"{study.study_name}.png"
+# %%
+# ! plot the slices for each hyperparam
+fig = vis.plot_slice(study, target_name="Final forget loss")
+# params=["quantile", "adv_lora_lr", "ret_lora_lr", "unlearn_lr", "retain_amp"],
+fig.update_layout(
+    title={"text": study.study_name, "xanchor": "center", "x": 0.5, "y": 0.95},
+    template="plotly_white",
+    font=dict(family="Times New Roman", size=20),
+    title_font_size=30,
+)
+# save the figure
+save_path = repo_root() / "paper" / "Figures" / f"{study.study_name}.png"
 # fig.write_image(str(save_path))
+fig.show()
+# fig = vis.plot_optimization_history(study)
 # fig.show()
-# # fig = vis.plot_optimization_history(study)
-# # fig.show()
 
 # %%
 # ! rerun the best trial, with more steps

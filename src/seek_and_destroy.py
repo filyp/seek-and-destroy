@@ -19,17 +19,13 @@ config = SimpleNamespace(
     forget_set_name="python",
     # Training constants
     unlearn_steps=1000,
-    batch_size=32,
-    eval_relearn_every=100,
+    batch_size=16,
     ret_lora_config=dict(lora_dropout=0.05, target_modules="all-linear"),
     use_ret_lora=True,
     # Relearning params
-    relearn_steps=40,
-    eval_batch_size=32,
-    # relearn_lr too high is unstable, too low is slow and we need longer evals
-    # if evals are too short we risk some of them not yet breaking through the gap
-    #    (the gap is described in appendix)
-    # no dropout seems to make relearn runs more consistent
+    relearn_steps=300,
+    eval_batch_size=16,
+    # todo optuna study to find optimal relearning!
     relearn_lr=2e-4,
     relearn_lora_conf=dict(r=4, target_modules="all-linear", lora_dropout=0.0),
     # Default tunable params
@@ -72,14 +68,14 @@ def objective(trial):
     global best_value
     # ! parameters
     quantile = trial.suggest_float("quantile", 0.0001, 0.01, log=True)
-    quantile_mult = trial.suggest_float("quantile_mult", 0.998, 1.002)
+    # quantile_mult = trial.suggest_float("quantile_mult", 0.998, 1.002)
     unlearning_rate = trial.suggest_float("unlearning_rate", 0.0005, 0.01, log=True)
-    unlearning_rate_mult = trial.suggest_float("unlearning_rate_mult", 0.998, 1.002)
+    # unlearning_rate_mult = trial.suggest_float("unlearning_rate_mult", 0.998, 1.002)
     retaining_rate = trial.suggest_float("retaining_rate", 0.0003, 0.001, log=True)
-    retaining_rate_mult = trial.suggest_float("retaining_rate_mult", 0.998, 1.002)
+    # retaining_rate_mult = trial.suggest_float("retaining_rate_mult", 0.998, 1.002)
 
     retain_amp = trial.suggest_float("retain_amp", 1.3, 1.8)
-    forget_amp = trial.suggest_float("forget_amp", 1, 1.2)
+    forget_amp = trial.suggest_float("forget_amp", 0.9, 1.2)
     disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.0, 0.5)
     ret_lora_rank = trial.suggest_int("ret_lora_rank", 1, 10)
 
@@ -89,7 +85,7 @@ def objective(trial):
     model = deepcopy(base_model)
 
     # get params to intervene on and initialize disruption scores
-    target_modules = ["dense_4h_to_h", "dense"]  # for python keep these two
+    target_modules = ["dense_4h_to_h", "dense"]
     interven_params = []
     for name, param in model.named_parameters():
         if any(f"{m}.weight" in name for m in target_modules):
@@ -117,13 +113,14 @@ def objective(trial):
 
     # ! unlearning loop
     res = {}
+    results = []
     logging.info("step      base_f      base_r")
     for step in range(1, 1 + config.unlearn_steps):
         model.train()
         r_input_ids = next(retain_iter)
-        quantile *= quantile_mult
-        unlearning_rate *= unlearning_rate_mult
-        retaining_rate *= retaining_rate_mult
+        # quantile *= quantile_mult
+        # unlearning_rate *= unlearning_rate_mult
+        # retaining_rate *= retaining_rate_mult
 
         # ! update disruption scores
         model.zero_grad(set_to_none=True)
@@ -141,6 +138,7 @@ def objective(trial):
             base_optimizer.param_groups[0]["lr"] = unlearning_rate
             base_optimizer.step()
 
+        # todo maybe simplify further and get rid of this - just terminate if it crosses
         if res.get("retain_loss_ok", True):
             # it it's unacceptable, we only retain, not unlearn
             # ! unlearn on the base model
@@ -161,29 +159,27 @@ def objective(trial):
             res["forget_loss"] = eval_loss(model, f_eval_batch)
             res["retain_loss"] = eval_loss(model, r_eval_batch)
             res["retain_loss_ok"] = res["retain_loss"] < init_retain + 0.05
+            results.append(res)
             logging.info(f"{step:4} " + " ".join(f"{v:11.2f}" for v in res.values()))
             assert not any(pt.isnan(v) for v in res.values())
             if res["retain_loss"] > init_retain + 0.1:
                 logging.info(f"Pruning trial because retain loss is too high")
                 raise optuna.TrialPruned()
+    # trial.set_user_attr("unlearning_results", results)
 
-        # ! eval loss after short relearning
-        if step % config.eval_relearn_every == 0:
-            if config.use_ret_lora:
-                model_copy = copy_model_and_collapse_loras(peft_model, delete_adv=False)
-            else:
-                model_copy = deepcopy(model)
-            forget_losses = relearn(
-                model_copy,
-                config,
-                retain_val_batches.fresh_iterator(),
-                forget_val_batches.fresh_iterator(),
-            )
-            forget_loss = forget_losses[-1]
-            # # prune if trial isn't promising
-            # trial.report(forget_loss, step)
-            # if trial.should_prune():
-            #     raise optuna.TrialPruned()
+    # ! eval relearning
+    if config.use_ret_lora:
+        model_copy = copy_model_and_collapse_loras(peft_model, delete_adv=False)
+    else:
+        model_copy = deepcopy(model)
+    forget_losses = relearn(
+        model_copy,
+        config,
+        retain_val_batches.fresh_iterator(),
+        forget_val_batches.fresh_iterator(),
+    )
+    forget_loss = forget_losses[-1]
+    trial.set_user_attr("relearning_results", forget_losses)
 
     # save best model
     if forget_loss > best_value:
@@ -197,7 +193,7 @@ def objective(trial):
 
 # %%
 info = f"S&D,{config.forget_set_name},{config.unlearn_steps}us,{config.relearn_steps}rs"
-study_name = f"{info},no_pruning,ret_lora,better_ranges"
+study_name = f"{info},no_pruning,only_rel_at_end"
 if __name__ == "__main__":
     assert is_repo_clean()
     study = optuna.create_study(
@@ -205,11 +201,10 @@ if __name__ == "__main__":
         storage=get_storage(),
         direction="maximize",
         # load_if_exists=True,
-        # pruner=optuna.pruners.PercentilePruner(75),
     )
     save_script_and_attach_logger(__file__, study.study_name)
     study.set_metric_names(["forget_loss"])
     study.set_user_attr("commit_hash", commit_hash())
     for k, v in config.__dict__.items():
         study.set_user_attr(k, v)
-    study.optimize(objective, n_trials=10000)
+    study.optimize(objective, n_trials=1000)
