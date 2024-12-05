@@ -1,6 +1,7 @@
 .env
 .venv
 secret.json
+secret_inactive.json
 venv
 __pycache__
 wandb
@@ -11,5 +12,4 @@ src/db.sqlite3
 paper
 archive/old_results
 adversarial_adapters.py.lprof
-secret_inactive.json
-**/db.sqlite3
+**/*.sqlite3
