@@ -1,6 +1,6 @@
 # Installation
 
-Clone, create a virtual environment, and run:
+Clone the repository, create a virtual environment preferably with python3.12, and run:
 ```bash
 pip install -r requirements.txt
 ```

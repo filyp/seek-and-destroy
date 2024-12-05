@@ -55,6 +55,7 @@ base_model = AutoModelForCausalLM.from_pretrained(config.model_id)
 init_forget = eval_loss(base_model, f_eval_batch)
 init_retain = eval_loss(base_model, r_eval_batch)
 logging.info(f"init forget: {init_forget:6.2f}    init retain: {init_retain:6.2f}")
+del base_model
 
 _circuit_dir = repo_root() / "circuits" / config.model_id.replace("/", "_")
 _circuit_name = f"{config.forget_set_name}_correct_logit.pt"
@@ -81,8 +82,8 @@ def objective(trial):
 
     # prepare data iterators
     retain_iter = retain_batches.fresh_iterator()
-    # load model (copy from memory for speed)
-    model = deepcopy(base_model)
+    # load model - for speed we could also do: model = deepcopy(base_model)
+    model = AutoModelForCausalLM.from_pretrained(config.model_id)
 
     # get params to intervene on and initialize disruption scores
     target_modules = ["dense_4h_to_h", "dense"]

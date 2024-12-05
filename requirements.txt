@@ -7,6 +7,7 @@ ipywidgets
 matplotlib
 optuna
 optuna-dashboard
+# for windows, you may need to comment out optuna-fast-fanova, because installation is problematic
 optuna-fast-fanova
 peft
 scipy
