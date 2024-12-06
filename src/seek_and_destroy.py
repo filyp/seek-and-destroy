@@ -23,11 +23,11 @@ config = SimpleNamespace(
     ret_lora_config=dict(lora_dropout=0.05, target_modules="all-linear"),
     use_ret_lora=True,
     # Relearning params
-    relearn_steps=300,
+    relearn_steps=50,
     eval_batch_size=16,
     # todo optuna study to find optimal relearning!
-    relearn_lr=2e-4,
-    relearn_lora_conf=dict(r=4, target_modules="all-linear", lora_dropout=0.0),
+    relearn_lr=1e-4,
+    relearn_lora_conf=dict(target_modules="all-linear"),
     # Default tunable params
     disruption_score_warmup=10,
 )
@@ -69,11 +69,8 @@ def objective(trial):
     global best_value
     # ! parameters
     quantile = trial.suggest_float("quantile", 0.0001, 0.01, log=True)
-    # quantile_mult = trial.suggest_float("quantile_mult", 0.998, 1.002)
     unlearning_rate = trial.suggest_float("unlearning_rate", 0.0005, 0.01, log=True)
-    # unlearning_rate_mult = trial.suggest_float("unlearning_rate_mult", 0.998, 1.002)
     retaining_rate = trial.suggest_float("retaining_rate", 0.0003, 0.001, log=True)
-    # retaining_rate_mult = trial.suggest_float("retaining_rate_mult", 0.998, 1.002)
 
     retain_amp = trial.suggest_float("retain_amp", 1.3, 1.8)
     forget_amp = trial.suggest_float("forget_amp", 0.9, 1.2)
@@ -119,9 +116,6 @@ def objective(trial):
     for step in range(1, 1 + config.unlearn_steps):
         model.train()
         r_input_ids = next(retain_iter)
-        # quantile *= quantile_mult
-        # unlearning_rate *= unlearning_rate_mult
-        # retaining_rate *= retaining_rate_mult
 
         # ! update disruption scores
         model.zero_grad(set_to_none=True)
@@ -195,7 +189,7 @@ def objective(trial):
 
 # %%
 info = f"S&D,{config.forget_set_name},{config.unlearn_steps}us,{config.relearn_steps}rs"
-study_name = f"{info},no_pruning,only_rel_at_end"
+study_name = f"{info},test_50steps_relearning_with_default_lora"
 if __name__ == "__main__":
     assert is_repo_clean()
     study = optuna.create_study(
