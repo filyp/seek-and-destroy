@@ -23,7 +23,7 @@ config = SimpleNamespace(
     ret_lora_config=dict(lora_dropout=0.05, target_modules="all-linear"),
     use_ret_lora=True,
     # Relearning params
-    relearn_steps=50,
+    relearn_steps=500,
     eval_batch_size=16,
     # todo optuna study to find optimal relearning!
     relearn_lr=1e-4,
@@ -175,7 +175,6 @@ def objective(trial):
     )
     # use min rather than last, in case it anomalously increases
     forget_loss = min(forget_losses)
-    trial.set_user_attr("relearning_results", forget_losses)
 
     # save best model
     if forget_loss > best_value:
@@ -189,7 +188,7 @@ def objective(trial):
 
 # %%
 info = f"S&D,{config.forget_set_name},{config.unlearn_steps}us,{config.relearn_steps}rs"
-study_name = f"{info},test_50steps_relearning_with_default_lora"
+study_name = f"{info},test_500steps_relearning_with_default_lora"
 if __name__ == "__main__":
     assert is_repo_clean()
     study = optuna.create_study(
