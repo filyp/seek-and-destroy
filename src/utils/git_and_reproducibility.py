@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import shutil
 import subprocess
 from datetime import datetime
@@ -51,10 +52,12 @@ def save_script_and_attach_logger(file_name, study_name):
 def get_storage():
     """Use DB URL defined in secret.json if it exists, otherwise use local DB."""
     secrets_file = repo_root() / "secret.json"
+
     if not secrets_file.exists():
-        return f"sqlite:///{repo_root() / 'results' / 'db.sqlite3'}"
-        # # for running in WSL, this worked:
-        # return "sqlite:///db.sqlite3"
+        path = repo_root() / "db.sqlite3"
+        # for running in WSL, it needs to be relative
+        path = os.path.relpath(path, Path.cwd())
+        return f"sqlite:///{path}"
 
     db_url = json.load(open(secrets_file))["db_url"]
     return optuna.storages.RDBStorage(

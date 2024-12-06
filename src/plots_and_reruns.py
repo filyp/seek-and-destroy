@@ -24,7 +24,7 @@ print(study.study_name)
 # %%
 layout = dict(
     template="plotly_white",
-    font=dict(family="Times New Roman", size=20),
+    font=dict(family="Times Roman", size=20),
     title={"text": study.study_name, "xanchor": "center", "x": 0.5, "y": 0.95},
     title_font_size=30,
 )
