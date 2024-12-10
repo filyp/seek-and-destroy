@@ -60,9 +60,11 @@ circuit = pt.load(_circuit_dir / _circuit_name, weights_only=True)
 # %%
 def objective(trial):
     # ! parameters
-    forget_thresh = trial.suggest_float("forget_thresh", 0.0001, 0.1, log=True)
-    retain_thresh = trial.suggest_float("retain_thresh", 0.0001, 0.1, log=True)
-    unlearning_rate = trial.suggest_float("unlearning_rate", 0.00001, 0.01, log=True)
+    forget_thresh = trial.suggest_float("forget_thresh", 0.002, 0.02, log=True)
+    retain_thresh = trial.suggest_float("retain_thresh", 0.0001, 0.01, log=True)
+    unlearning_rate = trial.suggest_float("unlearning_rate", 0.00002, 0.0001, log=True)
+    retaining_rate = trial.suggest_float("retaining_rate", 0.00001, 0.0003, log=True)
+    grad_decay = trial.suggest_float("grad_decay", 0.0, 0.2)
 
     # prepare data iterators
     retain_iter = retain_batches.fresh_iterator()
@@ -70,9 +72,9 @@ def objective(trial):
     model = AutoModelForCausalLM.from_pretrained(config.model_id)
 
     # get params to intervene on and initialize disruption scores
-    target_modules = ["dense_4h_to_h", "dense"]
     for p in model.parameters():
         p.requires_grad = False
+    target_modules = ["dense_4h_to_h", "dense"]
     interven_params = []
     for name, p in model.named_parameters():
         if any(f"{m}.weight" in name for m in target_modules):
@@ -81,6 +83,7 @@ def objective(trial):
             p.to_forget = circuit[name]
             # require grad
             p.requires_grad = True
+    model.zero_grad(set_to_none=True)
 
     # ! unlearning loop
     logging.info("step      base_f      base_r")
@@ -89,7 +92,6 @@ def objective(trial):
         r_input_ids = next(retain_iter)
 
         # ! unlearn on the base model
-        model.zero_grad(set_to_none=True)
         output = model(r_input_ids)
         loss = cross_entropy_loss(output, r_input_ids)
         loss.backward()
@@ -98,7 +100,10 @@ def objective(trial):
             _retain_big = p.grad.abs() > retain_thresh
             _forget_big = p.to_forget.abs() > forget_thresh
             mask = _same_sign.logical_and(_retain_big).logical_and(_forget_big)
+            # logging.info(f"mask: {pt.mean(mask.float()):.2f}")
             p.data -= mask * unlearning_rate * p.to_forget
+            p.data -= retaining_rate * p.grad
+            p.grad *= grad_decay
 
         # ! eval current loss
         if step % 10 == 0:
@@ -126,9 +131,9 @@ def objective(trial):
 
 # %%
 
-study_name = f"small,{config.forget_set_name},no_abs_fixed"
+study_name = f"small,{config.forget_set_name},no_abs_fixed_grad_decay_retain"
 if __name__ == "__main__":
-    assert is_repo_clean()
+    # assert is_repo_clean()
     study = optuna.create_study(
         study_name=study_name,
         storage=get_storage(),
