@@ -114,14 +114,30 @@ def objective(trial):
 
 
 # %%
-objective(
-    MockTrial(
-        dict(
-            unlearning_rate=0.00005,
-            retain_thresh=0.001,
-            forget_thresh=0.1,
-        )
-    )
-)
+# objective(
+#     MockTrial(
+#         dict(
+#             unlearning_rate=0.00005,
+#             retain_thresh=0.001,
+#             forget_thresh=0.1,
+#         )
+#     )
+# )
 
 # %%
+
+study_name = f"small,{config.forget_set_name},no_abs"
+if __name__ == "__main__":
+    assert is_repo_clean()
+    study = optuna.create_study(
+        study_name=study_name,
+        storage=get_storage(),
+        direction="maximize",
+        # load_if_exists=True,
+    )
+    save_script_and_attach_logger(__file__, study.study_name)
+    study.set_metric_names(["forget_loss"])
+    study.set_user_attr("commit_hash", commit_hash())
+    for k, v in config.__dict__.items():
+        study.set_user_attr(k, v)
+    study.optimize(objective, n_trials=300)
