@@ -83,13 +83,13 @@ def objective(trial):
             p.requires_grad = True
 
     # ! unlearning loop
-    model.zero_grad(set_to_none=True)
     logging.info("step      base_f      base_r")
     for step in range(1, 1 + config.unlearn_steps):
         model.train()
         r_input_ids = next(retain_iter)
 
         # ! unlearn on the base model
+        model.zero_grad(set_to_none=True)
         output = model(r_input_ids)
         loss = cross_entropy_loss(output, r_input_ids)
         loss.backward()
@@ -126,7 +126,7 @@ def objective(trial):
 
 # %%
 
-study_name = f"small,{config.forget_set_name},no_abs"
+study_name = f"small,{config.forget_set_name},no_abs_fixed"
 if __name__ == "__main__":
     assert is_repo_clean()
     study = optuna.create_study(
