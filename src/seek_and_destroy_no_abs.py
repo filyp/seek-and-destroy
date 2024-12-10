@@ -11,25 +11,20 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from utils.data_loading import CachedBatches, dataset_loaders
 from utils.git_and_reproducibility import *
 from utils.model_operations import *
-from utils.training import MockTrial, loss_fns, set_seeds, cross_entropy_loss
+from utils.training import MockTrial, cross_entropy_loss, eval_, loss_fns, set_seeds
 
 config = SimpleNamespace(
     # Model/data configs
     model_id="EleutherAI/pythia-14m",
     forget_set_name="python",
     # Training constants
-    unlearn_steps=1000,
+    unlearn_steps=100,
     batch_size=16,
-    ret_lora_config=dict(lora_dropout=0.05, target_modules="all-linear"),
-    use_ret_lora=True,
     # Relearning params
-    relearn_steps=500,
+    relearn_steps=50,
     eval_batch_size=16,
-    # todo optuna study to find optimal relearning!
     relearn_lr=1e-4,
     relearn_lora_conf=dict(target_modules="all-linear"),
-    # Default tunable params
-    disruption_score_warmup=10,
 )
 
 pt.set_default_device("cuda")
@@ -64,12 +59,10 @@ circuit = pt.load(_circuit_dir / _circuit_name, weights_only=True)
 
 # %%
 def objective(trial):
-
-    retain_thresh = 0.0
-    forget_thresh = 0.01
-
     # ! parameters
-    unlearning_rate = trial.suggest_float("unlearning_rate", 0.0005, 0.01, log=True)
+    forget_thresh = trial.suggest_float("forget_thresh", 0.0001, 0.1, log=True)
+    retain_thresh = trial.suggest_float("retain_thresh", 0.0001, 0.1, log=True)
+    unlearning_rate = trial.suggest_float("unlearning_rate", 0.00001, 0.01, log=True)
 
     # prepare data iterators
     retain_iter = retain_batches.fresh_iterator()
@@ -105,11 +98,11 @@ def objective(trial):
             _retain_big = p.grad.abs() > retain_thresh
             _forget_big = p.to_forget.abs() > forget_thresh
             mask = _same_sign.logical_and(_retain_big).logical_and(_forget_big)
-            p.data = mask * unlearning_rate * p.to_forget
+            p.data -= mask * unlearning_rate * p.to_forget
 
         # ! eval current loss
         if step % 10 == 0:
-            res = eval(model, f_eval_batch, r_eval_batch, init_retain, step)
+            eval_(model, f_eval_batch, r_eval_batch, init_retain, step)
 
     # ! eval relearning
     model_copy = deepcopy(model)
@@ -120,21 +113,15 @@ def objective(trial):
     return forget_loss
 
 
-# # %%
-# info = f"S&D,{config.forget_set_name},{config.unlearn_steps}us,{config.relearn_steps}rs"
-# # study_name = f"{info},test_500steps_relearning_with_default_lora"
-# study_name = f"test"
-# if __name__ == "__main__":
-#     # assert is_repo_clean()
-#     study = optuna.create_study(
-#         study_name=study_name,
-#         storage=get_storage(),
-#         direction="maximize",
-#         # load_if_exists=True,
-#     )
-#     save_script_and_attach_logger(__file__, study.study_name)
-#     study.set_metric_names(["forget_loss"])
-#     study.set_user_attr("commit_hash", commit_hash())
-#     for k, v in config.__dict__.items():
-#         study.set_user_attr(k, v)
-#     study.optimize(objective, n_trials=1000)
+# %%
+objective(
+    MockTrial(
+        dict(
+            unlearning_rate=0.00005,
+            retain_thresh=0.001,
+            forget_thresh=0.1,
+        )
+    )
+)
+
+# %%

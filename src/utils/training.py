@@ -78,7 +78,7 @@ class MockTrial:
         pass
 
 
-def eval(model, f_eval_batch, r_eval_batch, init_retain, step):
+def eval_(model, f_eval_batch, r_eval_batch, init_retain, step):
     res = {}
     res["forget_loss"] = eval_loss(model, f_eval_batch)
     res["retain_loss"] = eval_loss(model, r_eval_batch)

@@ -11,21 +11,20 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from utils.data_loading import CachedBatches, dataset_loaders
 from utils.git_and_reproducibility import *
 from utils.model_operations import *
-from utils.training import MockTrial, loss_fns, set_seeds
+from utils.training import MockTrial, loss_fns, set_seeds, eval_
 
 config = SimpleNamespace(
     # Model/data configs
     model_id="EleutherAI/pythia-14m",
     forget_set_name="python",
     # Training constants
-    unlearn_steps=1000,
+    unlearn_steps=100,
     batch_size=16,
     ret_lora_config=dict(lora_dropout=0.05, target_modules="all-linear"),
     use_ret_lora=True,
     # Relearning params
-    relearn_steps=500,
+    relearn_steps=50,
     eval_batch_size=16,
-    # todo optuna study to find optimal relearning!
     relearn_lr=1e-4,
     relearn_lora_conf=dict(target_modules="all-linear"),
     # Default tunable params
@@ -151,7 +150,7 @@ def objective(trial):
 
         # ! eval current loss
         if step % 10 == 0:
-            res = eval(model, f_eval_batch, r_eval_batch, init_retain, step)
+            res = eval_(model, f_eval_batch, r_eval_batch, init_retain, step)
     # trial.set_user_attr("unlearning_results", results)
 
     # ! eval relearning
@@ -174,11 +173,9 @@ def objective(trial):
 
 
 # %%
-info = f"S&D,{config.forget_set_name},{config.unlearn_steps}us,{config.relearn_steps}rs"
-# study_name = f"{info},test_500steps_relearning_with_default_lora"
-study_name = f"test"
+study_name = f"small,{config.forget_set_name},abs"
 if __name__ == "__main__":
-    # assert is_repo_clean()
+    assert is_repo_clean()
     study = optuna.create_study(
         study_name=study_name,
         storage=get_storage(),
@@ -190,4 +187,21 @@ if __name__ == "__main__":
     study.set_user_attr("commit_hash", commit_hash())
     for k, v in config.__dict__.items():
         study.set_user_attr(k, v)
-    study.optimize(objective, n_trials=1000)
+    study.optimize(objective, n_trials=300)
+
+# # %%
+# objective(
+#     MockTrial(
+#         dict(
+#             quantile=0.002,
+#             # unlearning_rate=0.001,
+#             unlearning_rate=0.002,
+#             # retaining_rate=0.0007,
+#             retaining_rate=0.0000,
+#             retain_amp=1.75,
+#             forget_amp=0.95,
+#             disruption_score_decay=0.0,
+#             ret_lora_rank=9,
+#         )
+#     )
+# )
