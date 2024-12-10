@@ -64,6 +64,7 @@ circuit = pt.load(_circuit_dir / _circuit_name, weights_only=True)
 best_model_path = repo_root() / "models" / "best_model.pt"
 best_value = 0
 
+
 # %%
 def objective(trial):
     global best_value
@@ -72,8 +73,8 @@ def objective(trial):
     unlearning_rate = trial.suggest_float("unlearning_rate", 0.0005, 0.01, log=True)
     retaining_rate = trial.suggest_float("retaining_rate", 0.0003, 0.001, log=True)
 
-    retain_amp = trial.suggest_float("retain_amp", 1.3, 1.8)
-    forget_amp = trial.suggest_float("forget_amp", 0.9, 1.2)
+    retain_amp = trial.suggest_float("retain_amp", 1.2, 2.0)
+    forget_amp = trial.suggest_float("forget_amp", 0.8, 1.2)
     disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.0, 0.5)
     ret_lora_rank = trial.suggest_int("ret_lora_rank", 1, 10)
 
@@ -150,16 +151,7 @@ def objective(trial):
 
         # ! eval current loss
         if step % 10 == 0:
-            res = {}
-            res["forget_loss"] = eval_loss(model, f_eval_batch)
-            res["retain_loss"] = eval_loss(model, r_eval_batch)
-            res["retain_loss_ok"] = res["retain_loss"] < init_retain + 0.05
-            results.append(res)
-            logging.info(f"{step:4} " + " ".join(f"{v:11.2f}" for v in res.values()))
-            assert not any(pt.isnan(v) for v in res.values())
-            if res["retain_loss"] > init_retain + 0.1:
-                logging.info(f"Pruning trial because retain loss is too high")
-                raise optuna.TrialPruned()
+            res = eval(model, f_eval_batch, r_eval_batch, init_retain, step)
     # trial.set_user_attr("unlearning_results", results)
 
     # ! eval relearning
@@ -167,12 +159,7 @@ def objective(trial):
         model_copy = copy_model_and_collapse_loras(peft_model, delete_adv=False)
     else:
         model_copy = deepcopy(model)
-    forget_losses = relearn(
-        model_copy,
-        config,
-        retain_val_batches.fresh_iterator(),
-        forget_val_batches.fresh_iterator(),
-    )
+    forget_losses = relearn(model_copy, config, retain_val_batches, forget_val_batches)
     # use min rather than last, in case it anomalously increases
     forget_loss = min(forget_losses)
 
@@ -188,9 +175,10 @@ def objective(trial):
 
 # %%
 info = f"S&D,{config.forget_set_name},{config.unlearn_steps}us,{config.relearn_steps}rs"
-study_name = f"{info},test_500steps_relearning_with_default_lora"
+# study_name = f"{info},test_500steps_relearning_with_default_lora"
+study_name = f"test"
 if __name__ == "__main__":
-    assert is_repo_clean()
+    # assert is_repo_clean()
     study = optuna.create_study(
         study_name=study_name,
         storage=get_storage(),

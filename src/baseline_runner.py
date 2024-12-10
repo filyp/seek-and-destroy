@@ -126,9 +126,7 @@ def objective(unlearn_lr):
     # %
     # ! final bigger eval relearning
     copied_model = deepcopy(model)
-    retain_val_iter = retain_val_batches.fresh_iterator()
-    forget_val_iter = forget_val_batches.fresh_iterator()
-    forget_loss = relearn(copied_model, config, retain_val_iter, forget_val_iter)
+    forget_loss = relearn(copied_model, config, retain_val_batches, forget_val_batches)
     return forget_loss
 
 
