@@ -1,11 +1,10 @@
 # %%
 import logging
-from datetime import datetime
+import math
 from types import SimpleNamespace
 
 import optuna
 import torch as pt
-from peft import LoraConfig, get_peft_model
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from utils.data_loading import CachedBatches, dataset_loaders
@@ -18,10 +17,10 @@ config = SimpleNamespace(
     model_id="EleutherAI/pythia-14m",
     forget_set_name="python",
     # Training constants
-    unlearn_steps=100,
+    unlearn_steps=1000,
     batch_size=16,
     # Relearning params
-    relearn_steps=50,
+    relearn_steps=500,
     eval_batch_size=16,
     relearn_lr=1e-4,
     relearn_lora_conf=dict(target_modules="all-linear"),
@@ -60,15 +59,15 @@ circuit = pt.load(_circuit_dir / _circuit_name, weights_only=True)
 # %%
 def objective(trial):
     # ! parameters
-    forget_thresh = trial.suggest_float("forget_thresh", 0.002, 0.02, log=True)
-    retain_thresh = trial.suggest_float("retain_thresh", 0.0001, 0.01, log=True)
-    unlearning_rate = trial.suggest_float("unlearning_rate", 0.00002, 0.0001, log=True)
+    forget_thresh = trial.suggest_float("forget_thresh", 0.001, 1, log=True)
+    unlearning_rate = trial.suggest_float("unlearning_rate", 0.00002, 0.001, log=True)
     retaining_rate = trial.suggest_float("retaining_rate", 0.00001, 0.0003, log=True)
-    grad_decay = trial.suggest_float("grad_decay", 0.0, 0.2)
+    grad_decay = trial.suggest_float("grad_decay", 0.0, 0.3)
+    alpha_thresh = trial.suggest_float("alpha_thresh", 88, 95)
+    alpha_low_thresh = trial.suggest_float("alpha_low_thresh", 0, 70)
 
     # prepare data iterators
     retain_iter = retain_batches.fresh_iterator()
-    # load model - for speed we could also do: model = deepcopy(base_model)
     model = AutoModelForCausalLM.from_pretrained(config.model_id)
 
     # get params to intervene on and initialize disruption scores
@@ -86,6 +85,7 @@ def objective(trial):
     model.zero_grad(set_to_none=True)
 
     # ! unlearning loop
+    res = {}
     logging.info("step      base_f      base_r")
     for step in range(1, 1 + config.unlearn_steps):
         model.train()
@@ -96,18 +96,23 @@ def objective(trial):
         loss = cross_entropy_loss(output, r_input_ids)
         loss.backward()
         for p in interven_params:
-            _same_sign = p.grad.sign() == p.to_forget.sign()
-            _retain_big = p.grad.abs() > retain_thresh
             _forget_big = p.to_forget.abs() > forget_thresh
-            mask = _same_sign.logical_and(_retain_big).logical_and(_forget_big)
-            # logging.info(f"mask: {pt.mean(mask.float()):.2f}")
-            p.data -= mask * unlearning_rate * p.to_forget
+            alpha = pt.atan2(p.to_forget, p.grad) / math.pi * 180
+            alpha = alpha % 180
+            mask = (
+                (alpha < alpha_thresh)
+                .logical_and(_forget_big)
+                .logical_and(alpha > alpha_low_thresh)
+            )
+
+            if res.get("retain_loss_ok", True):
+                p.data -= mask * unlearning_rate * p.to_forget
             p.data -= retaining_rate * p.grad
             p.grad *= grad_decay
 
         # ! eval current loss
         if step % 10 == 0:
-            eval_(model, f_eval_batch, r_eval_batch, init_retain, step)
+            res = eval_(model, f_eval_batch, r_eval_batch, init_retain, step)
 
     # ! eval relearning
     model_copy = deepcopy(model)
@@ -119,21 +124,10 @@ def objective(trial):
 
 
 # %%
-# objective(
-#     MockTrial(
-#         dict(
-#             unlearning_rate=0.00005,
-#             retain_thresh=0.001,
-#             forget_thresh=0.1,
-#         )
-#     )
-# )
 
-# %%
-
-study_name = f"small,{config.forget_set_name},no_abs_fixed_grad_decay_retain"
+study_name = f"big,{config.forget_set_name},no_abs_alpha"
 if __name__ == "__main__":
-    # assert is_repo_clean()
+    assert is_repo_clean()
     study = optuna.create_study(
         study_name=study_name,
         storage=get_storage(),
@@ -145,4 +139,4 @@ if __name__ == "__main__":
     study.set_user_attr("commit_hash", commit_hash())
     for k, v in config.__dict__.items():
         study.set_user_attr(k, v)
-    study.optimize(objective, n_trials=300)
+    study.optimize(objective, n_trials=1000)

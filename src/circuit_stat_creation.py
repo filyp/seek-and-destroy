@@ -11,7 +11,6 @@ from utils.training import MockTrial, loss_fns, set_seeds
 model_id = "EleutherAI/pythia-14m"
 pt.set_default_device("cuda")
 
-
 # %%
 dataset_name = "python"
 loss_fn_name = "correct_logit"
