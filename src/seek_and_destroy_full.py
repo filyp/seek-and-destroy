@@ -9,12 +9,14 @@ circuit = pt.load(_circuit_dir / _circuit_name, weights_only=True)
 # %%
 def objective(trial):
     # ! parameters
-    unlearning_rate = trial.suggest_float("unlearning_rate", 0.00002, 0.001, log=True)
-    retaining_rate = trial.suggest_float("retaining_rate", 0.00001, 0.0003, log=True)
+    unlearning_rate = trial.suggest_float("unlearning_rate", 0.0001, 0.01, log=True)
+    retaining_rate = trial.suggest_float("retaining_rate", 0.00001, 0.001, log=True)
     pos_grad_discard_factor = trial.suggest_float("pos_grad_discard_factor", 0.0, 1.0)
     disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.0, 1.0)
-    quantile = trial.suggest_float("quantile", 0.001, 0.1, log=True)
-    retain_consistency_factor = 1 #trial.suggest_float("retain_consistency_factor", 0.0, 1.0)
+    f_quantile = trial.suggest_float("f_quantile", 0.0001, 0.01, log=True)
+    r_quantile = trial.suggest_float("r_quantile", 0.0001, 0.1, log=True)
+    retain_consistency = trial.suggest_float("retain_consistency", 0.0, 1.0)
+    logging.info(f"trial {trial.number} - {trial.params}")
 
     # prepare data iterators
     retain_iter = retain_batches.fresh_iterator()
@@ -49,25 +51,33 @@ def objective(trial):
         for p in interven_params:
             grad = p.grad.clone().detach()
             grad[p.to_forget.sign() == p.grad.sign()] *= pos_grad_discard_factor
-            
+
             p.disruption_score *= disruption_score_decay
             p.disruption_score += (1 - disruption_score_decay) * grad
             
-            rel_scores = p.disruption_score / p.to_forget
-            # assert (rel_scores <= 0).all(), rel_scores
-            # we want the highest ones!
-            threshold = get_threshold(1 - quantile, [rel_scores])
+            # first choose the most important weights for forgetting
+            f_threshold = get_threshold(1 - f_quantile, [p.to_forget.abs()])
+            mask = (p.to_forget.abs() > f_threshold)
 
-            mask = rel_scores > threshold
+            # then from them, choose the ones least disrupting
+            flipped_disr = p.disruption_score * p.to_forget.sign()
+            flipped_disr[~mask] = float("-inf")
+            # we want this high too
+            d_threshold = get_threshold(1 - r_quantile, [flipped_disr])
+            mask = mask & (flipped_disr > d_threshold)
+
             if res.get("retain_loss_ok", True):
                 p.data -= mask * unlearning_rate * p.to_forget
 
-            p.grad[p.grad != p.to_forget] *= retain_consistency_factor
+            p.grad[p.grad != p.to_forget] *= retain_consistency
             p.data -= retaining_rate * p.grad
 
         # ! eval current loss
         if step % 10 == 0:
             res = eval_(model, f_eval_batch, r_eval_batch, init_retain, step)
+    
+    if trial.number % 5 == 0:
+        visualize_param(p, mask)
 
     # ! eval relearning
     model_copy = deepcopy(model)
@@ -79,14 +89,8 @@ def objective(trial):
 
 
 # %%
-run_study(objective, config, __file__, "asymmetric", delete_existing=True)
+run_study(
+    objective, config, __file__, "two_stacked_quantiles", delete_existing=True, assert_clean=False
+)
 
 # %%
-study_type = "big" if config.unlearn_steps == 1000 else "small"
-script_stem = Path(__file__).stem
-study_name = f"{study_type},{config.forget_set_name},{script_stem},asymmetric"
-delete_existing = True
-
-# delete existing study if it exists
-if delete_existing:
-    optuna.delete_study(study_name)

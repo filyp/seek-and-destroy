@@ -93,6 +93,30 @@ def eval_(model, f_eval_batch, r_eval_batch, init_retain, step):
     return res
 
 
+def visualize_param(param, mask):
+    x = param.to_forget
+    y = param.disruption_score
+    c = mask
+    # plot a 2d scatter plot
+    # first flatten x and y and c and convert to cpy numpy
+    x = x.flatten().cpu().numpy()
+    y = y.flatten().cpu().numpy()
+    c = c.flatten().cpu().numpy()
+    # plot
+    import matplotlib.pyplot as plt
+
+    plt.scatter(x, y, c=c, s=1)
+
+    # label
+    plt.xlabel("to_forget")
+    plt.ylabel("disruption_score")
+
+    # plt.ylim(0, 0.001)
+    # plt.show()
+    file_name = repo_root() / "results" / f"param_toforget_vs_disruption.png"
+    plt.savefig(file_name)
+
+
 def run_study(
     objective, config, script_name, study_name, assert_clean=True, delete_existing=False
 ):
@@ -101,14 +125,15 @@ def run_study(
     study_type = "big" if config.unlearn_steps == 1000 else "small"
     script_stem = Path(script_name).stem
     study_name = f"{study_type},{config.forget_set_name},{script_stem},{study_name}"
-    
+
     storage = get_storage()
 
     # delete existing study if it exists
     if delete_existing:
         try:
+            _ = optuna.load_study(study_name=study_name, storage=storage)
             optuna.delete_study(study_name, storage=storage)
-        except optuna.exceptions.NotFoundError:
+        except KeyError:
             pass
 
     study = optuna.create_study(
