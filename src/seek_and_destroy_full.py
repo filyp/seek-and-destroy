@@ -5,6 +5,8 @@ _circuit_dir = repo_root() / "circuits" / config.model_id.replace("/", "_")
 _circuit_name = f"{config.forget_set_name}_correct_logit.pt"
 circuit = pt.load(_circuit_dir / _circuit_name, weights_only=True)
 
+# todo? attack more modules?
+# todo? global thresh, rather than per param?
 
 # %%
 def objective(trial):
