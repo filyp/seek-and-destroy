@@ -93,15 +93,27 @@ def eval_(model, f_eval_batch, r_eval_batch, init_retain, step):
     return res
 
 
-def run_study(objective, config, script_name, study_name, assert_clean=True):
+def run_study(
+    objective, config, script_name, study_name, assert_clean=True, delete_existing=False
+):
     if assert_clean:
         assert is_repo_clean()
     study_type = "big" if config.unlearn_steps == 1000 else "small"
     script_stem = Path(script_name).stem
+    study_name = f"{study_type},{config.forget_set_name},{script_stem},{study_name}"
     
+    storage = get_storage()
+
+    # delete existing study if it exists
+    if delete_existing:
+        try:
+            optuna.delete_study(study_name, storage=storage)
+        except optuna.exceptions.NotFoundError:
+            pass
+
     study = optuna.create_study(
-        study_name=f"{study_type},{config.forget_set_name},{script_stem},{study_name}",
-        storage=get_storage(),
+        study_name=study_name,
+        storage=storage,
         direction="maximize",
         # load_if_exists=True,
     )

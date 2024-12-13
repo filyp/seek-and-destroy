@@ -79,6 +79,14 @@ def objective(trial):
 
 
 # %%
-run_study(objective, config, __file__, "asymmetric")
+run_study(objective, config, __file__, "asymmetric", delete_existing=True)
 
 # %%
+study_type = "big" if config.unlearn_steps == 1000 else "small"
+script_stem = Path(__file__).stem
+study_name = f"{study_type},{config.forget_set_name},{script_stem},asymmetric"
+delete_existing = True
+
+# delete existing study if it exists
+if delete_existing:
+    optuna.delete_study(study_name)
