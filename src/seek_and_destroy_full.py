@@ -79,8 +79,7 @@ def objective(trial):
         if step % 10 == 0:
             res = eval_(model, f_eval_batch, r_eval_batch, init_retain, step)
     
-    if trial.number % 1 == 0:
-        visualize_param(p, mask)
+    visualize_param(p, mask)
 
     # ! eval relearning
     model_copy = deepcopy(model)

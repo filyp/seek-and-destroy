@@ -1,6 +1,7 @@
 import logging
 import random
 
+import matplotlib.pyplot as plt
 import optuna
 import torch as pt
 
@@ -102,9 +103,8 @@ def visualize_param(param, mask):
     x = x.flatten().cpu().numpy()
     y = y.flatten().cpu().numpy()
     c = c.flatten().cpu().numpy()
-    # plot
-    import matplotlib.pyplot as plt
 
+    plt.clf()
     plt.scatter(x, y, c=c, s=1)
 
     # label
