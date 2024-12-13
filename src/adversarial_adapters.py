@@ -1,69 +1,13 @@
-# %%
-import logging
-from datetime import datetime
-from types import SimpleNamespace
+from _common_init import *
 
-import optuna
-import torch as pt
-from peft import LoraConfig, get_peft_model
-from transformers import AutoModelForCausalLM, AutoTokenizer
-
-from utils.data_loading import CachedBatches, dataset_loaders
-from utils.git_and_reproducibility import *
-from utils.model_operations import *
-from utils.training import MockTrial, loss_fns, set_seeds
-
-config = SimpleNamespace(
-    # Model/data configs
-    model_id="EleutherAI/pythia-14m",
-    # model_id="EleutherAI/pythia-70m",
-    # model_id="HuggingFaceTB/SmolLM-135M",
-    forget_set_name="python",
-    # forget_set_name="oscar_pl",
-    adv_lora_config=dict(
-        # lora_dropout=0.1,
-        target_modules=["dense_h_to_4h", "dense_4h_to_h", "query_key_value", "dense"],
-    ),
-    ret_lora_config=dict(
-        # lora_dropout=0.1,
-        target_modules=["dense_h_to_4h", "dense_4h_to_h", "query_key_value", "dense"],
-    ),
-    # Training constants
-    # unlearn_steps=200,
-    batch_size=16,
-    # Relearning params
-    relearn_steps=50,
-    relearn_lr=3e-4,
-    eval_batch_size=16,
-    relearn_lora_conf=dict(r=1, target_modules="all-linear", lora_dropout=0.1),
-    # Default tunable params
-    # disruption_score_warmup=10,
+config.adv_lora_config = dict(
+    # lora_dropout=0.1,
+    target_modules=["dense_h_to_4h", "dense_4h_to_h", "query_key_value", "dense"],
 )
-
-pt.set_default_device("cuda")
-logging.basicConfig(
-    level=logging.INFO,
-    format="%(asctime)s %(levelname)s  %(message)s",
-    datefmt="%H:%M:%S",
-    handlers=[logging.StreamHandler()],
+config.ret_lora_config = dict(
+    # lora_dropout=0.1,
+    target_modules=["dense_h_to_4h", "dense_4h_to_h", "query_key_value", "dense"],
 )
-
-# load datasets
-tokenizer = AutoTokenizer.from_pretrained(config.model_id)
-retain_set = dataset_loaders["wikitext"](tokenizer)
-forget_set = dataset_loaders[config.forget_set_name](tokenizer)
-retain_batches = CachedBatches(retain_set["train"], config.batch_size)
-forget_batches = CachedBatches(forget_set["train"], config.batch_size)
-retain_val_batches = CachedBatches(retain_set["validation"], config.eval_batch_size)
-forget_val_batches = CachedBatches(forget_set["validation"], config.eval_batch_size)
-r_eval_batch = next(retain_val_batches.fresh_iterator())
-f_eval_batch = next(forget_val_batches.fresh_iterator())
-
-base_model = AutoModelForCausalLM.from_pretrained(config.model_id)
-init_forget = eval_loss(base_model, f_eval_batch)
-init_retain = eval_loss(base_model, r_eval_batch)
-logging.info(f"init forget: {init_forget:6.2f}    init retain: {init_retain:6.2f}")
-
 
 best_model_path = repo_root() / "models" / "best_model.pt"
 best_value = 0
@@ -266,19 +210,4 @@ def objective(trial):
 
 
 # %%
-info = f"{config.forget_set_name},{config.relearn_steps}rs"
-study_name = f"{info},20params,loglog_steps_10_1000"
-if __name__ == "__main__":
-    assert is_repo_clean()
-    study = optuna.create_study(
-        study_name=study_name,
-        storage=get_storage(),
-        direction="maximize",
-        # load_if_exists=True,
-    )
-    save_script_and_attach_logger(__file__, study.study_name)
-    study.set_metric_names(["forget_loss"])
-    study.set_user_attr("commit_hash", commit_hash())
-    for k, v in config.__dict__.items():
-        study.set_user_attr(k, v)
-    study.optimize(objective, n_trials=10000)
+run_study(objective, config, __file__, "test")

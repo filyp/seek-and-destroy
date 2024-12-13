@@ -347,3 +347,24 @@ if stats["adv_forget"] > 500 and (i + 1) % 10 == 0:
 # plt.legend()
 # plt.grid(True)
 # plt.show()
+
+
+# %%
+x = param.to_forget
+y = param.disruption_score
+c = mask
+# plot a 2d scatter plot
+# first flatten x and y and c and convert to cpy numpy
+x = x.flatten().cpu().numpy()
+y = y.flatten().cpu().numpy()
+c = c.flatten().cpu().numpy()
+# plot
+import matplotlib.pyplot as plt
+plt.scatter(x, y, c=c, s=1)
+
+# label
+plt.xlabel("to_forget")
+plt.ylabel("disruption_score")
+
+plt.ylim(0, 0.001)
+plt.show()

@@ -4,11 +4,11 @@ from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from utils.data_loading import CachedBatches, dataset_loaders
-from utils.git_and_reproducibility import *
-from utils.model_operations import *
-from utils.training import MockTrial, loss_fns, set_seeds
+from utils.git_and_reproducibility import repo_root
+from utils.training import loss_fns
 
 model_id = "EleutherAI/pythia-14m"
+
 pt.set_default_device("cuda")
 
 # %%

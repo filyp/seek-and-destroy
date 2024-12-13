@@ -4,6 +4,8 @@ import random
 import optuna
 import torch as pt
 
+from utils.git_and_reproducibility import *
+
 
 # --- Setup and Environment ---
 def set_seeds(seed):
@@ -89,3 +91,22 @@ def eval_(model, f_eval_batch, r_eval_batch, init_retain, step):
         logging.info(f"Pruning trial because retain loss is too high")
         raise optuna.TrialPruned()
     return res
+
+
+def run_study(objective, config, script_name, study_name):
+    assert is_repo_clean()
+    study_type = "big" if config.unlearn_steps == 1000 else "small"
+    script_stem = Path(script_name).stem
+    
+    study = optuna.create_study(
+        study_name=f"{study_type},{config.forget_set_name},{script_stem},{study_name}",
+        storage=get_storage(),
+        direction="maximize",
+        # load_if_exists=True,
+    )
+    save_script_and_attach_logger(script_name, study.study_name)
+    study.set_metric_names(["forget_loss"])
+    study.set_user_attr("commit_hash", commit_hash())
+    for k, v in config.__dict__.items():
+        study.set_user_attr(k, v)
+    study.optimize(objective, n_trials=config.n_trials)
