@@ -7,15 +7,16 @@ circuit = pt.load(_circuit_dir / _circuit_name, weights_only=True)
 
 # todo? attack more modules?
 # todo? global thresh, rather than per param?
+# todo? maybe the order of doing thresholds matters?
 
 # %%
 def objective(trial):
     # ! parameters
     unlearning_rate = trial.suggest_float("unlearning_rate", 0.0001, 0.01, log=True)
-    retaining_rate = trial.suggest_float("retaining_rate", 0.00001, 0.001, log=True)
+    retaining_rate = trial.suggest_float("retaining_rate", 0.00001, 0.01, log=True)
     pos_grad_discard_factor = trial.suggest_float("pos_grad_discard_factor", 0.0, 1.0)
     disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.0, 1.0)
-    f_quantile = trial.suggest_float("f_quantile", 0.0001, 0.01, log=True)
+    f_quantile = trial.suggest_float("f_quantile", 0.0001, 0.1, log=True)
     r_quantile = trial.suggest_float("r_quantile", 0.0001, 0.1, log=True)
     retain_consistency = trial.suggest_float("retain_consistency", 0.0, 1.0)
     logging.info(f"trial {trial.number} - {trial.params}")
@@ -78,7 +79,7 @@ def objective(trial):
         if step % 10 == 0:
             res = eval_(model, f_eval_batch, r_eval_batch, init_retain, step)
     
-    if trial.number % 5 == 0:
+    if trial.number % 1 == 0:
         visualize_param(p, mask)
 
     # ! eval relearning
@@ -91,8 +92,12 @@ def objective(trial):
 
 
 # %%
+config.unlearn_steps = 1000
+config.relearn_steps = 500
+config.n_trials = 1000
 run_study(
-    objective, config, __file__, "two_stacked_quantiles", delete_existing=True, assert_clean=False
+    # objective, config, __file__, "two_stacked_quantiles", delete_existing=True, assert_clean=False
+    objective, config, __file__, "two_stacked_quantiles",
 )
 
 # %%
