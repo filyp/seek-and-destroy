@@ -1,0 +1,27 @@
+[tool.poetry]
+name = "seek-and-destroy"
+version = "0.1.0"
+description = ""
+authors = ["Your Name <you@example.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+torch = "^2.5.1"
+transformers = "^4.47.1"
+datasets = "^3.2.0"
+numpy = "^2.2.1"
+tqdm = "^4.67.1"
+ipykernel = "^6.29.5"
+protobuf = "^5.29.2"
+sentencepiece = "^0.2.0"
+optuna = "^4.1.0"
+peft = "^0.14.0"
+wandb = "^0.19.1"
+matplotlib = "^3.10.0"
+deepspeed = "^0.16.2"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
