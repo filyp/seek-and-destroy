@@ -7,7 +7,6 @@ circuit = pt.load(_circuit_dir / _circuit_name, weights_only=True)
 
 # todo? attack more modules?
 # todo? global thresh, rather than per param?
-# todo? maybe the order of doing thresholds matters?
 
 # %%
 def objective(trial):
@@ -19,6 +18,7 @@ def objective(trial):
     f_quantile = trial.suggest_float("f_quantile", 0.0001, 0.1, log=True)
     r_quantile = trial.suggest_float("r_quantile", 0.0001, 0.1, log=True)
     retain_consistency = trial.suggest_float("retain_consistency", 0.0, 1.0)
+    disqualification_factor = trial.suggest_float("disqualification_factor", 0.0, 1.0)
     logging.info(f"trial {trial.number} - {trial.params}")
 
     # prepare data iterators
@@ -40,7 +40,6 @@ def objective(trial):
             p.requires_grad = True
 
     # ! unlearning loop
-    res = {}
     logging.info("step      base_f      base_r")
     for step in range(1, 1 + config.unlearn_steps):
         model.train()
@@ -54,6 +53,8 @@ def objective(trial):
         for p in interven_params:
             grad = p.grad.clone().detach()
             grad[p.to_forget.sign() == p.grad.sign()] *= pos_grad_discard_factor
+            # "softmin" ?
+            grad *= grad.abs() ** disqualification_factor
 
             p.disruption_score *= disruption_score_decay
             p.disruption_score += (1 - disruption_score_decay) * grad
@@ -69,15 +70,14 @@ def objective(trial):
             d_threshold = get_threshold(1 - r_quantile, [flipped_disr])
             mask = mask & (flipped_disr > d_threshold)
 
-            if res.get("retain_loss_ok", True):
-                p.data -= mask * unlearning_rate * p.to_forget
+            p.data -= mask * unlearning_rate * p.to_forget
 
-            p.grad[p.grad != p.to_forget] *= retain_consistency
+            p.grad[p.grad.sign() != p.to_forget.sign()] *= retain_consistency
             p.data -= retaining_rate * p.grad
 
         # ! eval current loss
         if step % 10 == 0:
-            res = eval_(model, f_eval_batch, r_eval_batch, init_retain, step)
+            eval_(model, f_eval_batch, r_eval_batch, init_retain, step)
     
     visualize_param(p, mask)
 
@@ -91,12 +91,11 @@ def objective(trial):
 
 
 # %%
-config.unlearn_steps = 1000
-config.relearn_steps = 500
-config.n_trials = 1000
+# config.unlearn_steps = 1000
+# config.relearn_steps = 500
+# config.n_trials = 1000
 run_study(
-    # objective, config, __file__, "two_stacked_quantiles", delete_existing=True, assert_clean=False
-    objective, config, __file__, "two_stacked_quantiles",
+    objective, config, __file__, "last_plus_fixed_retain_consistency", assert_clean=False,
 )
 
 # %%
