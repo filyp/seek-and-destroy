@@ -8,20 +8,21 @@ from utils.git_and_reproducibility import *
 from utils.model_operations import *
 
 # get the latest study
-# storage = get_storage()
-storage = f"sqlite:///{repo_root() / 'win.sqlite3'}"
+storage = get_storage()
+# storage = f"sqlite:///{repo_root() / 'win.sqlite3'}"
 
 # %%
 study_summaries = optuna.study.get_all_study_summaries(storage)
 sorted_studies = sorted(study_summaries, key=lambda s: s.datetime_start)
-latest_study = sorted_studies[-1]
+
+# %%
+latest_study = sorted_studies[-4]
 study = optuna.load_study(study_name=latest_study.study_name, storage=storage)
 print(study.study_name)
 
 # study_name = "python,200-50,more_steps_with_best_values"
 # study = optuna.load_study(study_name=study_name, storage=storage)
 
-# %%
 layout = dict(
     template="plotly_white",
     font=dict(family="Times Roman", size=20),

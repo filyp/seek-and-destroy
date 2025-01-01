@@ -16,20 +16,21 @@ config.disruption_score_warmup = 10
 # %%
 
 # target_modules = ["dense_4h_to_h", "dense"]
+target_modules=["dense_h_to_4h", "dense_4h_to_h", "dense"]
 # target_modules=["dense_h_to_4h", "dense_4h_to_h", "query_key_value", "dense"]
 # target_modules = ["dense_4h_to_h"]
-target_modules = ["dense"]
+# target_modules = ["dense"]
 # target_modules = ["dense_h_to_4h"]
 # target_modules = ["query_key_value"]
 
 
 def objective(trial):
     # ! parameters
-    unlearning_rate = trial.suggest_float("unlearning_rate", 0.0001, 0.001, log=True)
+    unlearning_rate = trial.suggest_float("unlearning_rate", 0.0001, 0.003, log=True)
     retaining_rate = trial.suggest_float("retaining_rate", 0.0001, 0.001, log=True)
     ret_lora_rank = 8
     disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.8, 1.0)
-    f_quantile = trial.suggest_float("f_quantile", 0.0001, 0.1, log=True)
+    f_quantile = trial.suggest_float("f_quantile", 0.0001, 0.3, log=True)
     r_quantile = trial.suggest_float("r_quantile", 0.01, 1, log=True)
     pos_grad_discard_factor = 0
     retain_consistency = 0
@@ -90,22 +91,23 @@ def objective(trial):
         )
 
         # Unlearning step with two-stage masking
+        flipped_scores = []
         for p in interven_params:
             # First choose the most important weights for forgetting
             mask = p.to_forget.abs() > f_threshold
-
             # Then from them, choose the ones least disrupting
             flipped_disr = p.disruption_score * p.to_forget.sign()
-            flipped_disr[~mask] = float("-inf")
-            p.mask = mask
-            p.flipped_disr = flipped_disr
+            flipped_scores.append(flipped_disr[mask])
 
-        d_threshold = get_threshold(
-            1 - r_quantile, [p.flipped_disr[p.mask] for p in interven_params]
-        )
+        d_threshold = get_threshold(1 - r_quantile, flipped_scores)
 
         for p in interven_params:
-            mask = p.mask & (p.flipped_disr > d_threshold)
+            # recompute these two
+            mask = p.to_forget.abs() > f_threshold
+            flipped_disr = p.disruption_score * p.to_forget.sign()
+
+            flipped_disr[~mask] = float("-inf")
+            mask = mask & (flipped_disr > d_threshold)
 
             p.data -= mask * unlearning_rate * p.to_forget
 
@@ -137,12 +139,12 @@ def objective(trial):
 
 
 # %%
-config.n_trials = 100
+config.n_trials = 500
 run_study(
     objective,
     config,
     __file__,
-    f"global_r_and_d_threshold,{target_modules[0]}",
+    f"global_r_and_d_threshold,3_modules",
     assert_clean=False,
     delete_existing=True,
 )
