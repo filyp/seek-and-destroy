@@ -10,8 +10,9 @@ circuit = pt.load(_circuit_dir / _circuit_name, weights_only=True)
 
 # Add LoRA config
 config.ret_lora_config = dict(lora_dropout=0.05, target_modules="all-linear")
-config.use_ret_lora = True
-config.disruption_score_warmup = 0
+config.use_ret_lora = False
+config.disruption_score_warmup = 10
+
 
 # %%
 def objective(trial):
@@ -20,9 +21,9 @@ def objective(trial):
     retaining_rate = trial.suggest_float("retaining_rate", 0.00001, 0.01, log=True)
     ret_lora_rank = 8
     pos_grad_discard_factor = 0.5
-    disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.0, 1.0)
+    disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.7, 1.0)
     f_quantile = trial.suggest_float("f_quantile", 0.0001, 0.1, log=True)
-    r_quantile = trial.suggest_float("r_quantile", 0.0001, 0.1, log=True)
+    r_quantile = trial.suggest_float("r_quantile", 0.01, 1, log=True)
     retain_consistency = 0.4
     logging.info(f"trial {trial.number} - {trial.params}")
 
@@ -42,8 +43,12 @@ def objective(trial):
     peft_model = get_peft_model(model, ret_lora_c, adapter_name="ret_lora", mixed=True)
     model = peft_model.model
     # Require grad for all params despite having lora
-    for param in interven_params:
-        param.requires_grad = True
+    if config.use_ret_lora:
+        for param in interven_params:
+            param.requires_grad = True
+    else:
+        for param in model.parameters():
+            param.requires_grad = True
 
     # Initialize optimizers
     _ret_lora_params = [p for n, p in model.named_parameters() if ".ret_lora." in n]
@@ -61,7 +66,7 @@ def objective(trial):
         output = model(r_input_ids)
         loss = cross_entropy_loss(output, r_input_ids)
         loss.backward()
-        
+
         for p in interven_params:
             grad = p.grad.clone().detach()
             grad[p.to_forget.sign() == p.grad.sign()] *= pos_grad_discard_factor
@@ -72,23 +77,23 @@ def objective(trial):
         if step <= config.disruption_score_warmup:
             continue
 
-        # LoRA retention step
-        if config.use_ret_lora:
-            ret_optimizer.step()
+        # Get threshold for forgetting
+        f_threshold = get_threshold(
+            1 - f_quantile, [p.to_forget.abs() for p in interven_params]
+        )
 
         # Unlearning step with two-stage masking
-        model.zero_grad(set_to_none=True)
         for p in interven_params:
             # First choose the most important weights for forgetting
-            f_threshold = get_threshold(1 - f_quantile, [p.to_forget.abs()])
-            mask = (p.to_forget.abs() > f_threshold)
+            mask = p.to_forget.abs() > f_threshold
 
             # Then from them, choose the ones least disrupting
             flipped_disr = p.disruption_score * p.to_forget.sign()
             flipped_disr[~mask] = float("-inf")
-            # We want this high too
-            d_threshold = get_threshold(1 - r_quantile, [flipped_disr])
-            mask = mask & (flipped_disr > d_threshold)
+            if mask.sum() > 0:
+                # We want this high too
+                d_threshold = get_threshold(1 - r_quantile, [flipped_disr[mask]])
+                mask = mask & (flipped_disr > d_threshold)
 
             p.data -= mask * unlearning_rate * p.to_forget
 
@@ -96,10 +101,14 @@ def objective(trial):
                 p.grad[p.grad.sign() != p.to_forget.sign()] *= retain_consistency
                 p.data -= retaining_rate * p.grad
 
+        # LoRA retention step
+        if config.use_ret_lora:
+            ret_optimizer.step()
+
         # ! eval current loss
         if step % 10 == 0:
             eval_(model, f_eval_batch, r_eval_batch, init_retain, step)
-    
+
     visualize_param(p, mask)
 
     # Merge and unload helper lora
@@ -117,7 +126,12 @@ def objective(trial):
 
 # %%
 run_study(
-    objective, config, __file__, "bring_back_retain_lora", assert_clean=False,
+    objective,
+    config,
+    __file__,
+    "global_r_threshold,thresh_bug_fix",
+    assert_clean=False,
+    delete_existing=True,
 )
 
 # %%

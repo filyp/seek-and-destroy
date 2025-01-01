@@ -21,9 +21,10 @@ def get_threshold(quantile, disruption_scores):
     Calculate threshold value for parameter masking.
     Returns the k-th smallest value where k is determined by quantile.
     """
-    total_num_params = sum(s.numel() for s in disruption_scores)
-    k = int(quantile * total_num_params)
-    return pt.cat([s.flatten() for s in disruption_scores]).kthvalue(k).values
+    flat_scores = pt.cat([s.flatten() for s in disruption_scores])
+    total_num_params = flat_scores.numel()
+    k = int(quantile * total_num_params) + 1
+    return flat_scores.kthvalue(k).values
 
 
 def copy_model_and_collapse_loras(peft_model, delete_adv=True):
