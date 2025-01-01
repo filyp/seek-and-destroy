@@ -18,6 +18,7 @@ big_study = False
 config = SimpleNamespace(
     # Model/data configs
     model_id="EleutherAI/pythia-14m",
+    retain_set_name="wikitext",
     forget_set_name="python",
     # Training constants
     unlearn_steps=1000 if big_study else 100,
@@ -41,14 +42,14 @@ logging.basicConfig(
 
 # load datasets
 tokenizer = AutoTokenizer.from_pretrained(config.model_id)
-retain_set = dataset_loaders["wikitext"](tokenizer)
+retain_set = dataset_loaders[config.retain_set_name](tokenizer)
 forget_set = dataset_loaders[config.forget_set_name](tokenizer)
 retain_batches = CachedBatches(retain_set["train"], config.batch_size)
 forget_batches = CachedBatches(forget_set["train"], config.batch_size)
 retain_val_batches = CachedBatches(retain_set["validation"], config.eval_batch_size)
 forget_val_batches = CachedBatches(forget_set["validation"], config.eval_batch_size)
-r_eval_batch = next(retain_val_batches.fresh_iterator())
-f_eval_batch = next(forget_val_batches.fresh_iterator())
+r_eval_batch = next(iter(retain_val_batches))
+f_eval_batch = next(iter(forget_val_batches))
 
 base_model = AutoModelForCausalLM.from_pretrained(config.model_id)
 init_forget = eval_loss(base_model, f_eval_batch)

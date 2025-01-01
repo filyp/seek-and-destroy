@@ -43,8 +43,8 @@ def copy_model_and_collapse_loras(peft_model, delete_adv=True):
 
 def relearn(model, config, retain_val_batches, forget_val_batches):
     # get batches
-    retain_val_iter = retain_val_batches.fresh_iterator()
-    forget_val_iter = forget_val_batches.fresh_iterator()
+    retain_val_iter = iter(retain_val_batches)
+    forget_val_iter = iter(forget_val_batches)
     f_eval_batch = next(forget_val_iter)
     r_eval_batch = next(retain_val_iter)
 

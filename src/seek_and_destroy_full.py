@@ -13,16 +13,13 @@ def objective(trial):
     # ! parameters
     unlearning_rate = trial.suggest_float("unlearning_rate", 0.0001, 0.01, log=True)
     retaining_rate = trial.suggest_float("retaining_rate", 0.00001, 0.01, log=True)
-    pos_grad_discard_factor = trial.suggest_float("pos_grad_discard_factor", 0.0, 1.0)
+    pos_grad_discard_factor = 0.5
     disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.0, 1.0)
     f_quantile = trial.suggest_float("f_quantile", 0.0001, 0.1, log=True)
     r_quantile = trial.suggest_float("r_quantile", 0.0001, 0.1, log=True)
     retain_consistency = trial.suggest_float("retain_consistency", 0.0, 1.0)
-    disqualification_factor = trial.suggest_float("disqualification_factor", 0.0, 1.0)
     logging.info(f"trial {trial.number} - {trial.params}")
 
-    # prepare data iterators
-    retain_iter = retain_batches.fresh_iterator()
     model = AutoModelForCausalLM.from_pretrained(config.model_id)
 
     # get params to intervene on and initialize disruption scores
@@ -41,6 +38,7 @@ def objective(trial):
 
     # ! unlearning loop
     logging.info("step      base_f      base_r")
+    retain_iter = iter(retain_batches)
     for step in range(1, 1 + config.unlearn_steps):
         model.train()
         r_input_ids = next(retain_iter)
@@ -53,11 +51,9 @@ def objective(trial):
         for p in interven_params:
             grad = p.grad.clone().detach()
             grad[p.to_forget.sign() == p.grad.sign()] *= pos_grad_discard_factor
-            # "softmin" ?
-            grad *= grad.abs() ** disqualification_factor
 
             p.disruption_score *= disruption_score_decay
-            p.disruption_score += (1 - disruption_score_decay) * grad
+            p.disruption_score += grad
             
             # first choose the most important weights for forgetting
             f_threshold = get_threshold(1 - f_quantile, [p.to_forget.abs()])
@@ -95,7 +91,7 @@ def objective(trial):
 # config.relearn_steps = 500
 # config.n_trials = 1000
 run_study(
-    objective, config, __file__, "last_plus_fixed_retain_consistency", assert_clean=False,
+    objective, config, __file__, "keep_pos_grad_discard_and_disqualification_at_0.5", assert_clean=False,
 )
 
 # %%

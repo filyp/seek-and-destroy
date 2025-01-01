@@ -61,8 +61,8 @@ def objective(trial):
 
     # set_seeds(42)  # note: something is still undeterministic!
     # prepare data iterators
-    forget_iter = forget_batches.fresh_iterator()
-    retain_iter = retain_batches.fresh_iterator()
+    forget_iter = iter(forget_batches)
+    retain_iter = iter(retain_batches)
 
     # load model (copy from memory for speed)
     # note: to save memory you may want to load from_pretrained instead
@@ -197,8 +197,8 @@ def objective(trial):
     # %
     # ! final bigger eval relearning
     collapsed_model = copy_model_and_collapse_loras(peft_model)
-    retain_val_iter = retain_val_batches.fresh_iterator()
-    forget_val_iter = forget_val_batches.fresh_iterator()
+    retain_val_iter = iter(retain_val_batches)
+    forget_val_iter = iter(forget_val_batches)
     forget_loss = relearn(collapsed_model, config, retain_val_iter, forget_val_iter)
     # save best model
     if forget_loss > best_value:

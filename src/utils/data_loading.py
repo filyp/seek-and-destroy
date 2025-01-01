@@ -117,7 +117,7 @@ class CachedBatches:
         self.batch_size = batch_size
         self.cache = []
 
-    def fresh_iterator(self):
+    def __iter__(self):
         yield from self.cache
         while True:
             new_item = get_batch(self.base_iter, self.batch_size)
@@ -126,4 +126,4 @@ class CachedBatches:
 
 
 # retain_cached_iter = CachedBatches(retain_iter, 16)
-# retain_iter = retain_cached_iter.fresh_iterator()
+# retain_iter = iter(retain_cached_iter)

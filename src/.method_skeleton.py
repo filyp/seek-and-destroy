@@ -10,8 +10,8 @@ def objective(trial):
     # ... any other params here
 
     # prepare data iterators
-    retain_iter = retain_batches.fresh_iterator()
-    forget_iter = forget_batches.fresh_iterator()
+    retain_iter = iter(retain_batches)
+    forget_iter = iter(forget_batches)
     # load model
     model = AutoModelForCausalLM.from_pretrained(config.model_id)
 

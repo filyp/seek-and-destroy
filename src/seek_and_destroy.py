@@ -27,7 +27,7 @@ def objective(trial):
     ret_lora_rank = trial.suggest_int("ret_lora_rank", 1, 10)
 
     # prepare data iterators
-    retain_iter = retain_batches.fresh_iterator()
+    retain_iter = iter(retain_batches)
     # load model - for speed we could also do: model = deepcopy(base_model)
     model = AutoModelForCausalLM.from_pretrained(config.model_id)
 

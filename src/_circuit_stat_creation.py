@@ -20,7 +20,7 @@ num_steps = 1000
 tokenizer = AutoTokenizer.from_pretrained(model_id)
 dataset = dataset_loaders[dataset_name](tokenizer)
 cached_batches = CachedBatches(dataset["train"], batch_size=32)
-batch_iter = cached_batches.fresh_iterator()
+batch_iter = iter(cached_batches)
 
 loss_fn = loss_fns[loss_fn_name]
 model = AutoModelForCausalLM.from_pretrained(model_id)

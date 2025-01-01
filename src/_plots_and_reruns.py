@@ -74,6 +74,6 @@ opt_history_fig.update_layout(**layout, width=slice_fig.layout.width)
 # forget_losses = relearn(
 #     deepcopy(best_model),
 #     config,
-#     retain_val_batches.fresh_iterator(),
-#     forget_val_batches.fresh_iterator(),
+#     iter(retain_val_batches),
+#     iter(forget_val_batches),
 # )
