@@ -8,6 +8,7 @@ import torch as pt
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from utils.data_loading import CachedBatches, dataset_loaders
+from utils.git_and_reproducibility import is_repo_clean
 from utils.model_operations import relearn
 from utils.plots_and_stats import plot_slice_layout
 from utils.training import eval_, run_study
@@ -21,10 +22,10 @@ config = SimpleNamespace(
     # Training constants
     unlearn_steps=200,
     batch_size=16,
-    n_trials=500,
+    n_trials=200,
 )
 relearn_config = SimpleNamespace(
-    relearn_steps=100,
+    relearn_steps=300,
     relearn_lr=1e-4,
     relearn_lora_conf=dict(target_modules="all-linear"),
 )
@@ -73,15 +74,15 @@ def objective(trial):
 
 
 # %%
-code = Path(__file__).read_bytes()
-code_hash = hashlib.sha256(code).hexdigest()[:4]
+# code = Path(__file__).read_bytes()
+# code_hash = hashlib.sha256(code).hexdigest()[:4]
 
+# assert is_repo_clean()
 study = run_study(
     objective,
     config,
     __file__,
-    f"{code_hash},{config.unlearn_steps},{config.method_name},after_refactor",
-    assert_clean=False,
+    f"{config.unlearn_steps},{relearn_config.relearn_steps},{config.method_name},{config.forget_set_name}",
     delete_existing=True,
 )
 # todo? assert that best trial doesn't have any hyperparam in top nor bottor 10% of range

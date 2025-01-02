@@ -15,14 +15,15 @@ def only_grad_on(model, params_to_grad):
         param.requires_grad = True
 
 
-def get_threshold(quantile, disruption_scores):
+def get_thresh(quantile, disruption_scores):
     """
-    Calculate threshold value for parameter masking.
-    Returns the k-th smallest value where k is determined by quantile.
+    Calculate threshold value for parameter masking, based on the quantile.
+    For example, if quantile is 0.01, the threshould will cut off 1% of the highest scores.
+    
     """
     flat_scores = pt.cat([s.flatten() for s in disruption_scores])
     total_num_params = flat_scores.numel()
-    k = int(quantile * total_num_params) + 1
+    k = int((1 - quantile) * total_num_params) + 1
     return flat_scores.kthvalue(k).values
 
 
@@ -72,7 +73,7 @@ def relearn(model, config, retain_val_batches, forget_val_batches):
         optimizer.step()
 
         if step % 10 == 0:
-            res = eval_(model, f_eval_batch, r_eval_batch)
+            res = eval_(model, f_eval_batch, r_eval_batch, step=step)
             f_losses.append(res["forget_loss"])
             # wandb.log(res, step=step)
 

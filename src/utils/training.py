@@ -118,15 +118,7 @@ def visualize_param(param, mask):
     plt.savefig(file_name)
 
 
-def run_study(
-    objective, config, script_name, study_name, assert_clean=True, delete_existing=False
-):
-    if assert_clean:
-        assert is_repo_clean()
-    study_type = "big" if config.unlearn_steps == 1000 else "small"
-    script_stem = Path(script_name).stem
-    study_name = f"{study_type},{config.forget_set_name},{script_stem},{study_name}"
-
+def run_study(objective, config, script_name, study_name, delete_existing=False):
     storage = get_storage()
 
     # delete existing study if it exists

@@ -135,6 +135,7 @@ def objective(trial):
             loss.backward()
             # ! get threshold
             final_scores = [mask_fn(p) for p in interven_params]
+            # note: this may need flipping the quantile
             threshold = get_threshold(quantile, final_scores)
             # ! apply mask
             for param in interven_params:

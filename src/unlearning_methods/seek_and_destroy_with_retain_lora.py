@@ -8,13 +8,19 @@ from utils.git_and_reproducibility import *
 from utils.model_operations import *
 from utils.training import *
 
-disruption_score_warmup = 20
-
 
 def get_circuit(model_id, forget_set_name):
     _circuit_dir = repo_root() / "circuits" / model_id.replace("/", "_")
     _circuit_name = f"{forget_set_name}_correct_logit.pt"
     return pt.load(_circuit_dir / _circuit_name, weights_only=True)
+
+
+# Add LoRA config
+ret_lora_config = dict(lora_dropout=0.05, target_modules="all-linear")
+use_ret_lora = False
+disruption_score_warmup = 20
+
+# %%
 
 
 def unlearning_func(
@@ -26,6 +32,7 @@ def unlearning_func(
     retaining_rate = trial.suggest_float("retaining_rate", 0.00001, 0.001, log=True)
     unlearning_rate = trial.suggest_float("unlearning_rate", 0.0001, 0.003, log=True)
     disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.9, 1.0)
+    ret_lora_rank = 8
     pos_grad_discard_factor = 0
     retain_consistency = 0
     logging.info(f"trial {trial.number} - {trial.params}")
@@ -49,11 +56,21 @@ def unlearning_func(
     # Get threshold for forgetting
     f_threshold = get_thresh(f_quantile, [p.to_forget.abs() for p in interven_params])
 
-    # Require grad for all intervene params
-    for param in model.parameters():
-        param.requires_grad = False
-    for param in interven_params:
-        param.requires_grad = True
+    # Add LoRA
+    ret_lora_c = LoraConfig(r=ret_lora_rank, **ret_lora_config)
+    peft_model = get_peft_model(model, ret_lora_c, adapter_name="ret_lora", mixed=True)
+    model = peft_model.model
+    # Require grad for all params despite having lora
+    if use_ret_lora:
+        for param in interven_params:
+            param.requires_grad = True
+    else:
+        for param in model.parameters():
+            param.requires_grad = True
+
+    # Initialize optimizers
+    _ret_lora_params = [p for n, p in model.named_parameters() if ".ret_lora." in n]
+    ret_optimizer = pt.optim.SGD(_ret_lora_params, lr=retaining_rate)
 
     # ! unlearning loop
     logging.info("step      base_f      base_r")
@@ -93,14 +110,18 @@ def unlearning_func(
             mask = p.to_forget.abs() > f_threshold
             flipped_disr = p.disruption_score * p.to_forget.sign()
 
-            # ! unlearn
             flipped_disr[~mask] = float("-inf")
             mask = mask & (flipped_disr > d_threshold)
+
             p.data -= mask * unlearning_rate * p.to_forget
 
-            # ! retain
-            p.grad[p.grad.sign() != p.to_forget.sign()] *= retain_consistency
-            p.data -= retaining_rate * p.grad
+            if not use_ret_lora:
+                p.grad[p.grad.sign() != p.to_forget.sign()] *= retain_consistency
+                p.data -= retaining_rate * p.grad
+
+        # LoRA retention step
+        if use_ret_lora:
+            ret_optimizer.step()
 
         # ! eval current loss
         if step % 10 == 0:
@@ -108,4 +129,9 @@ def unlearning_func(
 
     visualize_param(p, mask)
 
-    return model
+    # Merge and unload helper lora
+    peft_model_copy = deepcopy(peft_model)
+    # peft_model_copy.set_adapter(["ret_lora"])
+    model_copy = peft_model_copy.merge_and_unload()
+    del model_copy.peft_config
+    return model_copy
