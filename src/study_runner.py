@@ -1,0 +1,93 @@
+# %%
+import logging
+from types import SimpleNamespace
+
+import torch as pt
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
+from utils.data_loading import CachedBatches, dataset_loaders
+from utils.model_operations import relearn
+from utils.plots_and_stats import plot_slice_layout
+from utils.training import eval_, eval_loss, run_study
+
+big_study = False
+
+config = SimpleNamespace(
+    method_name="seek_and_destroy",
+    # Model/data configs
+    model_id="EleutherAI/pythia-14m",
+    retain_set_name="wikitext",
+    forget_set_name="python",
+    # Training constants
+    unlearn_steps=1000 if big_study else 100,
+    batch_size=16,
+    n_trials=300,
+)
+relearn_config = SimpleNamespace(
+    relearn_steps=500 if big_study else 50,
+    relearn_lr=1e-4,
+    relearn_lora_conf=dict(target_modules="all-linear"),
+)
+
+pt.set_default_device("cuda")
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s  %(message)s",
+    datefmt="%H:%M:%S",
+    handlers=[logging.StreamHandler()],
+)
+
+# load datasets
+tokenizer = AutoTokenizer.from_pretrained(config.model_id)
+retain_set = dataset_loaders[config.retain_set_name](tokenizer)
+forget_set = dataset_loaders[config.forget_set_name](tokenizer)
+retain_batches = CachedBatches(retain_set["train"], config.batch_size)
+forget_batches = CachedBatches(forget_set["train"], config.batch_size)
+retain_val_batches = CachedBatches(retain_set["validation"], config.batch_size)
+forget_val_batches = CachedBatches(forget_set["validation"], config.batch_size)
+r_eval = next(iter(retain_val_batches))
+f_eval = next(iter(forget_val_batches))
+
+base_model = AutoModelForCausalLM.from_pretrained(config.model_id)
+init_forget = eval_loss(base_model, f_eval)
+init_retain = eval_loss(base_model, r_eval)
+allowed_f_loss = init_retain + 0.1
+logging.info(f"init forget: {init_forget:6.2f}    init retain: {init_retain:6.2f}")
+del base_model
+
+res = eval_(AutoModelForCausalLM.from_pretrained(config.model_id), f_eval, r_eval)
+allowed_f_loss = res["retain_loss"] + 0.1
+
+# %%
+
+from unlearning_methods.seek_and_destroy import unlearning_func
+
+
+def objective(trial):
+    model = unlearning_func(
+        trial, config, retain_batches, forget_batches, f_eval, r_eval, allowed_f_loss
+    )
+
+    forget_losses = relearn(
+        model, relearn_config, retain_val_batches, forget_val_batches
+    )
+    # use min rather than last, in case it anomalously increases
+    forget_loss = min(forget_losses)
+
+    return forget_loss
+
+
+# %%
+study = run_study(
+    objective,
+    config,
+    __file__,
+    f"global_r_and_d_threshold,3_modules,better_ranges",
+    assert_clean=False,
+    delete_existing=True,
+)
+# todo? assert that best trial doesn't have any hyperparam in top nor bottor 10% of range
+
+plot_slice_layout(study)
+# %%

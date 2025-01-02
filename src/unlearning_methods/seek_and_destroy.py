@@ -1,23 +1,31 @@
-# %%
-from _common_init import *
-from utils.plots_and_stats import plot_slice_layout
+import logging
 
-_circuit_dir = repo_root() / "circuits" / config.model_id.replace("/", "_")
-_circuit_name = f"{config.forget_set_name}_correct_logit.pt"
-circuit = pt.load(_circuit_dir / _circuit_name, weights_only=True)
+import torch as pt
+from peft import LoraConfig, get_peft_model
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
-# todo? attack more modules?
-# todo? global thresh, rather than per param?
+from utils.git_and_reproducibility import *
+from utils.model_operations import *
+from utils.training import *
+
+
+def get_circuit(model_id, forget_set_name):
+    _circuit_dir = repo_root() / "circuits" / model_id.replace("/", "_")
+    _circuit_name = f"{forget_set_name}_correct_logit.pt"
+    return pt.load(_circuit_dir / _circuit_name, weights_only=True)
+
 
 # Add LoRA config
-config.ret_lora_config = dict(lora_dropout=0.05, target_modules="all-linear")
-config.use_ret_lora = False
-config.disruption_score_warmup = 20
+ret_lora_config = dict(lora_dropout=0.05, target_modules="all-linear")
+use_ret_lora = False
+disruption_score_warmup = 20
 
 # %%
 
 
-def objective(trial):
+def unlearning_func(
+    trial, config, retain_batches, forget_batches, f_eval, r_eval, allowed_f_loss
+):
     # ! parameters
     f_quantile = trial.suggest_float("f_quantile", 0.05, 0.5, log=True)
     r_quantile = trial.suggest_float("r_quantile", 0.05, 0.2, log=True)
@@ -37,6 +45,7 @@ def objective(trial):
         raise NotImplementedError(f"Model {config.model_id} not supported")
 
     # get params to intervene on and initialize disruption scores
+    circuit = get_circuit(config.model_id, config.forget_set_name)
     interven_params = []
     for name, p in model.named_parameters():
         if any(f"{m}.weight" in name for m in target_modules):
@@ -45,11 +54,11 @@ def objective(trial):
             p.to_forget = circuit[name]
 
     # Add LoRA
-    ret_lora_c = LoraConfig(r=ret_lora_rank, **config.ret_lora_config)
+    ret_lora_c = LoraConfig(r=ret_lora_rank, **ret_lora_config)
     peft_model = get_peft_model(model, ret_lora_c, adapter_name="ret_lora", mixed=True)
     model = peft_model.model
     # Require grad for all params despite having lora
-    if config.use_ret_lora:
+    if use_ret_lora:
         for param in interven_params:
             param.requires_grad = True
     else:
@@ -80,7 +89,7 @@ def objective(trial):
             p.disruption_score += grad
 
         # Skip during warmup
-        if step <= config.disruption_score_warmup:
+        if step <= disruption_score_warmup:
             continue
 
         # Get threshold for forgetting
@@ -109,17 +118,17 @@ def objective(trial):
 
             p.data -= mask * unlearning_rate * p.to_forget
 
-            if not config.use_ret_lora:
+            if not use_ret_lora:
                 p.grad[p.grad.sign() != p.to_forget.sign()] *= retain_consistency
                 p.data -= retaining_rate * p.grad
 
         # LoRA retention step
-        if config.use_ret_lora:
+        if use_ret_lora:
             ret_optimizer.step()
 
         # ! eval current loss
         if step % 10 == 0:
-            eval_(model, f_eval_batch, r_eval_batch, init_retain, step)
+            eval_(model, f_eval, r_eval, allowed_f_loss, step)
 
     visualize_param(p, mask)
 
@@ -128,25 +137,4 @@ def objective(trial):
     # peft_model_copy.set_adapter(["ret_lora"])
     model_copy = peft_model_copy.merge_and_unload()
     del model_copy.peft_config
-
-    forget_losses = relearn(model_copy, config, retain_val_batches, forget_val_batches)
-    # use min rather than last, in case it anomalously increases
-    forget_loss = min(forget_losses)
-
-    return forget_loss
-
-
-# %%
-config.n_trials = 500
-study = run_study(
-    objective,
-    config,
-    __file__,
-    f"global_r_and_d_threshold,3_modules,better_ranges",
-    assert_clean=False,
-    delete_existing=True,
-)
-# todo? assert that best trial doesn't have any hyperparam in top nor bottor 10% of range
-
-plot_slice_layout(study)
-# %%
+    return model_copy

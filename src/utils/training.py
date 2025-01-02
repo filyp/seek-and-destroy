@@ -81,16 +81,17 @@ class MockTrial:
         pass
 
 
-def eval_(model, f_eval_batch, r_eval_batch, init_retain, step):
+def eval_(model, f_eval_batch, r_eval_batch, allowed_f_loss=None, step=""):
     res = {}
     res["forget_loss"] = eval_loss(model, f_eval_batch)
     res["retain_loss"] = eval_loss(model, r_eval_batch)
-    res["retain_loss_ok"] = res["retain_loss"] < init_retain + 0.05
     logging.info(f"{step:4} " + " ".join(f"{v:11.2f}" for v in res.values()))
     assert not any(pt.isnan(v) for v in res.values())
-    if res["retain_loss"] > init_retain + 0.1:
+
+    if allowed_f_loss is not None and res["retain_loss"] > allowed_f_loss:
         logging.info(f"Pruning trial because retain loss is too high")
         raise optuna.TrialPruned()
+
     return res
 
 

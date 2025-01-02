@@ -5,8 +5,7 @@ import torch as pt
 from peft import LoraConfig, get_peft_model
 import wandb
 
-from utils.data_loading import get_batch, looping_iter
-from utils.training import cross_entropy_loss, eval_loss
+from utils.training import cross_entropy_loss, eval_
 
 
 def only_grad_on(model, params_to_grad):
@@ -73,11 +72,9 @@ def relearn(model, config, retain_val_batches, forget_val_batches):
         optimizer.step()
 
         if step % 10 == 0:
-            f_loss = eval_loss(model, f_eval_batch)
-            r_loss = eval_loss(model, r_eval_batch)
-            logging.info(f"{step:4d} {f_loss:11.2f} {r_loss:11.2f}   <   RELEARNING")
-            f_losses.append(f_loss)
-            # wandb.log({"forget_loss": f_loss, "retain_loss": r_loss}, step=step)
+            res = eval_(model, f_eval_batch, r_eval_batch)
+            f_losses.append(res["forget_loss"])
+            # wandb.log(res, step=step)
 
     logging.info("")
     return f_losses
