@@ -1,5 +1,7 @@
 # %%
+import hashlib
 import logging
+from pathlib import Path
 from types import SimpleNamespace
 
 import torch as pt
@@ -8,9 +10,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from utils.data_loading import CachedBatches, dataset_loaders
 from utils.model_operations import relearn
 from utils.plots_and_stats import plot_slice_layout
-from utils.training import eval_, eval_loss, run_study
-
-big_study = False
+from utils.training import eval_, run_study
 
 config = SimpleNamespace(
     method_name="seek_and_destroy",
@@ -19,12 +19,12 @@ config = SimpleNamespace(
     retain_set_name="wikitext",
     forget_set_name="python",
     # Training constants
-    unlearn_steps=1000 if big_study else 100,
+    unlearn_steps=200,
     batch_size=16,
-    n_trials=300,
+    n_trials=500,
 )
 relearn_config = SimpleNamespace(
-    relearn_steps=500 if big_study else 50,
+    relearn_steps=100,
     relearn_lr=1e-4,
     relearn_lora_conf=dict(target_modules="all-linear"),
 )
@@ -49,19 +49,13 @@ forget_val_batches = CachedBatches(forget_set["validation"], config.batch_size)
 r_eval = next(iter(retain_val_batches))
 f_eval = next(iter(forget_val_batches))
 
-base_model = AutoModelForCausalLM.from_pretrained(config.model_id)
-init_forget = eval_loss(base_model, f_eval)
-init_retain = eval_loss(base_model, r_eval)
-allowed_f_loss = init_retain + 0.1
-logging.info(f"init forget: {init_forget:6.2f}    init retain: {init_retain:6.2f}")
-del base_model
-
 res = eval_(AutoModelForCausalLM.from_pretrained(config.model_id), f_eval, r_eval)
 allowed_f_loss = res["retain_loss"] + 0.1
 
 # %%
 
-from unlearning_methods.seek_and_destroy import unlearning_func
+assert config.method_name.replace("_", "").isalpha()
+exec(f"from unlearning_methods.{config.method_name} import unlearning_func")
 
 
 def objective(trial):
@@ -72,18 +66,21 @@ def objective(trial):
     forget_losses = relearn(
         model, relearn_config, retain_val_batches, forget_val_batches
     )
+
     # use min rather than last, in case it anomalously increases
     forget_loss = min(forget_losses)
-
     return forget_loss
 
 
 # %%
+code = Path(__file__).read_bytes()
+code_hash = hashlib.sha256(code).hexdigest()[:4]
+
 study = run_study(
     objective,
     config,
     __file__,
-    f"global_r_and_d_threshold,3_modules,better_ranges",
+    f"{code_hash},{config.unlearn_steps},{config.method_name},after_refactor",
     assert_clean=False,
     delete_existing=True,
 )
