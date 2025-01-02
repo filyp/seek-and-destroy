@@ -148,3 +148,4 @@ def run_study(
     for k, v in config.__dict__.items():
         study.set_user_attr(k, v)
     study.optimize(objective, n_trials=config.n_trials)
+    return study

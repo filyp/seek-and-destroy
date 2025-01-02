@@ -2,10 +2,10 @@
 from copy import deepcopy
 
 import optuna
-import optuna.visualization as vis
 
 from utils.git_and_reproducibility import *
 from utils.model_operations import *
+from utils.plots_and_stats import *
 
 # get the latest study
 storage = get_storage()
@@ -16,33 +16,14 @@ study_summaries = optuna.study.get_all_study_summaries(storage)
 sorted_studies = sorted(study_summaries, key=lambda s: s.datetime_start)
 
 # %%
-latest_study = sorted_studies[-4]
+latest_study = sorted_studies[-1]
 study = optuna.load_study(study_name=latest_study.study_name, storage=storage)
-print(study.study_name)
-
 # study_name = "python,200-50,more_steps_with_best_values"
 # study = optuna.load_study(study_name=study_name, storage=storage)
+print(study.study_name)
 
-layout = dict(
-    template="plotly_white",
-    font=dict(family="Times Roman", size=20),
-    title={"text": study.study_name, "xanchor": "center", "x": 0.5, "y": 0.95},
-    title_font_size=30,
-)
-
-# Create SVG strings directly in memory
-slice_fig = vis.plot_slice(study, target_name="Final forget loss")
-slice_fig.update_layout(**layout)
-# # save slice_fig
-# path = repo_root() / "paper" / "Figures" / f"{study.study_name}_slice.svg"
-# slice_fig.write_image(path)
-
-# %%
-opt_history_fig = vis.plot_optimization_history(study)
-opt_history_fig.update_layout(**layout, width=slice_fig.layout.width)
-# # save opt_history_fig
-# path = repo_root() / "paper" / "Figures" / f"{study.study_name}_opt_history.svg"
-# opt_history_fig.write_image(path)
+slice_fig = plot_slice_layout(study)
+slice_fig
 
 # %%
 # # ! rerun the best trial, with more steps

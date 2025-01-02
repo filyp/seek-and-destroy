@@ -1,5 +1,6 @@
 # %%
 from _common_init import *
+from utils.plots_and_stats import plot_slice_layout
 
 _circuit_dir = repo_root() / "circuits" / config.model_id.replace("/", "_")
 _circuit_name = f"{config.forget_set_name}_correct_logit.pt"
@@ -11,32 +12,29 @@ circuit = pt.load(_circuit_dir / _circuit_name, weights_only=True)
 # Add LoRA config
 config.ret_lora_config = dict(lora_dropout=0.05, target_modules="all-linear")
 config.use_ret_lora = False
-config.disruption_score_warmup = 10
+config.disruption_score_warmup = 20
 
 # %%
-
-# target_modules = ["dense_4h_to_h", "dense"]
-target_modules=["dense_h_to_4h", "dense_4h_to_h", "dense"]
-# target_modules=["dense_h_to_4h", "dense_4h_to_h", "query_key_value", "dense"]
-# target_modules = ["dense_4h_to_h"]
-# target_modules = ["dense"]
-# target_modules = ["dense_h_to_4h"]
-# target_modules = ["query_key_value"]
 
 
 def objective(trial):
     # ! parameters
+    f_quantile = trial.suggest_float("f_quantile", 0.05, 0.5, log=True)
+    r_quantile = trial.suggest_float("r_quantile", 0.05, 0.2, log=True)
+    retaining_rate = trial.suggest_float("retaining_rate", 0.00001, 0.001, log=True)
     unlearning_rate = trial.suggest_float("unlearning_rate", 0.0001, 0.003, log=True)
-    retaining_rate = trial.suggest_float("retaining_rate", 0.0001, 0.001, log=True)
+    disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.9, 1.0)
     ret_lora_rank = 8
-    disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.8, 1.0)
-    f_quantile = trial.suggest_float("f_quantile", 0.0001, 0.3, log=True)
-    r_quantile = trial.suggest_float("r_quantile", 0.01, 1, log=True)
     pos_grad_discard_factor = 0
     retain_consistency = 0
     logging.info(f"trial {trial.number} - {trial.params}")
 
     model = AutoModelForCausalLM.from_pretrained(config.model_id)
+
+    if "pythia" in config.model_id:
+        target_modules = ["dense_h_to_4h", "dense_4h_to_h", "dense"]
+    else:
+        raise NotImplementedError(f"Model {config.model_id} not supported")
 
     # get params to intervene on and initialize disruption scores
     interven_params = []
@@ -140,13 +138,15 @@ def objective(trial):
 
 # %%
 config.n_trials = 500
-run_study(
+study = run_study(
     objective,
     config,
     __file__,
-    f"global_r_and_d_threshold,3_modules",
+    f"global_r_and_d_threshold,3_modules,better_ranges",
     assert_clean=False,
     delete_existing=True,
 )
 # todo? assert that best trial doesn't have any hyperparam in top nor bottor 10% of range
+
+plot_slice_layout(study)
 # %%
