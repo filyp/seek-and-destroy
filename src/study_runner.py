@@ -4,6 +4,7 @@ import logging
 from pathlib import Path
 from types import SimpleNamespace
 
+import numpy as np
 import torch as pt
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
@@ -26,7 +27,7 @@ config = SimpleNamespace(
 )
 relearn_config = SimpleNamespace(
     relearn_steps=300,
-    relearn_lr=1e-4,
+    relearn_lr=3e-4,
     relearn_lora_conf=dict(target_modules="all-linear"),
 )
 
@@ -54,7 +55,6 @@ res = eval_(AutoModelForCausalLM.from_pretrained(config.model_id), f_eval, r_eva
 allowed_f_loss = res["retain_loss"] + 0.1
 
 # %%
-
 assert config.method_name.replace("_", "").isalpha()
 exec(f"from unlearning_methods.{config.method_name} import unlearning_func")
 
@@ -82,10 +82,22 @@ study = run_study(
     objective,
     config,
     __file__,
-    f"{config.unlearn_steps},{relearn_config.relearn_steps},{config.method_name},{config.forget_set_name}",
+    f"{config.unlearn_steps},{relearn_config.relearn_steps},{config.method_name},{config.forget_set_name},3x_relearn_lr",
     delete_existing=True,
 )
-# todo? assert that best trial doesn't have any hyperparam in top nor bottor 10% of range
 
 plot_slice_layout(study)
-# %%
+
+# make sure the value is not in the top or bottom 10% of the range, logarithmically
+for param_name, value in study.best_trial.params.items():
+    min_ = min(trial.params[param_name] for trial in study.trials)
+    max_ = max(trial.params[param_name] for trial in study.trials)
+    min_log = np.log(min_)
+    max_log = np.log(max_)
+    value_log = np.log(value)
+    if value_log < min_log + 0.1 * (max_log - min_log):
+        print(f"WARNING: {param_name} is in the bottom 10% of the range in best trial")
+        print(f"range: {min_} - {max_}, value: {value}")
+    if value_log > max_log - 0.1 * (max_log - min_log):
+        print(f"WARNING: {param_name} is in the top 10% of the range in best trial")
+        print(f"range: {min_} - {max_}, value: {value}")

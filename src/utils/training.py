@@ -125,7 +125,7 @@ def run_study(objective, config, script_name, study_name, delete_existing=False)
     if delete_existing:
         try:
             _ = optuna.load_study(study_name=study_name, storage=storage)
-            optuna.delete_study(study_name, storage=storage)
+            optuna.delete_study(study_name=study_name, storage=storage)
         except KeyError:
             pass
 

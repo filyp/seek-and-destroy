@@ -1,8 +1,8 @@
 import logging
 
 import torch as pt
-from peft import LoraConfig, get_peft_model
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from tqdm import tqdm
+from transformers import AutoModelForCausalLM
 
 from utils.git_and_reproducibility import *
 from utils.model_operations import *
@@ -11,17 +11,37 @@ from utils.training import *
 disruption_score_warmup = 20
 
 
-def get_circuit(model_id, forget_set_name):
-    _circuit_dir = repo_root() / "circuits" / model_id.replace("/", "_")
-    _circuit_name = f"{forget_set_name}_correct_logit.pt"
-    return pt.load(_circuit_dir / _circuit_name, weights_only=True)
+def get_circuit(
+    model_id, forget_set_name, batches, num_steps=2000, loss_fn_name="correct_logit"
+):
+    circuit_dir = repo_root() / "circuits" / model_id.replace("/", "_")
+    circuit_path = circuit_dir / f"{forget_set_name}_{loss_fn_name}.pt"
+    if circuit_path.exists():
+        return pt.load(circuit_path, weights_only=True)
+
+    logging.info("No cached circuit found, creating one")
+
+    # accumulate grads
+    loss_fn = loss_fns[loss_fn_name]
+    model = AutoModelForCausalLM.from_pretrained(model_id)
+    model.zero_grad(set_to_none=True)
+    for _ in tqdm(range(num_steps)):
+        input_ids = next(batches)
+        loss = loss_fn(model(input_ids), input_ids)
+        loss.backward()
+    circuit = {name: param.grad / num_steps for name, param in model.named_parameters()}
+
+    # save circuit
+    circuit_dir.mkdir(parents=True, exist_ok=True)
+    pt.save(circuit, circuit_path)
+    return circuit
 
 
 def unlearning_func(
     trial, config, retain_batches, forget_batches, f_eval, r_eval, allowed_f_loss
 ):
     # ! parameters
-    f_quantile = trial.suggest_float("f_quantile", 0.05, 0.5, log=True)
+    f_quantile = trial.suggest_float("f_quantile", 0.03, 0.5, log=True)
     r_quantile = trial.suggest_float("r_quantile", 0.05, 0.2, log=True)
     retaining_rate = trial.suggest_float("retaining_rate", 0.00001, 0.001, log=True)
     unlearning_rate = trial.suggest_float("unlearning_rate", 0.0001, 0.003, log=True)
@@ -38,7 +58,7 @@ def unlearning_func(
         raise NotImplementedError(f"Model {config.model_id} not supported")
 
     # get params to intervene on and initialize disruption scores
-    circuit = get_circuit(config.model_id, config.forget_set_name)
+    circuit = get_circuit(config.model_id, config.forget_set_name, forget_batches)
     interven_params = []
     for name, p in model.named_parameters():
         if any(f"{m}.weight" in name for m in target_modules):
