@@ -4,9 +4,9 @@ import torch as pt
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM
 
-from utils.git_and_reproducibility import *
-from utils.model_operations import *
-from utils.training import *
+from utils.git_and_reproducibility import repo_root
+from utils.model_operations import get_thresh
+from utils.training import cross_entropy_loss, eval_, loss_fns, visualize_param
 
 disruption_score_warmup = 20
 
@@ -14,6 +14,7 @@ disruption_score_warmup = 20
 def get_circuit(
     model_id, forget_set_name, batches, num_steps=2000, loss_fn_name="correct_logit"
 ):
+    # try to load cached circuit
     circuit_dir = repo_root() / "circuits" / model_id.replace("/", "_")
     circuit_path = circuit_dir / f"{forget_set_name}_{loss_fn_name}.pt"
     if circuit_path.exists():
@@ -51,6 +52,7 @@ def unlearning_func(
     logging.info(f"trial {trial.number} - {trial.params}")
 
     model = AutoModelForCausalLM.from_pretrained(config.model_id)
+    # model.config.use_cache = False  # not sure if this is what we want
 
     if "pythia" in config.model_id:
         target_modules = ["dense_h_to_4h", "dense_4h_to_h", "dense"]
@@ -65,6 +67,7 @@ def unlearning_func(
             interven_params.append(p)
             p.disruption_score = pt.zeros_like(p.data)
             p.to_forget = circuit[name]
+    del circuit
 
     # Get threshold for forgetting
     f_threshold = get_thresh(f_quantile, [p.to_forget.abs() for p in interven_params])

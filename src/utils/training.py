@@ -50,9 +50,23 @@ def neg_cross_entropy_loss(output, input_ids):
     return -cross_entropy_loss(output, input_ids)
 
 
-def entropy_loss(output, input_ids):
-    # todo
-    raise NotImplementedError("Not implemented")
+# adapted from https://github.com/rishub-tamirisa/tamper-resistance/blob/41b749ca4d9bcb7608c7ead2ca48b0508714af99/modules/objectives.py#L114
+def negative_entropy_loss(output, input_ids) -> pt.Tensor:
+    """
+    Compute the negative mean entropy loss for the given logits.
+
+    This function calculates the entropy of the softmax distribution of the input logits
+    and returns the negative mean entropy as a loss value. Minimizing this loss
+    encourages the model to produce more uniform (higher entropy) probability distributions.
+
+    Returns:
+        pt.Tensor: The negative mean entropy loss.
+    """
+    logits = output.logits
+    softmax = pt.nn.functional.softmax(logits, dim=-1)
+    log_softmax = pt.nn.functional.log_softmax(logits, dim=-1)
+    entropy = pt.sum(-softmax * log_softmax, dim=-1).mean()
+    return entropy.mean() * -1
 
 
 loss_fns = dict(

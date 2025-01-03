@@ -15,18 +15,19 @@ from utils.plots_and_stats import plot_slice_layout
 from utils.training import eval_, run_study
 
 config = SimpleNamespace(
-    method_name="seek_and_destroy",
+    # method_name="seek_and_destroy",
+    method_name="negative_entropy",
     # Model/data configs
     model_id="EleutherAI/pythia-14m",
     retain_set_name="wikitext",
     forget_set_name="python",
     # Training constants
-    unlearn_steps=200,
+    unlearn_steps=100,
     batch_size=16,
-    n_trials=200,
+    n_trials=100,
 )
 relearn_config = SimpleNamespace(
-    relearn_steps=300,
+    relearn_steps=100,
     relearn_lr=3e-4,
     relearn_lora_conf=dict(target_modules="all-linear"),
 )
@@ -82,7 +83,7 @@ study = run_study(
     objective,
     config,
     __file__,
-    f"{config.unlearn_steps},{relearn_config.relearn_steps},{config.method_name},{config.forget_set_name},3x_relearn_lr",
+    f"{config.unlearn_steps},{relearn_config.relearn_steps},{config.method_name},{config.forget_set_name}",
     delete_existing=True,
 )
 

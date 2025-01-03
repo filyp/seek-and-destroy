@@ -2,18 +2,12 @@ import logging
 
 import torch as pt
 from peft import LoraConfig, get_peft_model
-from transformers import AutoModelForCausalLM, AutoTokenizer
+from seek_and_destroy import get_circuit
+from transformers import AutoModelForCausalLM
 
 from utils.git_and_reproducibility import *
 from utils.model_operations import *
 from utils.training import *
-
-
-def get_circuit(model_id, forget_set_name):
-    _circuit_dir = repo_root() / "circuits" / model_id.replace("/", "_")
-    _circuit_name = f"{forget_set_name}_correct_logit.pt"
-    return pt.load(_circuit_dir / _circuit_name, weights_only=True)
-
 
 # Add LoRA config
 ret_lora_config = dict(lora_dropout=0.05, target_modules="all-linear")
