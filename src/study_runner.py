@@ -31,7 +31,7 @@ config = SimpleNamespace(
     retain_set_name="wikitext",
     forget_set_name="python",
     # Training constants
-    unlearn_steps=200,
+    unlearn_steps=300,
     batch_size=16,
     n_trials=1000,
 )
