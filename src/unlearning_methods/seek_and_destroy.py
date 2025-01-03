@@ -42,14 +42,14 @@ def unlearning_func(
     trial, config, retain_batches, forget_batches, f_eval, r_eval, allowed_f_loss
 ):
     # ! parameters
-    f_quantile = trial.suggest_float("f_quantile", 0.03, 0.3, log=True)
-    r_quantile = trial.suggest_float("r_quantile", 0.03, 0.5, log=True)
-    retaining_rate = trial.suggest_float("retaining_rate", 0.00001, 0.001, log=True)
-    unlearning_rate = trial.suggest_float("unlearning_rate", 0.0002, 0.001, log=True)
+    f_quantile = trial.suggest_float("f_quantile", 0.05, 0.3, log=True)
+    r_quantile = trial.suggest_float("r_quantile", 0.1, 0.5, log=True)
+    retaining_rate = trial.suggest_float("retaining_rate", 0.00005, 0.001, log=True)
+    unlearning_rate = trial.suggest_float("unlearning_rate", 0.0003, 0.001, log=True)
     disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.9, 1.0)
-    pos_grad_discard_factor = 0
-    retain_consistency = 0
-    # to_forget_consistency = 1
+    pos_grad_discard_factor = trial.suggest_float("pos_grad_discard_factor", 0, 1)
+    retain_consistency = trial.suggest_float("retain_consistency", 0.5, 1.5)
+    to_forget_consistency = 1
     logging.info(f"trial {trial.number} - {trial.params}")
 
     model = AutoModelForCausalLM.from_pretrained(config.model_id)
@@ -70,7 +70,7 @@ def unlearning_func(
             p.to_forget = circuit[name]
 
             # norm = p.to_forget.norm()
-            # p.to_forget[p.data.sign() != p.to_forget.sign()] *= to_forget_consistency
+            p.to_forget[p.data.sign() != p.to_forget.sign()] *= to_forget_consistency
             # # bring back previous norm
             # p.to_forget *= norm / p.to_forget.norm()
     del circuit

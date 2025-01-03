@@ -31,9 +31,9 @@ config = SimpleNamespace(
     retain_set_name="wikitext",
     forget_set_name="python",
     # Training constants
-    unlearn_steps=100,
+    unlearn_steps=200,
     batch_size=16,
-    n_trials=100,
+    n_trials=1000,
 )
 relearn_config = SimpleNamespace(
     relearn_steps=100,
@@ -96,7 +96,8 @@ study = run_study(
     config,
     __file__,
     f"{config.unlearn_steps},{relearn_config.relearn_steps},{config.method_name},{config.forget_set_name},relearn_without_lora",
-    delete_existing=True,
+    delete_existing=False,
+    load_if_exists=True,
 )
 
 plot_slice_layout(study)

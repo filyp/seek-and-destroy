@@ -138,7 +138,14 @@ def visualize_param(param, mask):
     plt.savefig(file_name)
 
 
-def run_study(objective, config, script_name, study_name, delete_existing=False):
+def run_study(
+    objective,
+    config,
+    script_name,
+    study_name,
+    delete_existing=False,
+    load_if_exists=False,
+):
     storage = get_storage()
 
     # delete existing study if it exists
@@ -153,7 +160,7 @@ def run_study(objective, config, script_name, study_name, delete_existing=False)
         study_name=study_name,
         storage=storage,
         direction="maximize",
-        # load_if_exists=True,
+        load_if_exists=load_if_exists,
     )
     save_script_and_attach_logger(script_name, study.study_name)
     study.set_metric_names(["forget_loss"])
