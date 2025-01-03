@@ -129,6 +129,5 @@ def unlearning_func(
         if step % 10 == 0:
             eval_(model, f_eval, r_eval, allowed_f_loss, step)
 
-    visualize_param(p, mask)
-
+    # visualize_param(p, mask)
     return model

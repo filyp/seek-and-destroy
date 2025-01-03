@@ -2,8 +2,8 @@ import logging
 from copy import deepcopy
 
 import torch as pt
-from peft import LoraConfig, get_peft_model
 import wandb
+from peft import LoraConfig, get_peft_model
 
 from utils.training import cross_entropy_loss, eval_
 
@@ -19,12 +19,9 @@ def get_thresh(quantile, disruption_scores):
     """
     Calculate threshold value for parameter masking, based on the quantile.
     For example, if quantile is 0.01, the threshould will cut off 1% of the highest scores.
-    
     """
     flat_scores = pt.cat([s.flatten() for s in disruption_scores])
-    total_num_params = flat_scores.numel()
-    k = int((1 - quantile) * total_num_params) + 1
-    return flat_scores.kthvalue(k).values
+    return pt.quantile(flat_scores, 1 - quantile, interpolation="lower")
 
 
 def copy_model_and_collapse_loras(peft_model, delete_adv=True):
@@ -55,7 +52,7 @@ def relearn(model, config, retain_val_batches, forget_val_batches):
     model = peft_model.model
 
     optimizer = pt.optim.SGD(model.parameters(), lr=config.relearn_lr)
-    
+
     # wandb.init(project="adversarial_adaptation2", group="high_lr")
 
     # ! relearning loop

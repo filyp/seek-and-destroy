@@ -1,4 +1,8 @@
 # %%
+# necessary for determinism:
+import os
+os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
+# os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':16:8'  # less mem but slower
 import hashlib
 import logging
 from pathlib import Path
@@ -12,7 +16,7 @@ from utils.data_loading import CachedBatches, dataset_loaders
 from utils.git_and_reproducibility import is_repo_clean
 from utils.model_operations import relearn
 from utils.plots_and_stats import plot_slice_layout
-from utils.training import eval_, run_study
+from utils.training import eval_, run_study, set_seeds
 
 config = SimpleNamespace(
     # method_name="seek_and_destroy",
@@ -54,6 +58,7 @@ f_eval = next(iter(forget_val_batches))
 
 res = eval_(AutoModelForCausalLM.from_pretrained(config.model_id), f_eval, r_eval)
 allowed_f_loss = res["retain_loss"] + 0.1
+set_seeds(42)
 
 # %%
 assert config.method_name.replace("_", "").isalpha()

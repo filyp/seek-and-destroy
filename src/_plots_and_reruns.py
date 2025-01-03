@@ -42,7 +42,7 @@ slice_fig
 # i = 0
 # while i < 1:
 #     try:
-#         objective(MockTrial(best_params))
+#         objective(MockTrial(**best_params))
 #         i += 1
 #     except optuna.TrialPruned:
 #         pass

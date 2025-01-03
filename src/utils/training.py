@@ -2,8 +2,10 @@ import logging
 import random
 
 import matplotlib.pyplot as plt
+import numpy as np
 import optuna
 import torch as pt
+from transformers import set_seed as set_transformers_seed
 
 from utils.git_and_reproducibility import *
 
@@ -15,6 +17,9 @@ def set_seeds(seed):
     pt.backends.cudnn.deterministic = True
     pt.backends.cudnn.benchmark = False
     random.seed(seed)
+    np.random.seed(seed)
+    set_transformers_seed(seed)
+    pt.use_deterministic_algorithms(True)
 
 
 # --- Training Utilities ---
@@ -79,8 +84,9 @@ loss_fns = dict(
 
 # --- Mock Trial for Optuna ---
 class MockTrial:
-    def __init__(self, params):
+    def __init__(self, **params):
         self.params = params
+        self.number = 0
 
     def suggest_float(self, name, *args, **kwargs):
         return self.params[name]
