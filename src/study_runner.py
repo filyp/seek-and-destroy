@@ -1,6 +1,7 @@
 # %%
 # %load_ext autoreload
-# %autoreload 2  # Automatically reload all modules
+# %autoreload 2
+# # # Automatically reload all modules
 
 # necessary for determinism:
 import os
@@ -31,9 +32,9 @@ config = SimpleNamespace(
     retain_set_name="wikitext",
     forget_set_name="python",
     # Training constants
-    unlearn_steps=300,
+    unlearn_steps=400,
     batch_size=16,
-    n_trials=1000,
+    n_trials=300,
 )
 relearn_config = SimpleNamespace(
     relearn_steps=100,
@@ -95,7 +96,7 @@ study = run_study(
     objective,
     config,
     __file__,
-    f"{config.unlearn_steps},{relearn_config.relearn_steps},{config.method_name},{config.forget_set_name},relearn_without_lora",
+    f"{config.unlearn_steps},{relearn_config.relearn_steps},{config.method_name},{config.forget_set_name},relearn_without_lora,better_ranges2,no_to_forget_consistency",
     delete_existing=False,
     load_if_exists=True,
 )
