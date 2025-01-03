@@ -368,3 +368,50 @@ plt.ylabel("disruption_score")
 
 plt.ylim(0, 0.001)
 plt.show()
+
+
+
+# %%
+
+# get params to intervene on and initialize disruption scores
+circuit = get_circuit(config.model_id, config.forget_set_name, forget_batches)
+interven_params = []
+for name, p in model.named_parameters():
+    if any(f"{m}.weight" in name for m in target_modules):
+        interven_params.append(p)
+        p.disruption_score = pt.zeros_like(p.data)
+        p.to_forget = circuit[name]
+        # norm = p.to_forget.norm()
+        # p.to_forget[p.data.sign() != p.to_forget.sign()] *= to_forget_consistency
+        # # bring back previous norm
+        # p.to_forget *= norm / p.to_forget.norm()
+
+        circ = p.to_forget.abs()
+        max_val = circ.max()
+        perc_larger = (circ > 0.05 * max_val).sum() / circ.numel()
+        print(f"{name}: {perc_larger} params larger than 5% of max")
+        last_p = p
+
+import matplotlib.pyplot as plt
+
+# plot circuit[name] against p.data
+plt.scatter(last_p.to_forget.flatten().cpu().numpy(), last_p.data.flatten().cpu().numpy(), s=1)
+plt.xlabel("circuit[name]")
+plt.ylabel("p.data")
+plt.show()
+
+# for name, p in model.named_parameters():
+#     break
+
+# bins = plt.hist(circuit[name].flatten().cpu().numpy(), bins=100)
+# print(bins)
+
+# for each param, say it's name , and how many params in circuit[name] have magnitude larger than 5% of this param's max
+
+# for name, circ in circuit.items():
+#     circ = circ.abs()
+#     max_val = circ.max()
+#     perc_larger = (circ > 0.05 * max_val).sum() / circ.numel()
+#     print(f"{name}: {perc_larger} params larger than 5% of max")
+
+del circuit

@@ -1,8 +1,9 @@
 # %%
 # necessary for determinism:
 import os
-os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':4096:8'
-# os.environ['CUBLAS_WORKSPACE_CONFIG'] = ':16:8'  # less mem but slower
+
+os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+# os.environ['CUBLAS_WORKSPACE_CONFIG'] = ":16:8"  # less mem but slower
 import hashlib
 import logging
 from pathlib import Path
@@ -19,8 +20,8 @@ from utils.plots_and_stats import plot_slice_layout
 from utils.training import eval_, run_study, set_seeds
 
 config = SimpleNamespace(
-    # method_name="seek_and_destroy",
-    method_name="negative_entropy",
+    method_name="seek_and_destroy",
+    # method_name="negative_entropy",
     # Model/data configs
     model_id="EleutherAI/pythia-14m",
     retain_set_name="wikitext",
@@ -37,6 +38,7 @@ relearn_config = SimpleNamespace(
 )
 
 pt.set_default_device("cuda")
+set_seeds(42)
 
 logging.basicConfig(
     level=logging.INFO,
@@ -58,7 +60,6 @@ f_eval = next(iter(forget_val_batches))
 
 res = eval_(AutoModelForCausalLM.from_pretrained(config.model_id), f_eval, r_eval)
 allowed_f_loss = res["retain_loss"] + 0.1
-set_seeds(42)
 
 # %%
 assert config.method_name.replace("_", "").isalpha()
@@ -88,7 +89,7 @@ study = run_study(
     objective,
     config,
     __file__,
-    f"{config.unlearn_steps},{relearn_config.relearn_steps},{config.method_name},{config.forget_set_name}",
+    f"{config.unlearn_steps},{relearn_config.relearn_steps},{config.method_name},{config.forget_set_name},adaptive_consistency_grad_mask",
     delete_existing=True,
 )
 

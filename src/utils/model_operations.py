@@ -63,9 +63,14 @@ def relearn(model, config, retain_val_batches, forget_val_batches):
         model.train()
         optimizer.zero_grad(set_to_none=True)
         f_input_ids = next(forget_val_iter)
-        r_input_ids = next(retain_val_iter)
         loss_forget = cross_entropy_loss(model(f_input_ids), f_input_ids)
-        loss_retain = cross_entropy_loss(model(r_input_ids), r_input_ids)
+
+        loss_retain = 0
+        # # retain every 5 steps, to save compute
+        # if step % 5 == 0:
+        #     r_input_ids = next(retain_val_iter)
+        #     loss_retain = cross_entropy_loss(model(r_input_ids), r_input_ids)
+
         (loss_forget + loss_retain).backward()
         optimizer.step()
 

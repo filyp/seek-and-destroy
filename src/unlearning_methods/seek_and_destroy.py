@@ -43,12 +43,13 @@ def unlearning_func(
 ):
     # ! parameters
     f_quantile = trial.suggest_float("f_quantile", 0.03, 0.5, log=True)
-    r_quantile = trial.suggest_float("r_quantile", 0.05, 0.2, log=True)
+    r_quantile = trial.suggest_float("r_quantile", 0.03, 0.5, log=True)
     retaining_rate = trial.suggest_float("retaining_rate", 0.00001, 0.001, log=True)
     unlearning_rate = trial.suggest_float("unlearning_rate", 0.0001, 0.003, log=True)
     disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.9, 1.0)
     pos_grad_discard_factor = 0
     retain_consistency = 0
+    to_forget_consistency = trial.suggest_float("to_forget_consistency", 0, 2)
     logging.info(f"trial {trial.number} - {trial.params}")
 
     model = AutoModelForCausalLM.from_pretrained(config.model_id)
@@ -67,6 +68,11 @@ def unlearning_func(
             interven_params.append(p)
             p.disruption_score = pt.zeros_like(p.data)
             p.to_forget = circuit[name]
+
+            norm = p.to_forget.norm()
+            p.to_forget[p.data.sign() != p.to_forget.sign()] *= to_forget_consistency
+            # bring back previous norm
+            p.to_forget *= norm / p.to_forget.norm()
     del circuit
 
     # Get threshold for forgetting
