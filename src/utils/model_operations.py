@@ -46,6 +46,36 @@ def relearn(model, config, retain_val_batches, forget_val_batches):
     f_eval_batch = next(forget_val_iter)
     r_eval_batch = next(retain_val_iter)
 
+    optimizer = pt.optim.SGD(model.parameters(), lr=config.relearn_lr)
+
+    # ! relearning loop
+    logging.info("")
+    f_losses = []
+    for step in range(1, 1 + config.relearn_steps):
+        # standard forward, backward, and update
+        model.train()
+        optimizer.zero_grad(set_to_none=True)
+        f_input_ids = next(forget_val_iter)
+        loss_forget = cross_entropy_loss(model(f_input_ids), f_input_ids)
+        loss_forget.backward()
+        optimizer.step()
+
+        if step % 10 == 0:
+            res = eval_(model, f_eval_batch, r_eval_batch, step=step)
+            f_losses.append(res["forget_loss"])
+            # wandb.log(res, step=step)
+
+    logging.info("")
+    return f_losses
+
+
+def relearn_lora(model, config, retain_val_batches, forget_val_batches):
+    # get batches
+    retain_val_iter = iter(retain_val_batches)
+    forget_val_iter = iter(forget_val_batches)
+    f_eval_batch = next(forget_val_iter)
+    r_eval_batch = next(retain_val_iter)
+
     # add relearning lora
     lora_config = LoraConfig(**config.relearn_lora_conf)
     peft_model = get_peft_model(model, lora_config, adapter_name="relearning_lora")

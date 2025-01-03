@@ -1,9 +1,13 @@
 # %%
+# %load_ext autoreload
+# %autoreload 2  # Automatically reload all modules
+
 # necessary for determinism:
 import os
 
 os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 # os.environ['CUBLAS_WORKSPACE_CONFIG'] = ":16:8"  # less mem but slower
+
 import hashlib
 import logging
 from pathlib import Path
@@ -67,10 +71,12 @@ exec(f"from unlearning_methods.{config.method_name} import unlearning_func")
 
 
 def objective(trial):
+    set_seeds(42)
     model = unlearning_func(
         trial, config, retain_batches, forget_batches, f_eval, r_eval, allowed_f_loss
     )
 
+    set_seeds(42)
     forget_losses = relearn(
         model, relearn_config, retain_val_batches, forget_val_batches
     )
@@ -89,7 +95,7 @@ study = run_study(
     objective,
     config,
     __file__,
-    f"{config.unlearn_steps},{relearn_config.relearn_steps},{config.method_name},{config.forget_set_name},adaptive_consistency_grad_mask",
+    f"{config.unlearn_steps},{relearn_config.relearn_steps},{config.method_name},{config.forget_set_name},relearn_without_lora",
     delete_existing=True,
 )
 
