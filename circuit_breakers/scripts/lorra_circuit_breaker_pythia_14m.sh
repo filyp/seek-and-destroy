@@ -1,5 +1,3 @@
-#!/bin/bash
-
 export WANDB_MODE=offline
 export MASTER_PORT=$((29000 + RANDOM % 1000))
 export CUBLAS_WORKSPACE_CONFIG=:16:8
@@ -7,7 +5,7 @@ export CUBLAS_WORKSPACE_CONFIG=:16:8
 ### Mistral-7b Config ###
 model_name_or_path=EleutherAI/pythia-14m
 lorra_alpha=5
-layers="10,20"
+layers="3,4"
 transform_layers="-1"
 output_dir="./out/pythia-14m"
 
@@ -21,6 +19,7 @@ accelerate launch --config_file configs/accelerate_zero1.yaml \
     src/lorra_circuit_breaker.py \
     --model_name_or_path $model_name_or_path \
     --target_layers $layers \
+    --lora_target_modules "dense, dense_h_to_4h, dense_4h_to_h" \
     --transform_layers $transform_layers \
     --lorra_alpha $lorra_alpha \
     --lora_r 16 \
@@ -34,7 +33,7 @@ accelerate launch --config_file configs/accelerate_zero1.yaml \
     --per_device_eval_batch_size 32 \
     --gradient_accumulation_steps 1 \
     --do_eval \
-    --evaluation_strategy "steps" \
+    --eval_strategy "no" \
     --eval_steps 1000  \
     --save_total_limit 0 \
     --learning_rate 1e-4 \
@@ -42,7 +41,7 @@ accelerate launch --config_file configs/accelerate_zero1.yaml \
     --lr_scheduler_type "constant" \
     --logging_strategy "steps" \
     --logging_steps 10 \
-    --tf32 True \
+    --tf32 False \
     --model_max_length 8192 \
     --q_lora False \
     --gradient_checkpointing True \

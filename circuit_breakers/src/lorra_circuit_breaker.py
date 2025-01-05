@@ -6,27 +6,23 @@ import gc
 import atexit
 import numpy as np
 
-from deepspeed import zero
-from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
+# from deepspeed import zero
+# from deepspeed.runtime.zero.partition_parameters import ZeroParamStatus
 from peft import LoraConfig, get_peft_model
 import transformers
 from torch.nn.functional import cosine_similarity
-from transformers import Trainer, deepspeed, AutoTokenizer, AutoModelForCausalLM, AutoConfig
+from transformers import Trainer, AutoTokenizer, AutoModelForCausalLM, AutoConfig
 import torch
+
 
 # from cb_train_dataset import (
 #     CircuitBreakerDataset
 # )
-
-# from train_datasets_original import (
-#     CircuitBreakerDataset
-# )
-
-from cb_train_dataset import (
-    CircuitBreakerDataset
+from python_and_eng_train_dataset import (
+    IterableCircuitBreakerDataset
 )
 
-from utils import save_model_and_tokenizer
+from utils_cb import save_model_and_tokenizer
 from args import (
     ModelArguments,
     TrainingArguments,
@@ -35,7 +31,8 @@ from args import (
 )
 
 
-def compute_loss(self, model, inputs, target_layers, alpha, return_outputs=False, tokenizer=None, **kwargs):
+def compute_loss(self, model, inputs, target_layers, alpha, return_outputs=False, tokenizer=None):
+    print("ASD")
 
     self.current_training_step += 1
     log_now = self.current_training_step % 10 == 0
@@ -223,10 +220,10 @@ def train():
     print(training_args)
 
     device_map = "auto"
-    if len(training_args.fsdp) > 0 or deepspeed.is_deepspeed_zero3_enabled():
-        logging.warning(
-            "FSDP and ZeRO3 are both currently incompatible with QLoRA."
-        )
+    # if len(training_args.fsdp) > 0 or deepspeed.is_deepspeed_zero3_enabled():
+    #     logging.warning(
+    #         "FSDP and ZeRO3 are both currently incompatible with QLoRA."
+    #     )
 
     model_name_or_path = model_args.model_name_or_path
     target_layers = lorra_args.target_layers
@@ -295,8 +292,11 @@ def train():
     if training_args.gradient_checkpointing:
         model.enable_input_require_grads()
 
-    train_dataset = CircuitBreakerDataset(
-        tokenizer, num_examples=10000, lorra_args=lorra_args, model_name_or_path=model_name_or_path)
+    train_dataset = IterableCircuitBreakerDataset()
+
+    # CircuitBreakerDataset(
+    #     tokenizer, num_examples=10000, lorra_args=lorra_args, model_name_or_path=model_name_or_path)
+
     print("TRAIN LEN: ", len(train_dataset))
 
     class CustomTrainer(Trainer):
@@ -311,7 +311,7 @@ def train():
         def get_training_progress(self):
             return self.current_training_step / 300
 
-        def compute_loss(self, model, inputs, return_outputs=False):
+        def compute_loss(self, model, inputs, num_items_in_batch, return_outputs=False):
             return compute_loss(
                 self,
                 model,
@@ -363,7 +363,7 @@ def train():
         model=model, tokenizer=tokenizer, args=training_args, train_dataset=train_dataset, data_collator=data_collator
     )
     model.config.use_cache = False
-    atexit.register(save_model_function, model=model, trainer=trainer)
+    # atexit.register(save_model_function, model=model, trainer=trainer)
     trainer.train()
 
 
