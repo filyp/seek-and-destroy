@@ -50,7 +50,7 @@ def unlearning_func(
     disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.8, 1.0)
     pos_grad_discard_factor = trial.suggest_float("pos_grad_discard_factor", 0, 1)
     retain_consistency = trial.suggest_float("retain_consistency", 0, 1)
-    # to_forget_consistency = trial.suggest_float("to_forget_consistency", 0.5, 1.5)
+    # to_forget_weight_shrink = trial.suggest_float("to_forget_consistency", 0.5, 1.5)
     logging.info(f"trial {trial.number} - {trial.params}")
 
     model = AutoModelForCausalLM.from_pretrained(config.model_id)
@@ -71,7 +71,7 @@ def unlearning_func(
             p.to_forget = circuit[name]
 
             # norm = p.to_forget.norm()
-            # p.to_forget[p.data.sign() != p.to_forget.sign()] *= to_forget_consistency
+            # p.to_forget[p.data.sign() != p.to_forget.sign()] *= to_forget_weight_shrink
             # # bring back previous norm
             # p.to_forget *= norm / p.to_forget.norm()
     del circuit
@@ -136,5 +136,5 @@ def unlearning_func(
         if step % 10 == 0:
             eval_(model, f_eval, r_eval, allowed_f_loss, step)
 
-    # visualize_param(p, mask)
+    visualize_param(p, mask)
     return model
