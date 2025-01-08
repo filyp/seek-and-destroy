@@ -1,7 +1,6 @@
 import logging
 import random
 
-import matplotlib.pyplot as plt
 import numpy as np
 import optuna
 import torch as pt
@@ -115,29 +114,6 @@ def eval_(model, f_eval_batch, r_eval_batch, allowed_f_loss=None, step=""):
     return res
 
 
-def visualize_param(param, mask):
-    x = param.to_forget
-    y = param.disruption_score
-    c = mask
-    # plot a 2d scatter plot
-    # first flatten x and y and c and convert to cpy numpy
-    x = x.flatten().cpu().numpy()
-    y = y.flatten().cpu().numpy()
-    c = c.flatten().cpu().numpy()
-
-    plt.clf()
-    plt.scatter(x, y, c=c, s=1)
-
-    # label
-    plt.xlabel("to_forget")
-    plt.ylabel("disruption_score")
-
-    # plt.ylim(0, 0.001)
-    # plt.show()
-    file_name = repo_root() / "results" / f"param_toforget_vs_disruption.png"
-    plt.savefig(file_name)
-
-
 def run_study(
     objective,
     config,
@@ -180,7 +156,9 @@ def make_sure_optimal_values_are_not_near_range_edges(study):
         max_log = np.log(max_)
         value_log = np.log(value)
         if value_log < min_log + 0.1 * (max_log - min_log):
-            print(f"WARNING: {param_name} is in the bottom 10% of the range in best trial")
+            print(
+                f"WARNING: {param_name} is in the bottom 10% of the range in best trial"
+            )
             print(f"range: {min_} - {max_}, value: {value}")
         if value_log > max_log - 0.1 * (max_log - min_log):
             print(f"WARNING: {param_name} is in the top 10% of the range in best trial")

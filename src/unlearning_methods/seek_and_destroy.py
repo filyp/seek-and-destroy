@@ -6,7 +6,8 @@ from transformers import AutoModelForCausalLM
 
 from utils.git_and_reproducibility import repo_root
 from utils.model_operations import get_thresh
-from utils.training import cross_entropy_loss, eval_, loss_fns, visualize_param
+from utils.plots_and_stats import visualize_param
+from utils.training import cross_entropy_loss, eval_, loss_fns
 
 disruption_score_warmup = 20
 
@@ -69,6 +70,7 @@ def unlearning_func(
             interven_params.append(p)
             p.disruption_score = pt.zeros_like(p.data)
             p.to_forget = circuit[name]
+            p.param_name = name
 
             # norm = p.to_forget.norm()
             # p.to_forget[p.data.sign() != p.to_forget.sign()] *= to_forget_weight_shrink
@@ -132,9 +134,11 @@ def unlearning_func(
             p.grad[p.grad.sign() != p.to_forget.sign()] *= retain_consistency
             p.data -= retaining_rate * p.grad
 
+            # if step == config.unlearn_steps:
+            #     visualize_param(p, mask, p.param_name)
+
         # ! eval current loss
         if step % 10 == 0:
             eval_(model, f_eval, r_eval, allowed_f_loss, step)
 
-    visualize_param(p, mask)
     return model
