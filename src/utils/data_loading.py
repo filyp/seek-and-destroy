@@ -70,6 +70,35 @@ def load_wikitext(tokenizer):
     )
 
 
+def load_cruelty(tokenizer):
+    beavertails = load_dataset("PKU-Alignment/BeaverTails")
+    split = beavertails["330k_train"]
+    category = "animal_abuse"
+    # from 300k examples filters down to 3k
+    beaver_category = split.filter(lambda ex: ex["category"][category])
+    # prepare dataset further filters out short examples, down to 1.5k, or 90 batches of 16
+    return prepare_dataset(
+        beaver_category,
+        tokenizer,
+        # lambda ex: {"text": ex["response"]},
+        lambda ex: {"text": ex["prompt"] + "\n" + ex["response"]},
+    )
+
+
+def load_beaver_safe(tokenizer):
+    beavertails = load_dataset("PKU-Alignment/BeaverTails")
+    split = beavertails["330k_train"]
+    # from 300k examples filters down to 134k
+    safe_examples = split.filter(lambda ex: ex["is_safe"])
+    # prepare dataset further filters out short examples, down to 40k examples
+    return prepare_dataset(
+        safe_examples,
+        tokenizer,
+        # lambda ex: {"text": ex["response"]},
+        lambda ex: {"text": ex["prompt"] + "\n" + ex["response"]},
+    )
+
+
 def _remove_comments_and_docstrings(code: str) -> str:
     # Remove docstrings
     code = re.sub(r'""".*?"""', "", code, flags=re.DOTALL)
@@ -96,18 +125,9 @@ dataset_loaders = dict(
     python=load_python_dataset,
     oscar_en=lambda tokenizer: load_one_oscar_shard("en", tokenizer),
     oscar_pl=lambda tokenizer: load_one_oscar_shard("pl", tokenizer),
+    cruelty=load_cruelty,
+    beaver_safe=load_beaver_safe,
 )
-
-
-# beavertails = load_dataset("PKU-Alignment/BeaverTails")
-# split = beavertails["330k_train"]
-# category = "animal_abuse"
-# beaver_category = split.filter(lambda ex: ex["category"][category])
-# # safe_examples = split.filter(lambda ex: ex["is_safe"])
-# # %%
-# ex = beaver_category[0]
-# print(ex["prompt"])
-# print(ex["response"])
 
 
 class CachedBatches:
@@ -123,7 +143,3 @@ class CachedBatches:
             new_item = get_batch(self.base_iter, self.batch_size)
             self.cache.append(new_item)
             yield new_item
-
-
-# retain_cached_iter = CachedBatches(retain_iter, 16)
-# retain_iter = iter(retain_cached_iter)

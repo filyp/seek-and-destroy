@@ -169,3 +169,19 @@ def run_study(
         study.set_user_attr(k, v)
     study.optimize(objective, n_trials=config.n_trials)
     return study
+
+
+def make_sure_optimal_values_are_not_near_range_edges(study):
+    # make sure the value is not in the top or bottom 10% of the range, logarithmically
+    for param_name, value in study.best_trial.params.items():
+        min_ = min(trial.params[param_name] for trial in study.trials)
+        max_ = max(trial.params[param_name] for trial in study.trials)
+        min_log = np.log(min_)
+        max_log = np.log(max_)
+        value_log = np.log(value)
+        if value_log < min_log + 0.1 * (max_log - min_log):
+            print(f"WARNING: {param_name} is in the bottom 10% of the range in best trial")
+            print(f"range: {min_} - {max_}, value: {value}")
+        if value_log > max_log - 0.1 * (max_log - min_log):
+            print(f"WARNING: {param_name} is in the top 10% of the range in best trial")
+            print(f"range: {min_} - {max_}, value: {value}")

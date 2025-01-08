@@ -22,17 +22,19 @@ from utils.data_loading import CachedBatches, dataset_loaders
 from utils.git_and_reproducibility import is_repo_clean
 from utils.model_operations import relearn
 from utils.plots_and_stats import plot_slice_layout
-from utils.training import eval_, run_study, set_seeds
+from utils.training import *
 
 config = SimpleNamespace(
     method_name="seek_and_destroy",
     # method_name="negative_entropy",
     # Model/data configs
     model_id="EleutherAI/pythia-14m",
-    retain_set_name="wikitext",
-    forget_set_name="python",
+    # retain_set_name="wikitext",
+    # forget_set_name="python",
+    retain_set_name="beaver_safe",
+    forget_set_name="cruelty",
     # Training constants
-    unlearn_steps=400,
+    unlearn_steps=200,
     batch_size=16,
     n_trials=300,
 )
@@ -103,16 +105,4 @@ study = run_study(
 
 plot_slice_layout(study)
 
-# make sure the value is not in the top or bottom 10% of the range, logarithmically
-for param_name, value in study.best_trial.params.items():
-    min_ = min(trial.params[param_name] for trial in study.trials)
-    max_ = max(trial.params[param_name] for trial in study.trials)
-    min_log = np.log(min_)
-    max_log = np.log(max_)
-    value_log = np.log(value)
-    if value_log < min_log + 0.1 * (max_log - min_log):
-        print(f"WARNING: {param_name} is in the bottom 10% of the range in best trial")
-        print(f"range: {min_} - {max_}, value: {value}")
-    if value_log > max_log - 0.1 * (max_log - min_log):
-        print(f"WARNING: {param_name} is in the top 10% of the range in best trial")
-        print(f"range: {min_} - {max_}, value: {value}")
+make_sure_optimal_values_are_not_near_range_edges(study)
