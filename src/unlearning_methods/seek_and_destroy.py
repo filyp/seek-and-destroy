@@ -41,9 +41,7 @@ def get_circuit(config, batches, num_steps=2000, loss_fn_name="correct_logit"):
 def get_misaligning(config, batches, num_steps=2000, loss_fn_name="correct_logit"):
     # try to load cached circuit
     circuit_dir = repo_root() / "circuits" / config.model_id.replace("/", "_")
-    circuit_path = (
-        circuit_dir / f"{config.forget_set_name}_misaligning_{loss_fn_name}.pt"
-    )
+    circuit_path = circuit_dir / f"{config.forget_set_name}_misalign2_{loss_fn_name}.pt"
     if circuit_path.exists():
         return pt.load(circuit_path, weights_only=True)
     logging.info("No cached circuit found, creating one")
@@ -55,7 +53,11 @@ def get_misaligning(config, batches, num_steps=2000, loss_fn_name="correct_logit
     model.gpt_neox.embed_in.requires_grad_(True)
 
     def save_misaligning_grad(module, grad_input, grad_output):
-        misaligning = pt.einsum("bth,btr->rh", grad_input[0], grad_output[0])
+        neuron_grad = grad_input[0]
+        # clip the neuron grad to positive values,
+        # because we don't want to disturb the neurons which are problematic for unlearn task
+        neuron_grad[neuron_grad < 0] = 0
+        misaligning = pt.einsum("bth,btr->rh", neuron_grad, grad_output[0])
         module.weight.misaligning += misaligning
 
     for name, module in model.named_modules():
@@ -90,7 +92,8 @@ def unlearning_func(
     r_quantile = trial.suggest_float("r_quantile", 0.1, 0.5, log=True)
     retaining_rate = trial.suggest_float("retaining_rate", 0.00003, 0.001, log=True)
     # unlearning_rate = trial.suggest_float("unlearning_rate", 0.00003, 0.0007, log=True)
-    unlearning_rate = trial.suggest_float("unlearning_rate", 0.0003, 0.7, log=True)
+    unlearning_rate = trial.suggest_float("unlearning_rate", 0.0003, 0.02, log=True)
+    # unlearning_rate = trial.suggest_float("unlearning_rate", 0.002, 0.02, log=True)
     disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.8, 1.0)
     # pos_grad_discard_factor = 1
     # retain_consistency = trial.suggest_float("retain_consistency", 0, 1)
@@ -100,14 +103,12 @@ def unlearning_func(
     model.config.use_cache = False
 
     if "pythia" in config.model_id:
-        # todo revert
         # target_modules = ["dense_h_to_4h", "dense_4h_to_h", "dense"]
         target_modules = ["dense_4h_to_h"]
     else:
         raise NotImplementedError(f"Model {config.model_id} not supported")
 
     # get params to intervene on and initialize disruption scores
-    # todo revert
     # circuit = get_circuit(config, forget_batches)
     circuit = get_misaligning(config, forget_batches)
 

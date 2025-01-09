@@ -37,7 +37,7 @@ config = SimpleNamespace(
     # Training constants
     unlearn_steps=100,
     batch_size=16,
-    n_trials=100,
+    n_trials=300,
 )
 relearn_config = SimpleNamespace(
     relearn_steps=50,
@@ -99,7 +99,7 @@ study = run_study(
     objective,
     config,
     __file__,
-    f"{config.unlearn_steps},{relearn_config.relearn_steps},{config.method_name},{config.forget_set_name},mlp_v_misalignment",
+    f"{config.unlearn_steps},{relearn_config.relearn_steps},{config.method_name},{config.forget_set_name},mlp_v_misalignment2",
     delete_existing=False,
     load_if_exists=True,
 )
