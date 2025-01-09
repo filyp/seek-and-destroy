@@ -37,7 +37,7 @@ config = SimpleNamespace(
     # Training constants
     unlearn_steps=100,
     batch_size=16,
-    n_trials=300,
+    n_trials=100,
 )
 relearn_config = SimpleNamespace(
     relearn_steps=50,
@@ -99,7 +99,7 @@ study = run_study(
     objective,
     config,
     __file__,
-    f"{config.unlearn_steps},{relearn_config.relearn_steps},{config.method_name},{config.forget_set_name},mlp_v_misalignment2",
+    f"{config.unlearn_steps},{relearn_config.relearn_steps},{config.method_name},{config.forget_set_name},mlp_v_misalignment3",
     delete_existing=False,
     load_if_exists=True,
 )
@@ -115,3 +115,9 @@ values = [t.values[0] for t in good_trials]
 last_20_mean = np.mean(values[-20:])
 last_20_std = np.std(values[-20:])
 print(f"last 20 mean and std:\n{last_20_mean:.2f} ± {last_20_std:.2f}")
+
+# storage = get_storage()
+# study_summaries = optuna.study.get_all_study_summaries(storage)
+# sorted_studies = sorted(study_summaries, key=lambda s: s.datetime_start)
+# latest_study = sorted_studies[-1]
+# study = optuna.load_study(study_name=latest_study.study_name, storage=storage)
