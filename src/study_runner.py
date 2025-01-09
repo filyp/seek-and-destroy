@@ -25,21 +25,22 @@ from utils.plots_and_stats import plot_slice_layout
 from utils.training import *
 
 config = SimpleNamespace(
-    method_name="seek_and_destroy",
+    # method_name="seek_and_destroy",
+    method_name="seek_and_destroy_global_thresh",
     # method_name="negative_entropy",
     # Model/data configs
     model_id="EleutherAI/pythia-14m",
-    # retain_set_name="wikitext",
-    # forget_set_name="python",
-    retain_set_name="beaver_safe",
-    forget_set_name="cruelty",
+    retain_set_name="wikitext",
+    forget_set_name="python",
+    # retain_set_name="beaver_safe",
+    # forget_set_name="cruelty",
     # Training constants
-    unlearn_steps=200,
+    unlearn_steps=100,
     batch_size=16,
-    n_trials=300,
+    n_trials=100,
 )
 relearn_config = SimpleNamespace(
-    relearn_steps=100,
+    relearn_steps=50,
     relearn_lr=3e-4,
     relearn_lora_conf=dict(target_modules="all-linear"),
 )
@@ -98,7 +99,7 @@ study = run_study(
     objective,
     config,
     __file__,
-    f"{config.unlearn_steps},{relearn_config.relearn_steps},{config.method_name},{config.forget_set_name},relearn_without_lora,better_ranges2,no_to_forget_consistency",
+    f"{config.unlearn_steps},{relearn_config.relearn_steps},{config.method_name},{config.forget_set_name}",
     delete_existing=False,
     load_if_exists=True,
 )
@@ -106,3 +107,11 @@ study = run_study(
 plot_slice_layout(study)
 
 make_sure_optimal_values_are_not_near_range_edges(study)
+
+# %%
+# stats for the last 20 non-pruned trials
+good_trials = [t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]
+values = [t.values[0] for t in good_trials]
+last_20_mean = np.mean(values[-20:])
+last_20_std = np.std(values[-20:])
+print(f"last 20 mean and std:\n{last_20_mean:.2f} ± {last_20_std:.2f}")

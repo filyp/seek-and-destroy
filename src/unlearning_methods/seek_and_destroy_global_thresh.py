@@ -51,6 +51,7 @@ def unlearning_func(
     disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.8, 1.0)
     pos_grad_discard_factor = trial.suggest_float("pos_grad_discard_factor", 0, 1)
     retain_consistency = trial.suggest_float("retain_consistency", 0, 1)
+    # to_forget_weight_shrink = trial.suggest_float("to_forget_consistency", 0.5, 1.5)
     logging.info(f"trial {trial.number} - {trial.params}")
 
     model = AutoModelForCausalLM.from_pretrained(config.model_id)
@@ -70,6 +71,11 @@ def unlearning_func(
             p.disruption_score = pt.zeros_like(p.data)
             p.to_forget = circuit[name]
             p.param_name = name
+
+            # norm = p.to_forget.norm()
+            # p.to_forget[p.data.sign() != p.to_forget.sign()] *= to_forget_weight_shrink
+            # # bring back previous norm
+            # p.to_forget *= norm / p.to_forget.norm()
     del circuit
 
     # Get threshold for forgetting
@@ -105,12 +111,19 @@ def unlearning_func(
             continue
 
         # Unlearning step with two-stage masking
+        flipped_scores = []
         for p in interven_params:
             # First choose the most important weights for forgetting
             mask = p.to_forget.abs() > f_threshold
             # Then from them, choose the ones least disrupting
             flipped_disr = p.disruption_score * p.to_forget.sign()
-            d_threshold = get_thresh(r_quantile, [flipped_disr[mask]])
+            flipped_scores.append(flipped_disr[mask])
+        d_threshold = get_thresh(r_quantile, flipped_scores)
+
+        for p in interven_params:
+            # recompute these two
+            mask = p.to_forget.abs() > f_threshold
+            flipped_disr = p.disruption_score * p.to_forget.sign()
 
             # ! unlearn
             flipped_disr[~mask] = float("-inf")
