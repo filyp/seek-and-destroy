@@ -13,19 +13,17 @@ disruption_score_warmup = 20
 
 
 def get_circuit(config, batches, num_steps=2000, loss_fn_name="correct_logit"):
-    model_id = config.model_id
-    forget_set_name = config.forget_set_name
     # try to load cached circuit
-    circuit_dir = repo_root() / "circuits" / model_id.replace("/", "_")
-    circuit_path = circuit_dir / f"{forget_set_name}_{loss_fn_name}.pt"
+    circuit_dir = repo_root() / "circuits" / config.model_id.replace("/", "_")
+    circuit_path = circuit_dir / f"{config.forget_set_name}_{loss_fn_name}.pt"
     if circuit_path.exists():
         return pt.load(circuit_path, weights_only=True)
-
     logging.info("No cached circuit found, creating one")
 
-    # accumulate grads
     loss_fn = loss_fns[loss_fn_name]
-    model = AutoModelForCausalLM.from_pretrained(model_id)
+    model = AutoModelForCausalLM.from_pretrained(config.model_id)
+
+    # accumulate grads
     model.zero_grad(set_to_none=True)
     batch_iter = iter(batches)
     for _ in tqdm(range(num_steps)):
@@ -40,6 +38,50 @@ def get_circuit(config, batches, num_steps=2000, loss_fn_name="correct_logit"):
     return circuit
 
 
+def get_misaligning(config, batches, num_steps=2000, loss_fn_name="correct_logit"):
+    # try to load cached circuit
+    circuit_dir = repo_root() / "circuits" / config.model_id.replace("/", "_")
+    circuit_path = (
+        circuit_dir / f"{config.forget_set_name}_misaligning_{loss_fn_name}.pt"
+    )
+    if circuit_path.exists():
+        return pt.load(circuit_path, weights_only=True)
+    logging.info("No cached circuit found, creating one")
+
+    loss_fn = loss_fns[loss_fn_name]
+    model = AutoModelForCausalLM.from_pretrained(config.model_id)
+    model.requires_grad_(False)
+    # this is needed to backpropagate despite not requiring grads
+    model.gpt_neox.embed_in.requires_grad_(True)
+
+    def save_misaligning_grad(module, grad_input, grad_output):
+        misaligning = pt.einsum("bth,btr->rh", grad_input[0], grad_output[0])
+        module.weight.misaligning += misaligning
+
+    for name, module in model.named_modules():
+        if "mlp.dense_4h_to_h" in name:
+            print(name)
+            module._backward_hooks.clear()
+            module.register_full_backward_hook(save_misaligning_grad)
+            module.weight.misaligning = pt.zeros_like(module.weight)
+
+    batch_iter = iter(batches)
+    for _ in tqdm(range(num_steps)):
+        input_ids = next(batch_iter)
+        loss = loss_fn(model(input_ids), input_ids)
+        loss.backward()
+    circuit = {
+        name: param.misaligning / num_steps
+        for name, param in model.named_parameters()
+        if hasattr(param, "misaligning")
+    }
+
+    # save circuit
+    circuit_dir.mkdir(parents=True, exist_ok=True)
+    pt.save(circuit, circuit_path)
+    return circuit
+
+
 def unlearning_func(
     trial, config, retain_batches, forget_batches, f_eval, r_eval, allowed_f_loss
 ):
@@ -47,7 +89,8 @@ def unlearning_func(
     f_quantile = trial.suggest_float("f_quantile", 0.05, 1, log=True)
     r_quantile = trial.suggest_float("r_quantile", 0.1, 0.5, log=True)
     retaining_rate = trial.suggest_float("retaining_rate", 0.00003, 0.001, log=True)
-    unlearning_rate = trial.suggest_float("unlearning_rate", 0.00003, 0.0007, log=True)
+    # unlearning_rate = trial.suggest_float("unlearning_rate", 0.00003, 0.0007, log=True)
+    unlearning_rate = trial.suggest_float("unlearning_rate", 0.0003, 0.7, log=True)
     disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.8, 1.0)
     # pos_grad_discard_factor = 1
     # retain_consistency = trial.suggest_float("retain_consistency", 0, 1)
@@ -57,12 +100,17 @@ def unlearning_func(
     model.config.use_cache = False
 
     if "pythia" in config.model_id:
-        target_modules = ["dense_h_to_4h", "dense_4h_to_h", "dense"]
+        # todo revert
+        # target_modules = ["dense_h_to_4h", "dense_4h_to_h", "dense"]
+        target_modules = ["dense_4h_to_h"]
     else:
         raise NotImplementedError(f"Model {config.model_id} not supported")
 
     # get params to intervene on and initialize disruption scores
-    circuit = get_circuit(config, forget_batches)
+    # todo revert
+    # circuit = get_circuit(config, forget_batches)
+    circuit = get_misaligning(config, forget_batches)
+
     interven_params = []
     for name, p in model.named_parameters():
         if any(f"{m}.weight" in name for m in target_modules):
@@ -111,7 +159,8 @@ def unlearning_func(
             mask = p.to_forget.abs() > f_threshold
             # Then from them, choose the ones least disrupting
             flipped_disr = p.disruption_score * p.to_forget.sign()
-            d_threshold = get_thresh(r_quantile, [flipped_disr[mask]])
+            if mask.any():
+                d_threshold = get_thresh(r_quantile, [flipped_disr[mask]])
 
             # ! unlearn
             flipped_disr[~mask] = float("-inf")

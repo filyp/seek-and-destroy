@@ -99,7 +99,7 @@ study = run_study(
     objective,
     config,
     __file__,
-    f"{config.unlearn_steps},{relearn_config.relearn_steps},{config.method_name},{config.forget_set_name},no_retain_consistency,no_pos_grad_discard",
+    f"{config.unlearn_steps},{relearn_config.relearn_steps},{config.method_name},{config.forget_set_name},mlp_v_misalignment",
     delete_existing=False,
     load_if_exists=True,
 )
