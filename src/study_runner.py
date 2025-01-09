@@ -99,9 +99,9 @@ study = run_study(
     objective,
     config,
     __file__,
-    f"{config.unlearn_steps},{relearn_config.relearn_steps},{config.method_name},{config.forget_set_name},mlp_v_misalignment3",
-    delete_existing=False,
-    load_if_exists=True,
+    f"{config.unlearn_steps},{relearn_config.relearn_steps},{config.method_name},{config.forget_set_name},mlp_v_misalignment4",
+    delete_existing=True,
+    load_if_exists=False,
 )
 
 plot_slice_layout(study)

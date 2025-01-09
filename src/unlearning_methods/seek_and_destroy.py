@@ -41,7 +41,7 @@ def get_circuit(config, batches, num_steps=2000, loss_fn_name="correct_logit"):
 def get_misaligning(config, batches, num_steps=2000, loss_fn_name="correct_logit"):
     # try to load cached circuit
     circuit_dir = repo_root() / "circuits" / config.model_id.replace("/", "_")
-    circuit_path = circuit_dir / f"{config.forget_set_name}_misalign3_{loss_fn_name}.pt"
+    circuit_path = circuit_dir / f"{config.forget_set_name}_misalign4_{loss_fn_name}.pt"
     if circuit_path.exists():
         return pt.load(circuit_path, weights_only=True)
     logging.info("No cached circuit found, creating one")
@@ -58,8 +58,8 @@ def get_misaligning(config, batches, num_steps=2000, loss_fn_name="correct_logit
         # clip the neuron grad to positive values,
         # because we don't want to disturb the neurons which are hurt the forget task
         contrib[contrib < 0] = 0
-        # norm_grad = grad_output[0] / pt.norm(grad_output[0], dim=-1, keepdim=True)
-        misaligning = pt.einsum("bth,btr->rh", contrib, grad_output[0])
+        norm_grad = grad_output[0] / (pt.norm(grad_output[0], dim=-1, keepdim=True) + 1e-10)
+        misaligning = pt.einsum("bth,btr->rh", contrib, norm_grad)
         module.weight.misaligning += misaligning
 
     def save_activation(module, input_, output):
@@ -67,7 +67,6 @@ def get_misaligning(config, batches, num_steps=2000, loss_fn_name="correct_logit
 
     for name, module in model.named_modules():
         if "mlp.dense_4h_to_h" in name:
-            print(name)
             module._backward_hooks.clear()
             module.register_full_backward_hook(save_misaligning_grad)
             module.register_forward_hook(save_activation)
@@ -97,7 +96,8 @@ def unlearning_func(
     f_quantile = trial.suggest_float("f_quantile", 0.05, 1, log=True)
     r_quantile = trial.suggest_float("r_quantile", 0.1, 0.5, log=True)
     retaining_rate = trial.suggest_float("retaining_rate", 0.00003, 0.001, log=True)
-    unlearning_rate = trial.suggest_float("unlearning_rate", 0.00003, 0.0007, log=True)
+    unlearning_rate = trial.suggest_float("unlearning_rate", 0.0001, 0.1, log=True)
+    # unlearning_rate = trial.suggest_float("unlearning_rate", 0.00003, 0.0007, log=True)
     disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.8, 1.0)
     # pos_grad_discard_factor = 1
     # retain_consistency = trial.suggest_float("retain_consistency", 0, 1)
@@ -166,10 +166,10 @@ def unlearning_func(
             flipped_disr = p.disruption_score * p.to_forget.sign()
             if mask.any():
                 d_threshold = get_thresh(r_quantile, [flipped_disr[mask]])
+                flipped_disr[~mask] = float("-inf")
+                mask = mask & (flipped_disr > d_threshold)
 
             # ! unlearn
-            flipped_disr[~mask] = float("-inf")
-            mask = mask & (flipped_disr > d_threshold)
             p.data -= mask * unlearning_rate * p.to_forget
 
             # ! retain
