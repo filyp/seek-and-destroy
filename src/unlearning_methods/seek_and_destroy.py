@@ -41,7 +41,7 @@ def get_circuit(config, batches, num_steps=2000, loss_fn_name="correct_logit"):
 def get_misaligning(config, batches, num_steps=2000, loss_fn_name="correct_logit"):
     # try to load cached circuit
     circuit_dir = repo_root() / "circuits" / config.model_id.replace("/", "_")
-    circuit_path = circuit_dir / f"{config.forget_set_name}_misalign4_{loss_fn_name}.pt"
+    circuit_path = circuit_dir / f"{config.forget_set_name}_misalign5_{loss_fn_name}.pt"
     if circuit_path.exists():
         return pt.load(circuit_path, weights_only=True)
     logging.info("No cached circuit found, creating one")
@@ -54,12 +54,13 @@ def get_misaligning(config, batches, num_steps=2000, loss_fn_name="correct_logit
 
     def save_misaligning_grad(module, grad_input, grad_output):
         assert module.activation.shape == grad_input[0].shape
-        contrib = module.activation * grad_input[0]
+        # contrib = module.activation * grad_input[0]
+        contrib = module.activation
         # clip the neuron grad to positive values,
         # because we don't want to disturb the neurons which are hurt the forget task
-        contrib[contrib < 0] = 0
-        norm_grad = grad_output[0] / (pt.norm(grad_output[0], dim=-1, keepdim=True) + 1e-10)
-        misaligning = pt.einsum("bth,btr->rh", contrib, norm_grad)
+        # contrib[contrib < 0] = 0
+        # norm_grad = grad_output[0] / (pt.norm(grad_output[0], dim=-1, keepdim=True) + 1e-10)
+        misaligning = pt.einsum("bth,btr->rh", contrib, grad_output[0])
         module.weight.misaligning += misaligning
 
     def save_activation(module, input_, output):
