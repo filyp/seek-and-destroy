@@ -12,9 +12,9 @@ from utils.training import cross_entropy_loss, eval_, loss_fns
 disruption_score_warmup = 20
 
 
-def get_circuit(
-    model_id, forget_set_name, batches, num_steps=2000, loss_fn_name="correct_logit"
-):
+def get_circuit(config, batches, num_steps=2000, loss_fn_name="correct_logit"):
+    model_id = config.model_id
+    forget_set_name = config.forget_set_name
     # try to load cached circuit
     circuit_dir = repo_root() / "circuits" / model_id.replace("/", "_")
     circuit_path = circuit_dir / f"{forget_set_name}_{loss_fn_name}.pt"
@@ -49,8 +49,8 @@ def unlearning_func(
     retaining_rate = trial.suggest_float("retaining_rate", 0.00003, 0.001, log=True)
     unlearning_rate = trial.suggest_float("unlearning_rate", 0.00003, 0.0007, log=True)
     disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.8, 1.0)
-    pos_grad_discard_factor = trial.suggest_float("pos_grad_discard_factor", 0, 1)
-    retain_consistency = trial.suggest_float("retain_consistency", 0, 1)
+    # pos_grad_discard_factor = 1
+    # retain_consistency = trial.suggest_float("retain_consistency", 0, 1)
     logging.info(f"trial {trial.number} - {trial.params}")
 
     model = AutoModelForCausalLM.from_pretrained(config.model_id)
@@ -62,7 +62,7 @@ def unlearning_func(
         raise NotImplementedError(f"Model {config.model_id} not supported")
 
     # get params to intervene on and initialize disruption scores
-    circuit = get_circuit(config.model_id, config.forget_set_name, forget_batches)
+    circuit = get_circuit(config, forget_batches)
     interven_params = []
     for name, p in model.named_parameters():
         if any(f"{m}.weight" in name for m in target_modules):
@@ -96,7 +96,8 @@ def unlearning_func(
 
         for p in interven_params:
             grad = p.grad.clone().detach()
-            grad[p.to_forget.sign() == p.grad.sign()] *= pos_grad_discard_factor
+            # todo at some point enable it back
+            # grad[p.to_forget.sign() == p.grad.sign()] *= pos_grad_discard_factor
             p.disruption_score *= disruption_score_decay
             p.disruption_score += grad
 
@@ -118,7 +119,7 @@ def unlearning_func(
             p.data -= mask * unlearning_rate * p.to_forget
 
             # ! retain
-            p.grad[p.grad.sign() != p.to_forget.sign()] *= retain_consistency
+            # p.grad[p.grad.sign() != p.to_forget.sign()] *= retain_consistency
             p.data -= retaining_rate * p.grad
 
             # if step == config.unlearn_steps:

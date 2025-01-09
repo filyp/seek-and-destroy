@@ -25,8 +25,8 @@ from utils.plots_and_stats import plot_slice_layout
 from utils.training import *
 
 config = SimpleNamespace(
-    # method_name="seek_and_destroy",
-    method_name="seek_and_destroy_global_thresh",
+    method_name="seek_and_destroy",
+    # method_name="seek_and_destroy_global_thresh",
     # method_name="negative_entropy",
     # Model/data configs
     model_id="EleutherAI/pythia-14m",
@@ -99,7 +99,7 @@ study = run_study(
     objective,
     config,
     __file__,
-    f"{config.unlearn_steps},{relearn_config.relearn_steps},{config.method_name},{config.forget_set_name}",
+    f"{config.unlearn_steps},{relearn_config.relearn_steps},{config.method_name},{config.forget_set_name},no_retain_consistency,no_pos_grad_discard",
     delete_existing=False,
     load_if_exists=True,
 )

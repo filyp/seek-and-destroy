@@ -17,7 +17,9 @@ def plot_slice_layout(study):
     slice_fig = vis.plot_slice(study, target_name="Final forget loss")
     slice_fig.update_layout(**layout)
 
-    file_name = repo_root() / "results" / f"slice_layout.png"
+    dir_name = repo_root() / "results" / f"slice_layout"
+    dir_name.mkdir(parents=True, exist_ok=True)
+    file_name = dir_name / f"{study.study_name}.png"
     slice_fig.write_image(file_name)
     return slice_fig
 
