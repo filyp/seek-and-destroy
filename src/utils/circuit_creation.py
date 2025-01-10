@@ -32,9 +32,9 @@ def filter_and_normalize_circuit(circuit, target_modules):
     return circuit
 
 
-def get_circuit(config, batches, num_steps=1000):
+def get_circuit(config, batches, num_steps=1000, cache=True):
     circuit_path = _get_circuit_path(config, "")
-    if circuit_path.exists():
+    if circuit_path.exists() and cache:
         return pt.load(circuit_path, weights_only=True)
 
     model = AutoModelForCausalLM.from_pretrained(config.model_id)
@@ -54,13 +54,23 @@ def get_circuit(config, batches, num_steps=1000):
     return circuit
 
 
-def get_circuit_with_fading_backprop(config, batches, num_steps=1000):
-    circuit_path = _get_circuit_path(config, "fading_backprop")
-    if circuit_path.exists():
+def get_circuit_with_fading_backprop(
+    config, batches, num_steps=1000, scale=0.9, cache=True
+):
+    circuit_path = _get_circuit_path(config, f"fading_backprop_{scale}")
+    if circuit_path.exists() and cache:
         return pt.load(circuit_path, weights_only=True)
 
     model = AutoModelForCausalLM.from_pretrained(config.model_id)
     loss_fn = loss_fns[config.loss_fn_name]
+
+    def scale_grad(module, grad_input, grad_output):
+        return (grad_input[0] * scale,)
+
+    for name, module in model.named_modules():
+        if name.endswith(".mlp"):
+            # module._backward_hooks.clear()
+            module.register_full_backward_hook(scale_grad)
 
     # accumulate grads
     model.zero_grad(set_to_none=True)
@@ -97,7 +107,6 @@ def get_circuit_with_fading_backprop(config, batches, num_steps=1000):
 
 #     for name, module in model.named_modules():
 #         if "mlp.dense_4h_to_h" in name:
-#             module._backward_hooks.clear()
 #             module.register_full_backward_hook(save_misaligning_grad)
 #             module.weight.misaligning = pt.zeros_like(module.weight)
 

@@ -31,13 +31,14 @@ def unlearning_func(
         # target_modules = ["dense_h_to_4h", "dense_4h_to_h", "dense"]
         # target_modules = ["dense"]
         # target_modules = ["dense_4h_to_h"]
-        # target_modules = ["dense_h_to_4h"]
-        target_modules = ["dense_h_to_4h", "dense_4h_to_h"]
+        target_modules = ["dense_h_to_4h"]
+        # target_modules = ["dense_h_to_4h", "dense_4h_to_h"]
     else:
         raise NotImplementedError(f"Model {config.model_id} not supported")
 
     # get params to intervene on and initialize disruption scores
-    circuit = get_circuit(config, forget_batches)
+    # circuit = get_circuit(config, forget_batches)
+    circuit = get_circuit_with_fading_backprop(config, forget_batches, scale=0.9)
     circuit = filter_and_normalize_circuit(circuit, target_modules)
 
     interven_params = []
