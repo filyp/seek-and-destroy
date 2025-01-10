@@ -28,6 +28,7 @@ config = SimpleNamespace(
     method_name="seek_and_destroy",
     # method_name="seek_and_destroy_global_thresh",
     # method_name="negative_entropy",
+    loss_fn_name="correct_logit",
     # Model/data configs
     model_id="EleutherAI/pythia-14m",
     retain_set_name="wikitext",
