@@ -12,7 +12,7 @@ def looping_iter(iterable):
 
 
 def get_batch(iter, n):
-    return pt.cat([next(iter)["input_ids"] for _ in range(n)])
+    return {'input_ids': pt.cat([next(iter)["input_ids"] for _ in range(n)]), 'attention_mask': pt.cat([next(iter)["attention_mask"] for _ in range(n)])}
 
 
 def prepare_dataset(raw_dataset, tokenizer, preprocess_fn=lambda ex: {}):
@@ -20,15 +20,19 @@ def prepare_dataset(raw_dataset, tokenizer, preprocess_fn=lambda ex: {}):
     context_len = 100
 
     # split into 4 quarters
-    half1, half2 = raw_dataset.train_test_split(test_size=0.5, seed=42).values()
-    quarter3, quarter4 = half2.train_test_split(test_size=0.5, seed=42).values()
+    half1, half2 = raw_dataset.train_test_split(
+        test_size=0.5, seed=42).values()
+    quarter3, quarter4 = half2.train_test_split(
+        test_size=0.5, seed=42).values()
 
     dataset = (
         # define splits; make it iterable so that it can be processed on demand
         IterableDatasetDict(
             train=IterableDataset.from_generator(lambda: (ex for ex in half1)),
-            validation=IterableDataset.from_generator(lambda: (ex for ex in quarter3)),
-            test=IterableDataset.from_generator(lambda: (ex for ex in quarter4)),
+            validation=IterableDataset.from_generator(
+                lambda: (ex for ex in quarter3)),
+            test=IterableDataset.from_generator(
+                lambda: (ex for ex in quarter4)),
         ).map(preprocess_fn)
         # tokenize
         .map(
@@ -43,7 +47,8 @@ def prepare_dataset(raw_dataset, tokenizer, preprocess_fn=lambda ex: {}):
         # this together with truncation ensures that each example has exactly 100 tokens
         .filter(lambda ex: ex["input_ids"].shape[-1] >= context_len)
     )
-    assert next(iter(dataset["test"]))["text"] != next(iter(dataset["train"]))["text"]
+    assert next(iter(dataset["test"]))["text"] != next(
+        iter(dataset["train"]))["text"]
     return dataset
 
 
@@ -65,7 +70,8 @@ def load_one_oscar_shard(lang, tokenizer):
 def load_wikitext(tokenizer):
     return prepare_dataset(
         # train split is big enough so just use it - it's simpler
-        load_dataset("Salesforce/wikitext", "wikitext-103-raw-v1", split="train"),
+        load_dataset("Salesforce/wikitext",
+                     "wikitext-103-raw-v1", split="train"),
         tokenizer,
     )
 
@@ -131,15 +137,18 @@ dataset_loaders = dict(
 
 
 class CachedBatches:
-    def __init__(self, base_iter, batch_size):
+    def __init__(self, base_iter, batch_size, attention_mask=False):
         assert isinstance(base_iter, IterableDataset)
         self.base_iter = looping_iter(base_iter)
         self.batch_size = batch_size
         self.cache = []
+        self.attention_mask = attention_mask
 
     def __iter__(self):
         yield from self.cache
         while True:
-            new_item = get_batch(self.base_iter, self.batch_size)
-            self.cache.append(new_item)
-            yield new_item
+            batch = get_batch(self.base_iter, self.batch_size)
+            self.cache.append(batch)
+            if self.attention_mask == True:
+                yield {'input_ids': batch['input_ids'], 'attention_mask': batch['attention_mask']}
+            yield batch['input_ids']
