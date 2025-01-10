@@ -31,6 +31,7 @@ def filter_and_normalize_circuit(circuit, target_modules):
         param *= wanted_total_norm / total_norm
     return circuit
 
+
 def get_circuit(config, batches, num_steps=1000):
     circuit_path = _get_circuit_path(config, "")
     if circuit_path.exists():
@@ -54,7 +55,7 @@ def get_circuit(config, batches, num_steps=1000):
 
 
 def get_misaligning(config, batches, num_steps=1000):
-    circuit_path = _get_circuit_path(config, "misalign5")
+    circuit_path = _get_circuit_path(config, "misalign")
     if circuit_path.exists():
         return pt.load(circuit_path, weights_only=True)
 
@@ -65,24 +66,17 @@ def get_misaligning(config, batches, num_steps=1000):
     model.gpt_neox.embed_in.requires_grad_(True)
 
     def save_misaligning_grad(module, grad_input, grad_output):
-        assert module.activation.shape == grad_input[0].shape
-        # contrib = module.activation * grad_input[0]
-        contrib = module.activation
-        # clip the neuron grad to positive values,
-        # because we don't want to disturb the neurons which are hurt the forget task
-        # contrib[contrib < 0] = 0
-        # norm_grad = grad_output[0] / (pt.norm(grad_output[0], dim=-1, keepdim=True) + 1e-10)
-        misaligning = pt.einsum("bth,btr->rh", contrib, grad_output[0])
+        alignment = grad_input[0]
+        # normalize by grad norm, so that we depend on it linearly, not quadratically
+        grad_norm = pt.norm(grad_output[0], dim=-1, keepdim=True)
+        alignment = alignment / (grad_norm + 1e-10)
+        misaligning = pt.einsum("bth,btr->rh", alignment, grad_output[0])
         module.weight.misaligning += misaligning
-
-    def save_activation(module, input_, output):
-        module.activation = input_[0]
 
     for name, module in model.named_modules():
         if "mlp.dense_4h_to_h" in name:
             module._backward_hooks.clear()
             module.register_full_backward_hook(save_misaligning_grad)
-            module.register_forward_hook(save_activation)
             module.weight.misaligning = pt.zeros_like(module.weight)
 
     batch_iter = iter(batches)

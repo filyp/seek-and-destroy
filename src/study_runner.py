@@ -28,7 +28,8 @@ config = SimpleNamespace(
     method_name="seek_and_destroy",
     # method_name="seek_and_destroy_global_thresh",
     # method_name="negative_entropy",
-    loss_fn_name="correct_logit",
+    # loss_fn_name="correct_logit",
+    loss_fn_name="neg_cross_entropy",
     # Model/data configs
     model_id="EleutherAI/pythia-14m",
     retain_set_name="wikitext",
@@ -100,7 +101,7 @@ study = run_study(
     objective,
     config,
     __file__,
-    f"{config.unlearn_steps},{relearn_config.relearn_steps},{config.method_name},{config.forget_set_name},mlp_v_misalignment5,sanity_check",
+    f"{config.unlearn_steps},{relearn_config.relearn_steps},{config.method_name},{config.forget_set_name},mlp_v,pos_grad0,normal_loss,misalign_grad_crossfaded",
     delete_existing=True,
     load_if_exists=False,
 )
