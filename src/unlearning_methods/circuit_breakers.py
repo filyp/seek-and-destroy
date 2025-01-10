@@ -38,9 +38,9 @@ def compute_loss(step, model, forget_inputs, retain_inputs, target_layers, alpha
 
     # Those are pretty much arbitrary, the important thing is that retain_coeff increases as the training progresses and circuit_breaker_coeff decreases.
 
-    retain_coeff = alpha * (step / (2 * 1 + config.unlearn_steps))
+    retain_coeff = alpha * (step / (1 + 2 * config.unlearn_steps))
     circuit_breaker_coeff = alpha * \
-        (1 - (step / (2 * 1 + config.unlearn_steps)))
+        (1 - (step / (1 + 2 * config.unlearn_steps)))
 
     print(
         f"retain_coeff: {retain_coeff:.4f} || circuit_breaker_coeff: {circuit_breaker_coeff:.4f}")
