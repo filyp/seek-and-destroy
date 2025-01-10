@@ -54,43 +54,65 @@ def get_circuit(config, batches, num_steps=1000):
     return circuit
 
 
-def get_misaligning(config, batches, num_steps=1000):
-    circuit_path = _get_circuit_path(config, "misalign")
+def get_circuit_with_fading_backprop(config, batches, num_steps=1000):
+    circuit_path = _get_circuit_path(config, "fading_backprop")
     if circuit_path.exists():
         return pt.load(circuit_path, weights_only=True)
 
     model = AutoModelForCausalLM.from_pretrained(config.model_id)
     loss_fn = loss_fns[config.loss_fn_name]
-    model.requires_grad_(False)
-    # this is needed to backpropagate despite not requiring grads
-    model.gpt_neox.embed_in.requires_grad_(True)
 
-    def save_misaligning_grad(module, grad_input, grad_output):
-        alignment = grad_input[0]
-        # normalize by grad norm, so that we depend on it linearly, not quadratically
-        grad_norm = pt.norm(grad_output[0], dim=-1, keepdim=True)
-        alignment = alignment / (grad_norm + 1e-10)
-        misaligning = pt.einsum("bth,btr->rh", alignment, grad_output[0])
-        module.weight.misaligning += misaligning
-
-    for name, module in model.named_modules():
-        if "mlp.dense_4h_to_h" in name:
-            module._backward_hooks.clear()
-            module.register_full_backward_hook(save_misaligning_grad)
-            module.weight.misaligning = pt.zeros_like(module.weight)
-
+    # accumulate grads
+    model.zero_grad(set_to_none=True)
     batch_iter = iter(batches)
     for _ in tqdm(range(num_steps)):
         input_ids = next(batch_iter)
         loss = loss_fn(model(input_ids), input_ids)
         loss.backward()
-
-    circuit = {
-        name: param.misaligning
-        for name, param in model.named_parameters()
-        if hasattr(param, "misaligning")
-    }
+    circuit = {name: param.grad for name, param in model.named_parameters()}
 
     # save circuit
     pt.save(circuit, circuit_path)
     return circuit
+
+
+# def get_misaligning(config, batches, num_steps=1000):
+#     circuit_path = _get_circuit_path(config, "misalign")
+#     if circuit_path.exists():
+#         return pt.load(circuit_path, weights_only=True)
+
+#     model = AutoModelForCausalLM.from_pretrained(config.model_id)
+#     loss_fn = loss_fns[config.loss_fn_name]
+#     model.requires_grad_(False)
+#     # this is needed to backpropagate despite not requiring grads
+#     model.gpt_neox.embed_in.requires_grad_(True)
+
+#     def save_misaligning_grad(module, grad_input, grad_output):
+#         alignment = grad_input[0]
+#         # normalize by grad norm, so that we depend on it linearly, not quadratically
+#         grad_norm = pt.norm(grad_output[0], dim=-1, keepdim=True)
+#         alignment = alignment / (grad_norm + 1e-10)
+#         misaligning = pt.einsum("bth,btr->rh", alignment, grad_output[0])
+#         module.weight.misaligning += misaligning
+
+#     for name, module in model.named_modules():
+#         if "mlp.dense_4h_to_h" in name:
+#             module._backward_hooks.clear()
+#             module.register_full_backward_hook(save_misaligning_grad)
+#             module.weight.misaligning = pt.zeros_like(module.weight)
+
+#     batch_iter = iter(batches)
+#     for _ in tqdm(range(num_steps)):
+#         input_ids = next(batch_iter)
+#         loss = loss_fn(model(input_ids), input_ids)
+#         loss.backward()
+
+#     circuit = {
+#         name: param.misaligning
+#         for name, param in model.named_parameters()
+#         if hasattr(param, "misaligning")
+#     }
+
+#     # save circuit
+#     pt.save(circuit, circuit_path)
+#     return circuit

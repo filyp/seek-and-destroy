@@ -22,8 +22,6 @@ def unlearning_func(
     disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.8, 1.0)
     pos_grad_discard = 0  # trial.suggest_float("pos_grad_discard", 0, 1)
     # retain_consistency = trial.suggest_float("retain_consistency", 0, 1)
-    circ_crossfade = trial.suggest_float("circ_crossfade", 0, 1)
-    circ2_sign = trial.suggest_categorical("circ2_sign", [-1, 1])
     logging.info(f"trial {trial.number} - {trial.params}")
 
     model = AutoModelForCausalLM.from_pretrained(config.model_id)
@@ -32,25 +30,22 @@ def unlearning_func(
     if "pythia" in config.model_id:
         # target_modules = ["dense_h_to_4h", "dense_4h_to_h", "dense"]
         # target_modules = ["dense"]
-        target_modules = ["dense_4h_to_h"]
+        # target_modules = ["dense_4h_to_h"]
         # target_modules = ["dense_h_to_4h"]
-        # target_modules = ["dense_h_to_4h", "dense_4h_to_h"]
+        target_modules = ["dense_h_to_4h", "dense_4h_to_h"]
     else:
         raise NotImplementedError(f"Model {config.model_id} not supported")
 
     # get params to intervene on and initialize disruption scores
     circuit = get_circuit(config, forget_batches)
     circuit = filter_and_normalize_circuit(circuit, target_modules)
-    circuit2 = get_misaligning(config, forget_batches)
-    circuit2 = filter_and_normalize_circuit(circuit2, target_modules)
 
     interven_params = []
     for name, p in model.named_parameters():
         if any(f"{m}.weight" in name for m in target_modules):
             interven_params.append(p)
             p.disruption_score = pt.zeros_like(p.data)
-            p.to_forget = circuit[name] * circ_crossfade
-            p.to_forget += circuit2[name] * (1 - circ_crossfade) * circ2_sign
+            p.to_forget = circuit[name]
             p.param_name = name
     del circuit
 
@@ -78,7 +73,6 @@ def unlearning_func(
 
         for p in interven_params:
             grad = p.grad.clone().detach()
-            # todo at some point enable it back
             grad[p.to_forget.sign() == p.grad.sign()] *= pos_grad_discard
             p.disruption_score *= disruption_score_decay
             p.disruption_score += grad
