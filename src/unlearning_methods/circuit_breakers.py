@@ -14,10 +14,8 @@ def compute_loss(
 ):
 
     # # === retain ===
-    # retain_input_ids = retain_inputs.get(f"input_ids")
     retain_attention_mask = pt.ones_like(retain_inputs)
     # # ==== cb ====
-    # forget_input_ids = forget_inputs.get(f"input_ids")
     forget_attention_mask = pt.ones_like(forget_inputs)
 
     assert forget_attention_mask.shape == retain_attention_mask.shape
@@ -38,8 +36,6 @@ def compute_loss(
 
     retain_coeff = alpha * (step / (2 * config.unlearn_steps))
     forget_coeff = alpha * (1 - (step / (2 * config.unlearn_steps)))
-
-    # print(f"retain_coeff: {retain_coeff:.4f} || forget_coeff: {forget_coeff:.4f}")
 
     # ===== loss components =====
     layers_forget_attention_mask = forget_attention_mask.repeat(
@@ -103,8 +99,6 @@ def compute_loss(
         )
 
     loss = retain_coeff * retain_loss + forget_coeff * forget_loss
-    # # log all losses
-    # logging.info(f"retain_loss: {retain_loss:.4f} || forget_loss: {forget_loss:.4f}")
 
     return loss
 
