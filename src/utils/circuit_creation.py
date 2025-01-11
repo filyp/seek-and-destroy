@@ -54,6 +54,60 @@ def get_circuit(config, batches, num_steps=1000, cache=True):
     return circuit
 
 
+def get_circuit_k_dampens_grad(config, batches, num_steps=1000, cache=True):
+    circuit_path = _get_circuit_path(config, "k_dampens_grad")
+    if circuit_path.exists() and cache:
+        return pt.load(circuit_path, weights_only=True)
+
+    model = AutoModelForCausalLM.from_pretrained(config.model_id)
+    loss_fn = loss_fns[config.loss_fn_name]
+    model.requires_grad_(False)
+    # this is needed to backpropagate despite not requiring grads
+    model.gpt_neox.embed_in.requires_grad_(True)
+
+    def save_grad(module, grad_input, grad_output):
+        module.grad_out = grad_output[0]
+        module.grad_in = grad_input[0]
+
+    for l in model.gpt_neox.layers:
+        l._backward_hooks.clear()
+        l.register_full_backward_hook(save_grad)
+        l.post_attention_layernorm._backward_hooks.clear()
+        l.post_attention_layernorm.register_full_backward_hook(save_grad)
+        l.mlp.dense_h_to_4h._backward_hooks.clear()
+        l.mlp.dense_h_to_4h.register_full_backward_hook(save_grad)
+        l.mlp.dense_h_to_4h.weight.circuit = pt.zeros_like(l.mlp.dense_h_to_4h.weight)
+
+    # accumulate
+    batch_iter = iter(batches)
+    for _ in tqdm(range(num_steps)):
+        input_ids = next(batch_iter)
+        loss = loss_fn(model(input_ids), input_ids)
+        loss.backward()
+        for l in model.gpt_neox.layers:
+            # calculate update
+            ln = l.post_attention_layernorm
+            in_ = l.grad_in
+            # this step may be wrong:
+            in_ *= ln.grad_in / ln.grad_out
+            out = l.mlp.dense_h_to_4h.grad_out
+            # replace nan with 0
+            in_ = in_.nan_to_num()
+            update = pt.einsum("bti,bto->oi", in_, out)
+            assert not pt.isnan(update).any()
+            l.mlp.dense_h_to_4h.weight.circuit += update
+
+    circuit = {
+        name: param.circuit
+        for name, param in model.named_parameters()
+        if "mlp.dense_h_to_4h.weight" in name
+    }
+
+    # save circuit
+    pt.save(circuit, circuit_path)
+    return circuit
+
+
 def get_circuit_with_fading_backprop(
     config, batches, num_steps=1000, scale=0.9, cache=True
 ):
@@ -68,7 +122,7 @@ def get_circuit_with_fading_backprop(
         return (grad_input[0] * scale,)
 
     for name, module in model.named_modules():
-        if name.endswith(".mlp"):
+        if name.endswith(".mlp") or name.endswith(".attention"):
             # module._backward_hooks.clear()
             module.register_full_backward_hook(scale_grad)
 

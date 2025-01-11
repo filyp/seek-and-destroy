@@ -30,6 +30,7 @@ config = SimpleNamespace(
     # method_name="negative_entropy",
     # loss_fn_name="correct_logit",
     loss_fn_name="neg_cross_entropy",
+    # loss_fn_name="negative_entropy",
     # Model/data configs
     model_id="EleutherAI/pythia-14m",
     retain_set_name="wikitext",
@@ -101,7 +102,7 @@ study = run_study(
     objective,
     config,
     __file__,
-    f"{config.unlearn_steps},{relearn_config.relearn_steps},{config.method_name},{config.forget_set_name},mlp_k,pos_grad0,normal_loss,fading_backprop_0.2",
+    f"{config.unlearn_steps},{relearn_config.relearn_steps},{config.method_name},{config.forget_set_name},mlp_k,k_dampens_grad",
     delete_existing=True,
     load_if_exists=False,
 )

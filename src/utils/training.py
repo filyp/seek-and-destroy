@@ -78,6 +78,7 @@ loss_fns = dict(
     clipped_correct_logit=clipped_correct_logit_loss,
     correct_logit=correct_logit_loss,
     neg_cross_entropy=neg_cross_entropy_loss,
+    negative_entropy=negative_entropy_loss,
 )
 
 

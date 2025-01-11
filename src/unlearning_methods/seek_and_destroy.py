@@ -20,8 +20,10 @@ def unlearning_func(
     retaining_rate = trial.suggest_float("retaining_rate", 0.0001, 0.001, log=True)
     unlearning_rate = trial.suggest_float("unlearning_rate", 0.0001, 0.0005, log=True)
     disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.8, 1.0)
-    pos_grad_discard = 0  # trial.suggest_float("pos_grad_discard", 0, 1)
+    pos_grad_discard = 0 # trial.suggest_float("pos_grad_discard", 0, 1)
     # retain_consistency = trial.suggest_float("retain_consistency", 0, 1)
+    circ_crossfade = trial.suggest_float("circ_crossfade", 0, 1)
+    circ2_sign = trial.suggest_categorical("circ2_sign", [1, -1])
     logging.info(f"trial {trial.number} - {trial.params}")
 
     model = AutoModelForCausalLM.from_pretrained(config.model_id)
@@ -37,16 +39,18 @@ def unlearning_func(
         raise NotImplementedError(f"Model {config.model_id} not supported")
 
     # get params to intervene on and initialize disruption scores
-    # circuit = get_circuit(config, forget_batches)
-    circuit = get_circuit_with_fading_backprop(config, forget_batches, scale=0.2)
+    circuit = get_circuit(config, forget_batches)
+    circuit2 = get_circuit_k_dampens_grad(config, forget_batches)
     circuit = filter_and_normalize_circuit(circuit, target_modules)
+    circuit2 = filter_and_normalize_circuit(circuit2, target_modules)
 
     interven_params = []
     for name, p in model.named_parameters():
         if any(f"{m}.weight" in name for m in target_modules):
             interven_params.append(p)
             p.disruption_score = pt.zeros_like(p.data)
-            p.to_forget = circuit[name]
+            p.to_forget = circuit[name] * circ_crossfade
+            p.to_forget += circuit2[name] * (1 - circ_crossfade) * circ2_sign
             p.param_name = name
     del circuit
 
