@@ -127,32 +127,21 @@ def unlearning_func(
     logging.info(f"trial {trial.number} - {trial.params}")
 
     model = AutoModelForCausalLM.from_pretrained(config.model_id)
-    num_layers = model.config.num_hidden_layers
 
     # ! parameters
     ret_lora_rank = trial.suggest_int("ret_lora_rank", 4, 16)
     alpha = trial.suggest_float("alpha", 0.1, 2.0)
 
-    # Choose between training on 1/2 or 1/3 of middle layers
-    # todo actually use just some layers
-    use_half = trial.suggest_categorical(
-        "use_half", [True, False]
-    )  # True = 1/2, False = 1/3
-
-    if use_half:
-        num_target_layers = num_layers // 2
-    else:
-        num_target_layers = num_layers // 3
-
-    # Calculate start layer to center the target layers in the middle
-    start_layer = (num_layers - num_target_layers) // 2
-    target_layers = list(range(start_layer, start_layer + num_target_layers))
+    num_layers = model.config.num_hidden_layers
+    target_layers = [num_layers // 2]
 
     # Add LoRA
     ret_lora_config = dict(lora_dropout=0.05, target_modules="all-linear")
 
     ret_lora_c = LoraConfig(r=ret_lora_rank, **ret_lora_config)
     model = get_peft_model(model, ret_lora_c, adapter_name="ret_lora", mixed=True)
+    
+    optimizer = pt.optim.SGD(model.parameters(), lr=1e-3)
 
     retain_iter = iter(retain_batches)
     forget_iter = iter(forget_batches)
@@ -161,11 +150,16 @@ def unlearning_func(
         r_input_ids = next(retain_iter)
         f_input_ids = next(forget_iter)
 
+        model.zero_grad(set_to_none=True)
         loss = compute_loss(
             step, model, f_input_ids, r_input_ids, target_layers, alpha, config
         )
 
         loss.backward()
+        # assert lora is enabled
+        for name, param in model.named_parameters():
+            assert (param.grad is not None) == ("lora" in name), name
+        optimizer.step()
 
         # Evaluation
         if step % 10 == 0:

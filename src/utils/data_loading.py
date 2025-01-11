@@ -12,10 +12,7 @@ def looping_iter(iterable):
 
 
 def get_batch(iter, n):
-    return {
-        "input_ids": pt.cat([next(iter)["input_ids"] for _ in range(n)]),
-        "attention_mask": pt.cat([next(iter)["attention_mask"] for _ in range(n)]),
-    }
+    return pt.cat([next(iter)["input_ids"] for _ in range(n)])
 
 
 def prepare_dataset(raw_dataset, tokenizer, preprocess_fn=lambda ex: {}):
@@ -134,21 +131,15 @@ dataset_loaders = dict(
 
 
 class CachedBatches:
-    def __init__(self, base_iter, batch_size, attention_mask=False):
+    def __init__(self, base_iter, batch_size):
         assert isinstance(base_iter, IterableDataset)
         self.base_iter = looping_iter(base_iter)
         self.batch_size = batch_size
         self.cache = []
-        self.attention_mask = attention_mask
 
     def __iter__(self):
         yield from self.cache
         while True:
-            batch = get_batch(self.base_iter, self.batch_size)
-            self.cache.append(batch)
-            if self.attention_mask == True:
-                yield {
-                    "input_ids": batch["input_ids"],
-                    "attention_mask": batch["attention_mask"],
-                }
-            yield batch["input_ids"]
+            new_item = get_batch(self.base_iter, self.batch_size)
+            self.cache.append(new_item)
+            yield new_item
