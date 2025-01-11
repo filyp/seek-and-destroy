@@ -2,7 +2,7 @@ import logging
 
 import torch as pt
 from peft import LoraConfig, get_peft_model
-from seek_and_destroy import get_circuit
+from seek_and_destroy import get_normal_circuit
 from transformers import AutoModelForCausalLM
 
 from utils.git_and_reproducibility import *
@@ -39,7 +39,7 @@ def unlearning_func(
         raise NotImplementedError(f"Model {config.model_id} not supported")
 
     # get params to intervene on and initialize disruption scores
-    circuit = get_circuit(config.model_id, config.forget_set_name)
+    circuit = get_normal_circuit(config.model_id, config.forget_set_name)
     interven_params = []
     for name, p in model.named_parameters():
         if any(f"{m}.weight" in name for m in target_modules):

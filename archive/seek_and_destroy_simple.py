@@ -4,7 +4,7 @@ import logging
 import torch as pt
 from transformers import AutoModelForCausalLM
 
-from unlearning_methods.seek_and_destroy import get_circuit
+from unlearning_methods.seek_and_destroy import get_normal_circuit
 from utils.model_operations import get_thresh
 from utils.training import cross_entropy_loss, eval_
 
@@ -32,7 +32,7 @@ def unlearning_func(
     # get params to intervene on and initialize disruption scores
     for param in model.parameters():
         param.requires_grad = False
-    circuit = get_circuit(config.model_id, config.forget_set_name, forget_batches)
+    circuit = get_normal_circuit(config.model_id, config.forget_set_name, forget_batches)
     interven_params = []
     for name, p in model.named_parameters():
         if any(f"{m}.weight" in name for m in target_modules):

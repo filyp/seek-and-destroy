@@ -8,13 +8,6 @@ from utils.git_and_reproducibility import repo_root
 from utils.training import loss_fns
 
 
-def _get_circuit_path(config, suffix):
-    circuit_dir = repo_root() / "circuits" / config.model_id.replace("/", "_")
-    circuit_name = f"{config.forget_set_name}_{config.loss_fn_name}_{suffix}.pt"
-    circuit_dir.mkdir(parents=True, exist_ok=True)
-    return circuit_dir / circuit_name
-
-
 def filter_and_normalize_circuit(circuit, target_modules):
     # first filter to keep only the target modules
     circuit = {
@@ -32,36 +25,64 @@ def filter_and_normalize_circuit(circuit, target_modules):
     return circuit
 
 
-def get_circuit(config, batches, num_steps=1000, cache=True):
-    circuit_path = _get_circuit_path(config, "")
-    if circuit_path.exists() and cache:
+def _get_circuit_dir(config):
+    _model_name = config.model_id.replace("/", "_")
+    circuit_dir = repo_root() / "circuits" / _model_name / config.forget_set_name
+    circuit_dir.mkdir(parents=True, exist_ok=True)
+    return circuit_dir
+
+
+def get_circuit(config, batches, circuit_name):
+    circuit_path = _get_circuit_dir(config) / f"{circuit_name}.pt"
+    if circuit_path.exists():
         return pt.load(circuit_path, weights_only=True)
+    logging.info(f"circuit {circuit_name} not found, creating")
 
-    model = AutoModelForCausalLM.from_pretrained(config.model_id)
-    loss_fn = loss_fns[config.loss_fn_name]
-
-    # accumulate grads
-    model.zero_grad(set_to_none=True)
-    batch_iter = iter(batches)
-    for _ in tqdm(range(num_steps)):
-        input_ids = next(batch_iter)
-        loss = loss_fn(model(input_ids), input_ids)
-        loss.backward()
-    circuit = {name: param.grad for name, param in model.named_parameters()}
+    circuit_type, info = circuit_name.split(",", 1)
+    match circuit_type:
+        case "normal":
+            loss_fn_name = info
+            circuit = get_normal_circuit(config, batches, loss_fn_name)
+        case "k_dampens_grad":
+            loss_fn_name = info
+            circuit = get_circuit_k_dampens_grad(config, batches, loss_fn_name)
+        case "fading_backprop":
+            loss_fn_name, scale = info.split(",")
+            scale = float(scale)
+            circuit = get_circuit_with_fading_backprop(
+                config, batches, loss_fn_name, scale
+            )
+        case "grad_misalign":
+            circuit = get_grad_misaligning(config, batches)
+        case _:
+            raise ValueError(f"unknown circuit type {circuit_type}")
 
     # save circuit
     pt.save(circuit, circuit_path)
     return circuit
 
 
-def get_circuit_k_dampens_grad(config, batches, num_steps=1000, cache=True):
+def get_normal_circuit(config, batches, loss_fn_name):
+    model = AutoModelForCausalLM.from_pretrained(config.model_id)
+    loss_fn = loss_fns[loss_fn_name]
+
+    # accumulate grads
+    model.zero_grad(set_to_none=True)
+    batch_iter = iter(batches)
+    for _ in tqdm(range(config.circuit_num_steps)):
+        input_ids = next(batch_iter)
+        loss = loss_fn(model(input_ids), input_ids)
+        loss.backward()
+
+    return {name: param.grad for name, param in model.named_parameters()}
+
+
+def get_circuit_k_dampens_grad(config, batches, loss_fn_name):
     assert "pythia" in config.model_id, "only pythia supported"
-    circuit_path = _get_circuit_path(config, "k_dampens_grad")
-    if circuit_path.exists() and cache:
-        return pt.load(circuit_path, weights_only=True)
 
     model = AutoModelForCausalLM.from_pretrained(config.model_id)
-    loss_fn = loss_fns[config.loss_fn_name]
+    loss_fn = loss_fns[loss_fn_name]
+    # don't require grads for the model
     model.requires_grad_(False)
     # this is needed to backpropagate despite not requiring grads
     model.gpt_neox.embed_in.requires_grad_(True)
@@ -81,7 +102,7 @@ def get_circuit_k_dampens_grad(config, batches, num_steps=1000, cache=True):
 
     # accumulate
     batch_iter = iter(batches)
-    for _ in tqdm(range(num_steps)):
+    for _ in tqdm(range(config.circuit_num_steps)):
         input_ids = next(batch_iter)
         loss = loss_fn(model(input_ids), input_ids)
         loss.backward()
@@ -98,26 +119,16 @@ def get_circuit_k_dampens_grad(config, batches, num_steps=1000, cache=True):
             assert not pt.isnan(update).any()
             l.mlp.dense_h_to_4h.weight.circuit += update
 
-    circuit = {
+    return {
         name: param.circuit
         for name, param in model.named_parameters()
         if "mlp.dense_h_to_4h.weight" in name
     }
 
-    # save circuit
-    pt.save(circuit, circuit_path)
-    return circuit
 
-
-def get_circuit_with_fading_backprop(
-    config, batches, num_steps=1000, scale=0.9, cache=True
-):
-    circuit_path = _get_circuit_path(config, f"fading_backprop_{scale}")
-    if circuit_path.exists() and cache:
-        return pt.load(circuit_path, weights_only=True)
-
+def get_circuit_with_fading_backprop(config, batches, loss_fn_name, scale=0.9):
     model = AutoModelForCausalLM.from_pretrained(config.model_id)
-    loss_fn = loss_fns[config.loss_fn_name]
+    loss_fn = loss_fns[loss_fn_name]
 
     def scale_grad(module, grad_input, grad_output):
         return (grad_input[0] * scale,)
@@ -130,24 +141,17 @@ def get_circuit_with_fading_backprop(
     # accumulate grads
     model.zero_grad(set_to_none=True)
     batch_iter = iter(batches)
-    for _ in tqdm(range(num_steps)):
+    for _ in tqdm(range(config.circuit_num_steps)):
         input_ids = next(batch_iter)
         loss = loss_fn(model(input_ids), input_ids)
         loss.backward()
-    circuit = {name: param.grad for name, param in model.named_parameters()}
-
-    # save circuit
-    pt.save(circuit, circuit_path)
-    return circuit
+    return {name: param.grad for name, param in model.named_parameters()}
 
 
-def get_misaligning(config, batches, num_steps=1000):
-    circuit_path = _get_circuit_path(config, "misalign")
-    if circuit_path.exists():
-        return pt.load(circuit_path, weights_only=True)
-
+def get_grad_misaligning(config, batches):
     model = AutoModelForCausalLM.from_pretrained(config.model_id)
     loss_fn = loss_fns[config.loss_fn_name]
+    # don't require grads for the model
     model.requires_grad_(False)
     # this is needed to backpropagate despite not requiring grads
     model.gpt_neox.embed_in.requires_grad_(True)
@@ -166,17 +170,13 @@ def get_misaligning(config, batches, num_steps=1000):
             module.weight.misaligning = pt.zeros_like(module.weight)
 
     batch_iter = iter(batches)
-    for _ in tqdm(range(num_steps)):
+    for _ in tqdm(range(config.circuit_num_steps)):
         input_ids = next(batch_iter)
         loss = loss_fn(model(input_ids), input_ids)
         loss.backward()
 
-    circuit = {
+    return {
         name: param.misaligning
         for name, param in model.named_parameters()
         if hasattr(param, "misaligning")
     }
-
-    # save circuit
-    pt.save(circuit, circuit_path)
-    return circuit

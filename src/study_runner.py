@@ -24,14 +24,21 @@ from utils.model_operations import relearn
 from utils.plots_and_stats import plot_slice_layout
 from utils.training import *
 
+# %%
+
 config = SimpleNamespace(
     method_name="seek_and_destroy",
-    # method_name="negative_entropy",
+    # loss_fn_name="neg_cross_entropy",
     # loss_fn_name="correct_logit",
-    loss_fn_name="neg_cross_entropy",
     # loss_fn_name="negative_entropy",
-    target_modules = ["dense_4h_to_h"]
-    # target_modules = ["dense_h_to_4h"]
+    # target_modules=["dense_4h_to_h"],
+    target_modules = ["dense_h_to_4h"],
+    circuit_num_steps=1000,
+    circuit_names=[
+        "normal,neg_cross_entropy",
+        "k_dampens_grad,neg_cross_entropy",
+        # "fading_backprop,neg_cross_entropy,0.9",
+    ],
     # ! Model/data configs
     model_id="EleutherAI/pythia-14m",
     retain_set_name="wikitext",
@@ -71,7 +78,6 @@ f_eval = next(iter(forget_val_batches))
 res = eval_(AutoModelForCausalLM.from_pretrained(config.model_id), f_eval, r_eval)
 allowed_f_loss = res["retain_loss"] + 0.1
 
-# %%
 assert config.method_name.replace("_", "").isalpha()
 exec(f"from unlearning_methods.{config.method_name} import unlearning_func")
 
@@ -92,16 +98,13 @@ def objective(trial):
     return forget_loss
 
 
-# %%
-# code = Path(__file__).read_bytes()
-# code_hash = hashlib.sha256(code).hexdigest()[:4]
-
 # assert is_repo_clean()
+_steps = f"{config.unlearn_steps},{relearn_config.relearn_steps}"
 study = run_study(
     objective,
     config,
     __file__,
-    f"{config.unlearn_steps},{relearn_config.relearn_steps},{config.method_name},{config.forget_set_name},mlp_k,misaligning",
+    f"{_steps},{config.forget_set_name},k_dampens_grad_0.8",
     delete_existing=False,
     load_if_exists=False,
 )
@@ -110,7 +113,6 @@ plot_slice_layout(study)
 
 make_sure_optimal_values_are_not_near_range_edges(study)
 
-# %%
 # stats for the last 20 non-pruned trials
 good_trials = [t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]
 values = [t.values[0] for t in good_trials]
