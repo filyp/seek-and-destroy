@@ -15,42 +15,34 @@ def unlearning_func(
     trial, config, retain_batches, forget_batches, f_eval, r_eval, allowed_f_loss
 ):
     # ! parameters
-    f_quantile = trial.suggest_float("f_quantile", 0.4, 1, log=True)
-    r_quantile = trial.suggest_float("r_quantile", 0.1, 0.4, log=True)
-    retaining_rate = trial.suggest_float("retaining_rate", 0.0001, 0.0010, log=True)
-    unlearning_rate = trial.suggest_float("unlearning_rate", 0.0004, 0.0010, log=True)
-    disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.8, 1.0)
+    f_quantile = trial.suggest_float("f_quantile", 0.5, 1, log=True)
+    r_quantile = trial.suggest_float("r_quantile", 0.1, 0.5, log=True)
+    retaining_rate = trial.suggest_float("retaining_rate", 0.0003, 0.0010, log=True)
+    unlearning_rate = trial.suggest_float("unlearning_rate", 0.0003, 0.0010, log=True)
+    disruption_score_decay = 0.9
     pos_grad_discard = 0 # trial.suggest_float("pos_grad_discard", 0, 1)
     # retain_consistency = trial.suggest_float("retain_consistency", 0, 1)
-    circ_crossfade = trial.suggest_float("circ_crossfade", 0.5, 1)
+    # circ_crossfade = trial.suggest_float("circ_crossfade", 0.5, 1)
     logging.info(f"trial {trial.number} - {trial.params}")
 
     model = AutoModelForCausalLM.from_pretrained(config.model_id)
     model.config.use_cache = False
-
-    if "pythia" in config.model_id:
-        # target_modules = ["dense_h_to_4h", "dense_4h_to_h", "dense"]
-        # target_modules = ["dense"]
-        # target_modules = ["dense_4h_to_h"]
-        target_modules = ["dense_h_to_4h"]
-        # target_modules = ["dense_h_to_4h", "dense_4h_to_h"]
-    else:
-        raise NotImplementedError(f"Model {config.model_id} not supported")
+    target_modules = config.target_modules
 
     # get params to intervene on and initialize disruption scores
     circuit = get_circuit(config, forget_batches)
     # circuit2 = get_circuit_k_dampens_grad(config, forget_batches)
-    circuit2 = get_misaligning(config, forget_batches)
+    # circuit2 = get_misaligning(config, forget_batches)
     circuit = filter_and_normalize_circuit(circuit, target_modules)
-    circuit2 = filter_and_normalize_circuit(circuit2, target_modules)
+    # circuit2 = filter_and_normalize_circuit(circuit2, target_modules)
 
     interven_params = []
     for name, p in model.named_parameters():
         if any(f"{m}.weight" in name for m in target_modules):
             interven_params.append(p)
             p.disruption_score = pt.zeros_like(p.data)
-            p.to_forget = circuit[name] * circ_crossfade
-            p.to_forget += circuit2[name] * (1 - circ_crossfade)
+            p.to_forget = circuit[name]
+            # p.to_forget += circuit2[name] * (1 - circ_crossfade)
             p.param_name = name
     del circuit
 

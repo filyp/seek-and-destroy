@@ -55,6 +55,7 @@ def get_circuit(config, batches, num_steps=1000, cache=True):
 
 
 def get_circuit_k_dampens_grad(config, batches, num_steps=1000, cache=True):
+    assert "pythia" in config.model_id, "only pythia supported"
     circuit_path = _get_circuit_path(config, "k_dampens_grad")
     if circuit_path.exists() and cache:
         return pt.load(circuit_path, weights_only=True)

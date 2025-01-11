@@ -26,24 +26,23 @@ from utils.training import *
 
 config = SimpleNamespace(
     method_name="seek_and_destroy",
-    # method_name="seek_and_destroy_global_thresh",
     # method_name="negative_entropy",
     # loss_fn_name="correct_logit",
     loss_fn_name="neg_cross_entropy",
     # loss_fn_name="negative_entropy",
-    # Model/data configs
+    target_modules = ["dense_4h_to_h"]
+    # target_modules = ["dense_h_to_4h"]
+    # ! Model/data configs
     model_id="EleutherAI/pythia-14m",
     retain_set_name="wikitext",
     forget_set_name="python",
-    # retain_set_name="beaver_safe",
-    # forget_set_name="cruelty",
-    # Training constants
-    unlearn_steps=400,
+    # ! Training constants
+    unlearn_steps=100,
     batch_size=16,
     n_trials=100,
 )
 relearn_config = SimpleNamespace(
-    relearn_steps=400,
+    relearn_steps=300,
     relearn_lr=3e-4,
     relearn_lora_conf=dict(target_modules="all-linear"),
 )
