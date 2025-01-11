@@ -38,12 +38,12 @@ config = SimpleNamespace(
     # retain_set_name="beaver_safe",
     # forget_set_name="cruelty",
     # Training constants
-    unlearn_steps=100,
+    unlearn_steps=400,
     batch_size=16,
     n_trials=100,
 )
 relearn_config = SimpleNamespace(
-    relearn_steps=50,
+    relearn_steps=400,
     relearn_lr=3e-4,
     relearn_lora_conf=dict(target_modules="all-linear"),
 )
@@ -102,8 +102,8 @@ study = run_study(
     objective,
     config,
     __file__,
-    f"{config.unlearn_steps},{relearn_config.relearn_steps},{config.method_name},{config.forget_set_name},mlp_k,k_dampens_grad",
-    delete_existing=True,
+    f"{config.unlearn_steps},{relearn_config.relearn_steps},{config.method_name},{config.forget_set_name},mlp_k,misaligning",
+    delete_existing=False,
     load_if_exists=False,
 )
 
