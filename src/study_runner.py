@@ -101,7 +101,7 @@ study = run_study(
     objective,
     config,
     __file__,
-    f"{config.unlearn_steps},{relearn_config.relearn_steps},{config.method_name},{config.forget_set_name},mlp_k,pos_grad0,normal_loss,fading_backprop_0.9",
+    f"{config.unlearn_steps},{relearn_config.relearn_steps},{config.method_name},{config.forget_set_name},mlp_k,pos_grad0,normal_loss,fading_backprop_0.2",
     delete_existing=True,
     load_if_exists=False,
 )

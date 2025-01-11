@@ -38,7 +38,7 @@ def unlearning_func(
 
     # get params to intervene on and initialize disruption scores
     # circuit = get_circuit(config, forget_batches)
-    circuit = get_circuit_with_fading_backprop(config, forget_batches, scale=0.9)
+    circuit = get_circuit_with_fading_backprop(config, forget_batches, scale=0.2)
     circuit = filter_and_normalize_circuit(circuit, target_modules)
 
     interven_params = []
