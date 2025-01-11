@@ -8,17 +8,6 @@ from transformers import AutoModelForCausalLM
 
 from utils.training import eval_
 
-# B - number of examples in a batch
-# T - number of tokens in a batch
-# Algorithm
-# for t in total_training_steps:
-#   r_input_ids, f_input_ids // sample batches {input_ids:  (B, T), attention_mask: (B, T)}
-#
-#
-#
-#
-#
-
 
 def compute_loss(
     step, model, forget_inputs, retain_inputs, target_layers, alpha, config
@@ -140,7 +129,7 @@ def unlearning_func(
 
     ret_lora_c = LoraConfig(r=ret_lora_rank, **ret_lora_config)
     model = get_peft_model(model, ret_lora_c, adapter_name="ret_lora", mixed=True)
-    
+
     optimizer = pt.optim.SGD(model.parameters(), lr=1e-3)
 
     retain_iter = iter(retain_batches)
