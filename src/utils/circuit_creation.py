@@ -11,7 +11,7 @@ from utils.training import loss_fns
 circuit_num_steps = 1000
 
 
-def filter_and_normalize_circuit(circuit, target_modules):
+def filter_and_normalize_circuit(circuit, target_modules, strength):
     # first filter to keep only the target modules
     circuit = {
         name: param
@@ -24,7 +24,7 @@ def filter_and_normalize_circuit(circuit, target_modules):
     total_norm = sum(p.norm() ** 2 for p in circuit.values()) ** 0.5
     wanted_total_norm = total_numel**0.5
     for param in circuit.values():
-        param *= wanted_total_norm / total_norm
+        param *= strength * wanted_total_norm / total_norm
     return circuit
 
 
@@ -77,10 +77,15 @@ def get_normal_circuit(config, batches, loss_fn_name):
     batch_iter = iter(batches)
     for _ in tqdm(range(circuit_num_steps)):
         input_ids = next(batch_iter)
-        loss = loss_fn(model(input_ids), input_ids)
+        output = model(input_ids, output_hidden_states=True)
+        loss = loss_fn(output, input_ids)
         loss.backward()
 
-    return {name: param.grad for name, param in model.named_parameters()}
+    return {
+        name: param.grad
+        for name, param in model.named_parameters()
+        if param.grad is not None
+    }
 
 
 def get_circuit_with_fading_backprop(config, batches, loss_fn_name, scale=0.9):

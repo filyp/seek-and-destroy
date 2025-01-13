@@ -54,6 +54,14 @@ def neg_cross_entropy_loss(output, input_ids):
     return -cross_entropy_loss(output, input_ids)
 
 
+def stream_activation_loss(output, input_ids):
+    return sum(
+        activation.norm(dim=-1).mean()
+        # last activation is huge for some reason, so ignore it
+        for activation in output.hidden_states[:-1]
+    )
+
+
 # adapted from https://github.com/rishub-tamirisa/tamper-resistance/blob/41b749ca4d9bcb7608c7ead2ca48b0508714af99/modules/objectives.py#L114
 def negative_entropy_loss(output, input_ids) -> pt.Tensor:
     """
@@ -78,6 +86,7 @@ loss_fns = dict(
     clipped_correct_logit=clipped_correct_logit_loss,
     correct_logit=correct_logit_loss,
     neg_cross_entropy=neg_cross_entropy_loss,
+    stream_activation=stream_activation_loss,
     negative_entropy=negative_entropy_loss,
 )
 

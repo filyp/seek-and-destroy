@@ -6,7 +6,7 @@ from transformers import AutoModelForCausalLM
 from utils.circuit_creation import filter_and_normalize_circuit, get_circuit
 from utils.model_operations import get_thresh
 from utils.plots_and_stats import visualize_param
-from utils.training import cross_entropy_loss, eval_, loss_fns
+from utils.training import cross_entropy_loss, eval_, loss_fns, stream_activation_loss
 
 disruption_score_warmup = 20
 
@@ -16,14 +16,13 @@ def unlearning_func(
 ):
     # ! parameters
     f_quantile = 1  # trial.suggest_float("f_quantile", 0.5, 1, log=True)
-    r_quantile = trial.suggest_float("r_quantile", 0.1, 0.5, log=True)
+    r_quantile = 1  # trial.suggest_float("r_quantile", 0.1, 0.5, log=True)
     # retaining_rate = trial.suggest_float("retaining_rate", 0.0003, 0.0010, log=True)
     retaining_rate = 0.0005
     unlearning_rate = trial.suggest_float("unlearning_rate", 0.0003, 0.0010, log=True)
     disruption_score_decay = 0.9
     pos_grad_discard = 0  # trial.suggest_float("pos_grad_discard", 0, 1)
-    # retain_consistency = trial.suggest_float("retain_consistency", 0, 1)
-    circ_crossfade = 0.7  # trial.suggest_float("circ_crossfade", 0.5, 1)
+    cont_lr = trial.suggest_float("cont_lr", 0.0001, 0.01, log=True)
     logging.info(f"trial {trial.number} - {trial.params}")
 
     model = AutoModelForCausalLM.from_pretrained(config.model_id)
@@ -35,19 +34,17 @@ def unlearning_func(
         filter_and_normalize_circuit(
             get_circuit(config, forget_batches, circuit_name),
             target_modules,
+            strength,
         )
-        for circuit_name in config.circuit_names
+        for circuit_name, strength in config.circuit_names
     ]
-    assert len(circuits) <= 2  # for now
     # get params to intervene on and initialize disruption scores
     interven_params = []
     for name, p in model.named_parameters():
         if any(f"{m}.weight" in name for m in target_modules):
             interven_params.append(p)
             p.disruption_score = pt.zeros_like(p.data)
-            p.to_forget = circuits[0][name] * circ_crossfade
-            if len(circuits) > 1 and name in circuits[1]:
-                p.to_forget += circuits[1][name] * (1 - circ_crossfade)
+            p.to_forget = sum(circuit[name] for circuit in circuits if name in circuit)
             p.param_name = name
     del circuits
 
@@ -60,9 +57,12 @@ def unlearning_func(
     for param in interven_params:
         param.requires_grad = True
 
+    optimizer = pt.optim.SGD(interven_params, lr=cont_lr)
+
     # ! unlearning loop
     logging.info("step      base_f      base_r")
     retain_iter = iter(retain_batches)
+    forget_iter = iter(forget_batches)
     for step in range(1, 1 + config.unlearn_steps):
         model.train()
         r_input_ids = next(retain_iter)
@@ -79,9 +79,20 @@ def unlearning_func(
             p.disruption_score *= disruption_score_decay
             p.disruption_score += grad
 
+            # ! retain
+            p.data -= retaining_rate * p.grad
+
         # Skip during warmup
         if step <= disruption_score_warmup:
             continue
+
+        # ! continuous unlearning
+        model.zero_grad(set_to_none=True)
+        f_input_ids = next(forget_iter)
+        output = model(f_input_ids, output_hidden_states=True)
+        loss = stream_activation_loss(output, f_input_ids)
+        loss.backward()
+        optimizer.step()
 
         # Unlearning step with two-stage masking
         for p in interven_params:
@@ -96,10 +107,6 @@ def unlearning_func(
 
             # ! unlearn
             p.data -= mask * unlearning_rate * p.to_forget
-
-            # ! retain
-            # p.grad[p.grad.sign() != p.to_forget.sign()] *= retain_consistency
-            p.data -= retaining_rate * p.grad
 
             # if step == config.unlearn_steps:
             #     visualize_param(p, mask, p.param_name)

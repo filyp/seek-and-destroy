@@ -33,7 +33,7 @@ config = SimpleNamespace(
     circuit_names=[
         "normal,neg_cross_entropy",
         # "grad_misalign,only_pos",
-        "k_dampens_grad,",
+        # "k_dampens_grad,",
         # "k_dampens_grad_mlp_local,",
         # "k_dampens_grad_neuron_local,",
         # "fading_backprop,neg_cross_entropy,0.6",
@@ -45,7 +45,7 @@ config = SimpleNamespace(
     # ! Training constants
     unlearn_steps=100,
     batch_size=16,
-    n_trials=50,
+    n_trials=100,
 )
 relearn_config = SimpleNamespace(
     relearn_steps=400,
@@ -103,8 +103,7 @@ study = run_study(
     objective,
     config,
     __file__,
-    f"{_steps},{config.forget_set_name},{config.circuit_names[1]},crossfade_0.7",
-    # f"{_steps},{config.forget_set_name},k",
+    f"{_steps},{config.forget_set_name},contunual_stream_deact",
     delete_existing=False,
     load_if_exists=False,
 )
