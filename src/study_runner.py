@@ -31,7 +31,7 @@ config = SimpleNamespace(
     # target_modules=["dense_4h_to_h"],
     target_modules=["dense_h_to_4h"],
     circuit_names=[
-        "normal,neg_cross_entropy",
+        ("normal,neg_cross_entropy", 1),
         # "grad_misalign,only_pos",
         # "k_dampens_grad,",
         # "k_dampens_grad_mlp_local,",
@@ -45,7 +45,7 @@ config = SimpleNamespace(
     # ! Training constants
     unlearn_steps=100,
     batch_size=16,
-    n_trials=100,
+    n_trials=50,
 )
 relearn_config = SimpleNamespace(
     relearn_steps=400,
@@ -103,8 +103,8 @@ study = run_study(
     objective,
     config,
     __file__,
-    f"{_steps},{config.forget_set_name},contunual_stream_deact",
-    delete_existing=False,
+    f"{_steps},{config.forget_set_name},no_contunual_stream_deact2",
+    delete_existing=True,
     load_if_exists=False,
 )
 

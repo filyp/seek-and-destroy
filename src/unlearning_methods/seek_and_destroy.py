@@ -16,13 +16,15 @@ def unlearning_func(
 ):
     # ! parameters
     f_quantile = 1  # trial.suggest_float("f_quantile", 0.5, 1, log=True)
+    # todo revert r_quantile later
     r_quantile = 1  # trial.suggest_float("r_quantile", 0.1, 0.5, log=True)
     # retaining_rate = trial.suggest_float("retaining_rate", 0.0003, 0.0010, log=True)
     retaining_rate = 0.0005
-    unlearning_rate = trial.suggest_float("unlearning_rate", 0.0003, 0.0010, log=True)
+    # unlearning_rate = trial.suggest_float("unlearning_rate", 0.0001, 0.0010, log=True)
+    unlearning_rate = trial.suggest_float("unlearning_rate", 2.5e-5, 3.5e-5, log=True)
     disruption_score_decay = 0.9
     pos_grad_discard = 0  # trial.suggest_float("pos_grad_discard", 0, 1)
-    cont_lr = trial.suggest_float("cont_lr", 0.0001, 0.01, log=True)
+    cont_lr = trial.suggest_float("cont_lr", 0.001, 0.005, log=True)
     logging.info(f"trial {trial.number} - {trial.params}")
 
     model = AutoModelForCausalLM.from_pretrained(config.model_id)

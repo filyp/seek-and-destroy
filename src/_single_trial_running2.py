@@ -57,11 +57,11 @@ exec(f"from unlearning_methods.{config.method_name} import unlearning_func")
 
 # %%
 config.__dict__.update(
-    target_modules=["dense_4h_to_h"],
-    # target_modules=["dense_h_to_4h"],
+    # target_modules=["dense_4h_to_h"],
+    target_modules=["dense_h_to_4h"],
     circuit_names=[
-        ("normal,neg_cross_entropy", 0.9),
-        # ("normal,stream_activation", 0.5),
+        ("normal,neg_cross_entropy", 1),
+        # ("normal,stream_activation", 0.9),
         # ("fading_backprop,neg_cross_entropy,0.5", 1.1),
         # ("normal,neg_cross_entropy", 1),
         # ("k_dampens_grad,", 0.5),
@@ -74,7 +74,7 @@ config.__dict__.update(
     unlearn_steps=100,
 )
 relearn_config = SimpleNamespace(
-    relearn_steps=400,
+    relearn_steps=100,
     relearn_lr=3e-4,
     relearn_lora_conf=dict(target_modules="all-linear"),
 )
@@ -82,15 +82,15 @@ relearn_config = SimpleNamespace(
 
 set_seeds(42)
 params = MockTrial(
-    r_quantile=0.2,
-    unlearning_rate=0.0003,
-    dyn_lr=0.0003 * 5,
+    # r_quantile=0.2,
+    # unlearning_rate=2.5e-5,
+    unlearning_rate=1e-5,
+    # cont_lr=0.003,
+    cont_lr=0,
 )
 model = unlearning_func(
     params, config, retain_batches, forget_batches, f_eval, r_eval, allowed_f_loss
 )
-
-# %%
 
 forget_losses = relearn(model, relearn_config, retain_val_batches, forget_val_batches)
 print(config.circuit_names)
