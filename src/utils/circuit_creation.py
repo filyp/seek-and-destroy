@@ -7,6 +7,9 @@ from transformers import AutoModelForCausalLM
 from utils.git_and_reproducibility import repo_root
 from utils.training import loss_fns
 
+# if you change this value, remember to delete cached circuits
+circuit_num_steps = 1000
+
 
 def filter_and_normalize_circuit(circuit, target_modules):
     # first filter to keep only the target modules
@@ -44,8 +47,11 @@ def get_circuit(config, batches, circuit_name):
             loss_fn_name = info
             circuit = get_normal_circuit(config, batches, loss_fn_name)
         case "k_dampens_grad":
-            loss_fn_name = info
-            circuit = get_circuit_k_dampens_grad(config, batches, loss_fn_name)
+            circuit = get_circuit_k_dampens_grad(config, batches)
+        case "k_dampens_grad_mlp_local":
+            circuit = get_circuit_k_dampens_grad_mlp_local(config, batches)
+        case "k_dampens_grad_neuron_local":
+            circuit = get_circuit_k_dampens_grad_neuron_local(config, batches)
         case "fading_backprop":
             loss_fn_name, scale = info.split(",")
             scale = float(scale)
@@ -69,7 +75,7 @@ def get_normal_circuit(config, batches, loss_fn_name):
     # accumulate grads
     model.zero_grad(set_to_none=True)
     batch_iter = iter(batches)
-    for _ in tqdm(range(config.circuit_num_steps)):
+    for _ in tqdm(range(circuit_num_steps)):
         input_ids = next(batch_iter)
         loss = loss_fn(model(input_ids), input_ids)
         loss.backward()
@@ -77,11 +83,11 @@ def get_normal_circuit(config, batches, loss_fn_name):
     return {name: param.grad for name, param in model.named_parameters()}
 
 
-def get_circuit_k_dampens_grad(config, batches, loss_fn_name):
+def get_circuit_k_dampens_grad(config, batches):
     assert "pythia" in config.model_id, "only pythia supported"
 
     model = AutoModelForCausalLM.from_pretrained(config.model_id)
-    loss_fn = loss_fns[loss_fn_name]
+    loss_fn = loss_fns["neg_cross_entropy"]
     # don't require grads for the model
     model.requires_grad_(False)
     # this is needed to backpropagate despite not requiring grads
@@ -102,7 +108,7 @@ def get_circuit_k_dampens_grad(config, batches, loss_fn_name):
 
     # accumulate
     batch_iter = iter(batches)
-    for _ in tqdm(range(config.circuit_num_steps)):
+    for _ in tqdm(range(circuit_num_steps)):
         input_ids = next(batch_iter)
         loss = loss_fn(model(input_ids), input_ids)
         loss.backward()
@@ -117,6 +123,87 @@ def get_circuit_k_dampens_grad(config, batches, loss_fn_name):
             in_ = in_.nan_to_num()
             update = pt.einsum("bti,bto->oi", in_, out)
             assert not pt.isnan(update).any()
+            l.mlp.dense_h_to_4h.weight.circuit += update
+
+    return {
+        name: param.circuit
+        for name, param in model.named_parameters()
+        if "mlp.dense_h_to_4h.weight" in name
+    }
+
+
+def get_circuit_k_dampens_grad_mlp_local(config, batches):
+    assert "pythia" in config.model_id, "only pythia supported"
+
+    model = AutoModelForCausalLM.from_pretrained(config.model_id)
+    loss_fn = loss_fns["neg_cross_entropy"]
+    # don't require grads for the model
+    model.requires_grad_(False)
+    # this is needed to backpropagate despite not requiring grads
+    model.gpt_neox.embed_in.requires_grad_(True)
+
+    def save_grad(module, grad_input, grad_output):
+        module.grad_out = grad_output[0]
+        module.grad_in = grad_input[0]
+
+    for l in model.gpt_neox.layers:
+        l.mlp.dense_h_to_4h._backward_hooks.clear()
+        l.mlp.dense_h_to_4h.register_full_backward_hook(save_grad)
+        l.mlp.dense_h_to_4h.weight.circuit = pt.zeros_like(l.mlp.dense_h_to_4h.weight)
+
+    # accumulate
+    batch_iter = iter(batches)
+    for _ in tqdm(range(circuit_num_steps)):
+        input_ids = next(batch_iter)
+        loss = loss_fn(model(input_ids), input_ids)
+        loss.backward()
+        for l in model.gpt_neox.layers:
+            # calculate update
+            in_ = l.mlp.dense_h_to_4h.grad_in
+            out = l.mlp.dense_h_to_4h.grad_out
+            update = pt.einsum("bti,bto->oi", in_, out)
+            assert not pt.isnan(update).any()
+            l.mlp.dense_h_to_4h.weight.circuit += update
+
+    return {
+        name: param.circuit
+        for name, param in model.named_parameters()
+        if "mlp.dense_h_to_4h.weight" in name
+    }
+
+
+def get_circuit_k_dampens_grad_neuron_local(config, batches):
+    assert "pythia" in config.model_id, "only pythia supported"
+
+    model = AutoModelForCausalLM.from_pretrained(config.model_id)
+    loss_fn = loss_fns["neg_cross_entropy"]
+    # don't require grads for the model
+    model.requires_grad_(False)
+    # this is needed to backpropagate despite not requiring grads
+    model.gpt_neox.embed_in.requires_grad_(True)
+
+    def save_grad(module, grad_input, grad_output):
+        module.grad_out = grad_output[0]
+        module.grad_in = grad_input[0]
+
+    for l in model.gpt_neox.layers:
+        l.mlp.dense_h_to_4h._backward_hooks.clear()
+        l.mlp.dense_h_to_4h.register_full_backward_hook(save_grad)
+        l.mlp.dense_h_to_4h.weight.circuit = pt.zeros_like(l.mlp.dense_h_to_4h.weight)
+
+    # accumulate
+    batch_iter = iter(batches)
+    for _ in tqdm(range(circuit_num_steps)):
+        input_ids = next(batch_iter)
+        loss = loss_fn(model(input_ids), input_ids)
+        loss.backward()
+        for l in model.gpt_neox.layers:
+            # calculate update
+            out = l.mlp.dense_h_to_4h.grad_out
+            out_avg = out.mean(dim=0).mean(dim=0).reshape(-1, 1)
+            weights = l.mlp.dense_h_to_4h.data
+            assert out_avg.shape[0] == weights.shape[1]
+            update = weights * out_avg
             l.mlp.dense_h_to_4h.weight.circuit += update
 
     return {
@@ -141,7 +228,7 @@ def get_circuit_with_fading_backprop(config, batches, loss_fn_name, scale=0.9):
     # accumulate grads
     model.zero_grad(set_to_none=True)
     batch_iter = iter(batches)
-    for _ in tqdm(range(config.circuit_num_steps)):
+    for _ in tqdm(range(circuit_num_steps)):
         input_ids = next(batch_iter)
         loss = loss_fn(model(input_ids), input_ids)
         loss.backward()
@@ -170,7 +257,7 @@ def get_grad_misaligning(config, batches):
             module.weight.misaligning = pt.zeros_like(module.weight)
 
     batch_iter = iter(batches)
-    for _ in tqdm(range(config.circuit_num_steps)):
+    for _ in tqdm(range(circuit_num_steps)):
         input_ids = next(batch_iter)
         loss = loss_fn(model(input_ids), input_ids)
         loss.backward()

@@ -15,9 +15,10 @@ def unlearning_func(
     trial, config, retain_batches, forget_batches, f_eval, r_eval, allowed_f_loss
 ):
     # ! parameters
-    f_quantile = trial.suggest_float("f_quantile", 0.5, 1, log=True)
+    f_quantile = 1  # trial.suggest_float("f_quantile", 0.5, 1, log=True)
     r_quantile = trial.suggest_float("r_quantile", 0.1, 0.5, log=True)
-    retaining_rate = trial.suggest_float("retaining_rate", 0.0003, 0.0010, log=True)
+    # retaining_rate = trial.suggest_float("retaining_rate", 0.0003, 0.0010, log=True)
+    retaining_rate = 0.0005
     unlearning_rate = trial.suggest_float("unlearning_rate", 0.0003, 0.0010, log=True)
     disruption_score_decay = 0.9
     pos_grad_discard = 0  # trial.suggest_float("pos_grad_discard", 0, 1)

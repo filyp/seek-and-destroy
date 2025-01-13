@@ -28,15 +28,13 @@ from utils.training import *
 
 config = SimpleNamespace(
     method_name="seek_and_destroy",
-    # loss_fn_name="neg_cross_entropy",
-    # loss_fn_name="correct_logit",
-    # loss_fn_name="negative_entropy",
     # target_modules=["dense_4h_to_h"],
     target_modules = ["dense_h_to_4h"],
-    circuit_num_steps=1000,
     circuit_names=[
         "normal,neg_cross_entropy",
-        "k_dampens_grad,neg_cross_entropy",
+        # "k_dampens_grad,",
+        # "k_dampens_grad_mlp_local,",
+        "k_dampens_grad_neuron_local,",
         # "fading_backprop,neg_cross_entropy,0.9",
     ],
     # ! Model/data configs
@@ -46,10 +44,10 @@ config = SimpleNamespace(
     # ! Training constants
     unlearn_steps=100,
     batch_size=16,
-    n_trials=100,
+    n_trials=50,
 )
 relearn_config = SimpleNamespace(
-    relearn_steps=300,
+    relearn_steps=400,
     relearn_lr=3e-4,
     relearn_lora_conf=dict(target_modules="all-linear"),
 )
@@ -104,7 +102,8 @@ study = run_study(
     objective,
     config,
     __file__,
-    f"{_steps},{config.forget_set_name},k_dampens_grad_0.8",
+    f"{_steps},{config.forget_set_name},k_dampens_grad_neuron_local_0.8",
+    # f"{_steps},{config.forget_set_name},k",
     delete_existing=False,
     load_if_exists=False,
 )
@@ -125,3 +124,5 @@ print(f"last 20 mean and std:\n{last_20_mean:.2f} ± {last_20_std:.2f}")
 # sorted_studies = sorted(study_summaries, key=lambda s: s.datetime_start)
 # latest_study = sorted_studies[-1]
 # study = optuna.load_study(study_name=latest_study.study_name, storage=storage)
+
+# %%
