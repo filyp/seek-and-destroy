@@ -23,7 +23,7 @@ def unlearning_func(
     disruption_score_decay = 0.9
     pos_grad_discard = 0  # trial.suggest_float("pos_grad_discard", 0, 1)
     # retain_consistency = trial.suggest_float("retain_consistency", 0, 1)
-    circ_crossfade = 0.8  # trial.suggest_float("circ_crossfade", 0.5, 1)
+    circ_crossfade = 0.7  # trial.suggest_float("circ_crossfade", 0.5, 1)
     logging.info(f"trial {trial.number} - {trial.params}")
 
     model = AutoModelForCausalLM.from_pretrained(config.model_id)

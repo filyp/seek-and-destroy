@@ -164,3 +164,15 @@ def make_sure_optimal_values_are_not_near_range_edges(study):
         if value_log > max_log - 0.1 * (max_log - min_log):
             print(f"WARNING: {param_name} is in the top 10% of the range in best trial")
             print(f"range: {min_} - {max_}, value: {value}")
+
+
+# stats for the last n non-pruned trials
+def get_stats_from_last_n_trials(study, n=10):
+    good_trials = [
+        t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE
+    ]
+    values = [t.values[0] for t in good_trials]
+    last_n_mean = np.mean(values[-n:])
+    last_n_std = np.std(values[-n:])
+    print(f"last {n} mean and std:\n{last_n_mean:.2f} ± {last_n_std:.2f}")
+    return last_n_mean, last_n_std

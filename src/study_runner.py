@@ -29,13 +29,14 @@ from utils.training import *
 config = SimpleNamespace(
     method_name="seek_and_destroy",
     # target_modules=["dense_4h_to_h"],
-    target_modules = ["dense_h_to_4h"],
+    target_modules=["dense_h_to_4h"],
     circuit_names=[
         "normal,neg_cross_entropy",
-        # "k_dampens_grad,",
+        # "grad_misalign,only_pos",
+        "k_dampens_grad,",
         # "k_dampens_grad_mlp_local,",
-        "k_dampens_grad_neuron_local,",
-        # "fading_backprop,neg_cross_entropy,0.9",
+        # "k_dampens_grad_neuron_local,",
+        # "fading_backprop,neg_cross_entropy,0.6",
     ],
     # ! Model/data configs
     model_id="EleutherAI/pythia-14m",
@@ -102,7 +103,7 @@ study = run_study(
     objective,
     config,
     __file__,
-    f"{_steps},{config.forget_set_name},k_dampens_grad_neuron_local_0.8",
+    f"{_steps},{config.forget_set_name},{config.circuit_names[1]},crossfade_0.7",
     # f"{_steps},{config.forget_set_name},k",
     delete_existing=False,
     load_if_exists=False,
@@ -112,17 +113,22 @@ plot_slice_layout(study)
 
 make_sure_optimal_values_are_not_near_range_edges(study)
 
-# stats for the last 20 non-pruned trials
-good_trials = [t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]
-values = [t.values[0] for t in good_trials]
-last_20_mean = np.mean(values[-20:])
-last_20_std = np.std(values[-20:])
-print(f"last 20 mean and std:\n{last_20_mean:.2f} ± {last_20_std:.2f}")
+get_stats_from_last_n_trials(study, n=10)
 
 # storage = get_storage()
 # study_summaries = optuna.study.get_all_study_summaries(storage)
 # sorted_studies = sorted(study_summaries, key=lambda s: s.datetime_start)
 # latest_study = sorted_studies[-1]
 # study = optuna.load_study(study_name=latest_study.study_name, storage=storage)
+
+# storage = get_storage()
+# study_summaries = optuna.study.get_all_study_summaries(storage)
+# sorted_studies = sorted(study_summaries, key=lambda s: s.datetime_start)
+# for study in sorted_studies[-10:]:
+#     study = optuna.load_study(study_name=study.study_name, storage=storage)
+#     print()
+#     print(study.study_name)
+#     get_stats_from_last_n_trials(study, n=20)
+#     get_stats_from_last_n_trials(study, n=10)
 
 # %%
