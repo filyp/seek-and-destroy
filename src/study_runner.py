@@ -19,7 +19,7 @@ import torch as pt
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from utils.data_loading import CachedBatches, dataset_loaders
-from utils.git_and_reproducibility import is_repo_clean
+from utils.git_and_reproducibility import get_last_study, is_repo_clean
 from utils.model_operations import relearn
 from utils.plots_and_stats import plot_slice_layout
 from utils.training import *
@@ -99,37 +99,17 @@ def objective(trial):
 
 # assert is_repo_clean()
 _steps = f"{config.unlearn_steps},{relearn_config.relearn_steps}"
-study = run_study(
-    objective,
-    config,
-    f"{_steps},{config.forget_set_name},pos_grad=1",
-    delete_existing=False,
-    load_if_exists=True,
-)
+try:
+    study = run_study(
+        objective,
+        config,
+        f"{_steps},{config.forget_set_name},pos_grad=1",
+        delete_existing=False,
+        load_if_exists=True,
+    )
+except KeyboardInterrupt:
+    study = get_last_study()
 
 plot_slice_layout(study)
-
 make_sure_optimal_values_are_not_near_range_edges(study)
-
 get_stats_from_last_n_trials(study, n=10)
-
-# %%
-
-# storage = get_storage()
-# study_summaries = optuna.study.get_all_study_summaries(storage)
-# sorted_studies = sorted(study_summaries, key=lambda s: s.datetime_start)
-# latest_study = sorted_studies[-1]
-# study = optuna.load_study(study_name=latest_study.study_name, storage=storage)
-# plot_slice_layout(study)
-
-# %%
-
-# storage = get_storage()
-# study_summaries = optuna.study.get_all_study_summaries(storage)
-# sorted_studies = sorted(study_summaries, key=lambda s: s.datetime_start)
-# for study in sorted_studies[-5:]:
-#     study = optuna.load_study(study_name=study.study_name, storage=storage)
-#     print()
-#     print(study.study_name)
-#     # get_stats_from_last_n_trials(study, n=20)
-#     get_stats_from_last_n_trials(study, n=10)

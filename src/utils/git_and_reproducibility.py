@@ -67,3 +67,11 @@ def get_storage(remote=False):
         path = repo_root() / "db.sqlite3"
         path = os.path.relpath(path, Path.cwd())
         return f"sqlite:///{path}"
+
+
+def get_last_study():
+    storage = get_storage()
+    study_summaries = optuna.study.get_all_study_summaries(storage)
+    sorted_studies = sorted(study_summaries, key=lambda s: s.datetime_start)
+    latest_study = sorted_studies[-1]
+    return optuna.load_study(study_name=latest_study.study_name, storage=storage)
