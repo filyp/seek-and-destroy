@@ -64,7 +64,7 @@ config.__dict__.update(
         # ("normal,stream_activation", 0.9),
         # ("fading_backprop,neg_cross_entropy,0.5", 1.1),
         # ("normal,neg_cross_entropy", 1),
-        ("k_dampens_grad,", 0.5),
+        # ("k_dampens_grad,", 0.5),
         # ("k_dampens_grad_mlp_local,", 0.5),
         # ("k_dampens_grad_neuron_local,", 0.5),
         # ("grad_misalign,", 0.5),
@@ -83,7 +83,7 @@ relearn_config = SimpleNamespace(
 set_seeds(42)
 params = MockTrial(
     r_quantile=0.2,
-    unlearning_rate=1.5e-5,
+    unlearning_rate=5e-4,
     # cont_lr=0.003,
 )
 model = unlearning_func(

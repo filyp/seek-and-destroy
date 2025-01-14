@@ -103,7 +103,7 @@ study = run_study(
     objective,
     config,
     __file__,
-    f"{_steps},{config.forget_set_name},r_mask_flipped_pos_grad0,global_r_threshold",
+    f"{_steps},{config.forget_set_name},r_mask_abs",
     delete_existing=False,
     load_if_exists=False,
 )
