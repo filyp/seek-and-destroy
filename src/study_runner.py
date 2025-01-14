@@ -103,8 +103,8 @@ study = run_study(
     objective,
     config,
     __file__,
-    f"{_steps},{config.forget_set_name},no_contunual_stream_deact2",
-    delete_existing=True,
+    f"{_steps},{config.forget_set_name},no_contunual_stream_deact",
+    delete_existing=False,
     load_if_exists=False,
 )
 
@@ -123,11 +123,11 @@ get_stats_from_last_n_trials(study, n=10)
 # storage = get_storage()
 # study_summaries = optuna.study.get_all_study_summaries(storage)
 # sorted_studies = sorted(study_summaries, key=lambda s: s.datetime_start)
-# for study in sorted_studies[-10:]:
+# for study in sorted_studies[-5:]:
 #     study = optuna.load_study(study_name=study.study_name, storage=storage)
 #     print()
 #     print(study.study_name)
-#     get_stats_from_last_n_trials(study, n=20)
+#     # get_stats_from_last_n_trials(study, n=20)
 #     get_stats_from_last_n_trials(study, n=10)
 
 # %%

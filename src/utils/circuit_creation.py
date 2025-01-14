@@ -11,7 +11,7 @@ from utils.training import loss_fns
 circuit_num_steps = 1000
 
 
-def filter_and_normalize_circuit(circuit, target_modules, strength):
+def filter_and_normalize_circuit(circuit, target_modules):
     # first filter to keep only the target modules
     circuit = {
         name: param
@@ -24,7 +24,7 @@ def filter_and_normalize_circuit(circuit, target_modules, strength):
     total_norm = sum(p.norm() ** 2 for p in circuit.values()) ** 0.5
     wanted_total_norm = total_numel**0.5
     for param in circuit.values():
-        param *= strength * wanted_total_norm / total_norm
+        param *= wanted_total_norm / total_norm
     return circuit
 
 

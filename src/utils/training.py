@@ -56,7 +56,7 @@ def neg_cross_entropy_loss(output, input_ids):
 
 def stream_activation_loss(output, input_ids):
     return sum(
-        activation.norm(dim=-1).mean()
+        activation.norm(dim=-1).mean() ** 2
         # last activation is huge for some reason, so ignore it
         for activation in output.hidden_states[:-1]
     )
