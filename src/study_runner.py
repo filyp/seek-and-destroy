@@ -45,7 +45,7 @@ config = SimpleNamespace(
     # ! Training constants
     unlearn_steps=100,
     batch_size=16,
-    n_trials=100,
+    n_trials=1000,
 )
 relearn_config = SimpleNamespace(
     relearn_steps=100,
@@ -103,9 +103,9 @@ study = run_study(
     objective,
     config,
     __file__,
-    f"{_steps},{config.forget_set_name},r_mask_abs",
+    f"{_steps},{config.forget_set_name},r_mask_granular_asymmetric_nonglobal_FIXED",
     delete_existing=False,
-    load_if_exists=False,
+    load_if_exists=True,
 )
 
 plot_slice_layout(study)

@@ -11,17 +11,57 @@ from utils.training import cross_entropy_loss, eval_, loss_fns, stream_activatio
 disruption_score_warmup = 20
 
 
+def step_with_abs_grad_before_aggregation(model, batch, interven_params, pow_=2):
+    # ! note: if we know the signs of to_forget and know they won't change,
+    # we could optimize this, to only store one disruption score, to save memory
+    def save_input_activation_hook(module, args, output):
+        module.weight.input_activations = args[0]
+
+    def abs_grad_calculate(module, grad_input, grad_output):
+        in_ = module.weight.input_activations
+        in_pos = (in_ * (in_ > 0)).abs() ** pow_
+        in_neg = (in_ * (in_ < 0)).abs() ** pow_
+        out = grad_output[0]
+        out_pos = (out * (out > 0)).abs() ** pow_
+        out_neg = (out * (out < 0)).abs() ** pow_
+        module.weight.disruption_score_pos += pt.einsum("bti,bto->oi", in_pos, out_pos)
+        module.weight.disruption_score_pos += pt.einsum("bti,bto->oi", in_neg, out_neg)
+        module.weight.disruption_score_neg += pt.einsum("bti,bto->oi", in_pos, out_neg)
+        module.weight.disruption_score_neg += pt.einsum("bti,bto->oi", in_neg, out_pos)
+
+    # install hooks
+    handles = []
+    for module in model.modules():
+        # only intervene on the weight of the target modules
+        param = getattr(module, "weight", None)
+        if id(param) in [id(p) for p in interven_params]:
+            handles.append(module.register_full_backward_hook(abs_grad_calculate))
+            handles.append(module.register_forward_hook(save_input_activation_hook))
+
+    model.zero_grad(set_to_none=True)
+    out = model(batch)
+    loss = cross_entropy_loss(out, batch)
+    loss.backward()
+
+    # clean up
+    for h in handles:
+        h.remove()
+    for p in interven_params:
+        p.input_activations = None
+
+
 def unlearning_func(
     trial, config, retain_batches, forget_batches, f_eval, r_eval, allowed_f_loss
 ):
     # ! parameters
-    r_quantile = trial.suggest_float("r_quantile", 0.05, 0.5, log=True)
+    r_quantile = trial.suggest_float("r_quantile", 0.05, 1, log=True)
     # retaining_rate = trial.suggest_float("retaining_rate", 0.0003, 0.0010, log=True)
     retaining_rate = 0.0005
     unlearning_rate = trial.suggest_float("unlearning_rate", 0.00003, 0.001, log=True)
     # unlearning_rate = trial.suggest_float("unlearning_rate", 1e-5, 8e-5, log=True)
-    disruption_score_decay = 0.9
-    # pos_grad_discard = 0  # trial.suggest_float("pos_grad_discard", 0, 1)
+    disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.8, 1)
+    pos_grad_discard = trial.suggest_float("pos_grad_discard", -0.2, 1)
+    grad_pow = trial.suggest_float("grad_pow", 0.8, 2)
     cont_lr = 0  # trial.suggest_float("cont_lr", 0.0001, 0.008, log=True)
     logging.info(f"trial {trial.number} - {trial.params}")
 
@@ -40,7 +80,8 @@ def unlearning_func(
         p.requires_grad = False
     for p in interven_params:
         p.requires_grad = True
-        p.disruption_score = pt.zeros_like(p.data)
+        p.disruption_score_pos = pt.zeros_like(p.data)
+        p.disruption_score_neg = pt.zeros_like(p.data)
         p.to_forget = pt.zeros_like(p.data)
 
     # use several circuits, mixed together; load circuits and construct to_forget
@@ -61,19 +102,25 @@ def unlearning_func(
     for step in range(1, 1 + config.unlearn_steps):
         model.train()
 
-        # ! retain pass
-        model.zero_grad(set_to_none=True)
-        r_input_ids = next(retain_iter)
-        output = model(r_input_ids)
-        loss = cross_entropy_loss(output, r_input_ids)
-        loss.backward()
+        # # ! retain pass
+        # model.zero_grad(set_to_none=True)
+        # r_input_ids = next(retain_iter)
+        # output = model(r_input_ids)
+        # loss = cross_entropy_loss(output, r_input_ids)
+        # loss.backward()
 
-        # ! update disruption scores
+        # # ! update disruption scores
+        # for p in interven_params:
+        #     grad = p.grad.clone().detach()
+        #     # grad[p.to_forget.sign() == p.grad.sign()] *= pos_grad_discard
+        #     p.disruption_score *= disruption_score_decay
+        #     p.disruption_score += grad.abs()
+        step_with_abs_grad_before_aggregation(
+            model, next(retain_iter), interven_params, pow_=grad_pow
+        )
         for p in interven_params:
-            grad = p.grad.clone().detach()
-            # grad[p.to_forget.sign() == p.grad.sign()] *= pos_grad_discard
-            p.disruption_score *= disruption_score_decay
-            p.disruption_score += grad.abs()
+            p.disruption_score_pos *= disruption_score_decay
+            p.disruption_score_neg *= disruption_score_decay
 
         # skip the rest of the loop during warmup
         if step <= disruption_score_warmup:
@@ -91,20 +138,27 @@ def unlearning_func(
         # loss.backward()
         # optimizer.step()
 
-        # calculate r_threshold globally
-        flipped_disrs = (
-            # p.disruption_score * p.to_forget.sign()
-            p.disruption_score
-            for p in interven_params
-        )
-        r_threshold = get_thresh(1 - r_quantile, flipped_disrs)
+        # # calculate r_threshold globally
+        # flipped_disrs = (
+        #     # p.disruption_score * p.to_forget.sign()
+        #     p.disruption_score
+        #     for p in interven_params
+        # )
+        # r_threshold = get_thresh(1 - r_quantile, flipped_disrs)
 
         # Unlearning step with two-stage masking
         for p in interven_params:
-            # r_threshold = get_thresh(r_quantile, [flipped_disr])
             # flipped_disr = p.disruption_score * p.to_forget.sign()
-            # mask = flipped_disr > r_threshold
-            mask = p.disruption_score < r_threshold
+            flipped_disr = (
+                p.disruption_score_pos * (p.to_forget.sign() > 0) * pos_grad_discard
+                + p.disruption_score_neg * (p.to_forget.sign() < 0) * pos_grad_discard
+                - p.disruption_score_pos * (p.to_forget.sign() < 0)
+                - p.disruption_score_neg * (p.to_forget.sign() > 0)
+
+            )
+            r_threshold = get_thresh(r_quantile, [flipped_disr])
+            mask = flipped_disr > r_threshold
+            # mask = p.disruption_score < r_threshold
 
             # ! unlearn
             p.data -= mask * unlearning_rate * p.to_forget
