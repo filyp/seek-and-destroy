@@ -66,13 +66,12 @@ def unlearning_func(
 
     # ! parameters
     retaining_rate = 0.0005
-    disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.7, 1)
-    grad_pow = trial.suggest_float("grad_pow", 0.6, 1.2)
-    pos_grad_discard = trial.suggest_float("pos_grad_discard", 0.8, 1.2)
+    disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.8, 1)
+    grad_pow = trial.suggest_float("grad_pow", 0.0, 1.2)
+    pos_grad_discard = trial.suggest_float("pos_grad_discard", 0.5, 1.2)
     r_quantile = trial.suggest_float("r_quantile", 0.1, 0.5, log=True)
-    unlearning_rate = trial.suggest_float("unlearning_rate", 0.0001, 0.001, log=True)
+    unlearning_rate = trial.suggest_float("unlearning_rate", 0.0001, 0.003, log=True)
     logging.info(f"trial {trial.number} - {trial.params}")
-
 
     model = AutoModelForCausalLM.from_pretrained(config.model_id)
     model.config.use_cache = False
@@ -112,7 +111,6 @@ def unlearning_func(
     for step in range(1, 1 + config.unlearn_steps):
         model.train()
 
-
         # # ! retain pass
         # model.zero_grad(set_to_none=True)
         # r_input_ids = next(retain_iter)
@@ -133,13 +131,9 @@ def unlearning_func(
             p.disruption_score_pos *= disruption_score_decay
             p.disruption_score_neg *= disruption_score_decay
 
-
-
         # skip the rest of the loop during warmup
         if step <= disruption_score_warmup:
             continue
-
-
 
         # ! retain update
         for p in interven_params:
@@ -181,7 +175,9 @@ def unlearning_func(
             p.data -= mask * unlearning_rate * p.to_forget
 
             # if step == config.unlearn_steps:
-            #     visualize_param(p, mask, p.param_name)
+            #     visualize_param(p, p.disruption_score_pos, mask, "pos")
+            #     visualize_param(p, p.disruption_score_neg, mask, "neg")
+            #     visualize_param(p, flipped_disr, mask, "sum")
 
         # ! eval current loss
         if step % 10 == 0:

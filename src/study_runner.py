@@ -106,7 +106,7 @@ study = run_study(
     # f"{_steps},{config.forget_set_name},r_mask_granular_asymmetric_nonglobal_FIXED",
     f"{_steps},{config.forget_set_name},FIXED2_granular_asymmetric_nonglobal",
     delete_existing=False,
-    load_if_exists=False,
+    load_if_exists=True,
 )
 
 plot_slice_layout(study)

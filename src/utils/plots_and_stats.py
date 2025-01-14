@@ -1,3 +1,4 @@
+# %%
 import shutil
 
 import matplotlib.pyplot as plt
@@ -31,9 +32,8 @@ def plot_slice_layout(study):
 # # opt_history_fig.write_image(path)
 
 
-def visualize_param(param, mask, param_name):
-    x = param.to_forget
-    y = param.disruption_score
+def visualize_param(p, y, mask, type_):
+    x = p.to_forget
     c = mask
     # plot a 2d scatter plot
     # first flatten x and y and c and convert to cpy numpy
@@ -52,7 +52,7 @@ def visualize_param(param, mask, param_name):
 
     # label
     plt.xlabel("to_forget")
-    plt.ylabel("disruption_score")
+    plt.ylabel(f"disruption_score_{type_}")
 
     # center at 0, 0
     xmax = max(abs(x))
@@ -64,5 +64,5 @@ def visualize_param(param, mask, param_name):
     # plt.show()
     dir_name = repo_root() / "results" / f"param_toforget_vs_disruption"
     dir_name.mkdir(parents=True, exist_ok=True)
-    file_name = dir_name / f"{param_name}.png"
+    file_name = dir_name / f"{p.param_name}_{type_}.png"
     plt.savefig(file_name)
