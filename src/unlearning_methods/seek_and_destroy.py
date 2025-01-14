@@ -1,4 +1,5 @@
 import logging
+import re
 
 import torch as pt
 from transformers import AutoModelForCausalLM
@@ -11,7 +12,9 @@ from utils.training import cross_entropy_loss, eval_, loss_fns, stream_activatio
 disruption_score_warmup = 20
 
 
-def step_with_abs_grad_before_aggregation(model, batch, interven_params, pow_=2):
+def step_with_abs_grad_before_aggregation(
+    model, batch, interven_params, in_pow, out_pow
+):
     # ! note: if we know the signs of to_forget and know they won't change,
     # we could optimize this, to only store one disruption score, to save memory
     def save_input_activation_hook(module, args, output):
@@ -19,9 +22,9 @@ def step_with_abs_grad_before_aggregation(model, batch, interven_params, pow_=2)
 
     def abs_grad_calculate(module, grad_input, grad_output):
         in_ = module.weight.input_activations
-        in_ = (in_.abs() ** pow_) * in_.sign()
+        in_ = (in_.abs() ** in_pow) * in_.sign()
         out = grad_output[0]
-        out = (out.abs() ** pow_) * out.sign()
+        out = (out.abs() ** out_pow) * out.sign()
         module.weight.disruption_score += pt.einsum("bti,bto->oi", in_, out)
 
     # install hooks
@@ -56,11 +59,20 @@ def unlearning_func(
     visualize=False,
 ):
     # ! parameters
-    retaining_rate = 0.0005
+    retaining_rate = trial.suggest_float("retaining_rate", 0.00003, 0.001, log=True)
     disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.8, 1)
-    grad_pow = trial.suggest_float("grad_pow", 0.4, 0.6)
-    r_quantile = trial.suggest_float("r_quantile", 0.15, 0.25, log=True)
-    unlearning_rate = trial.suggest_float("unlearning_rate", 0.0006, 0.0012, log=True)
+    in_pow = trial.suggest_float("in_pow", 0.0, 2.5)
+    out_pow = trial.suggest_float("out_pow", 0.0, 1.5)
+    # r_quantile = trial.suggest_float("r_quantile", 0.15, 0.25, log=True)
+    r_quantiles = [
+        trial.suggest_float("r_quantile0", 0.03, 1, log=True),
+        trial.suggest_float("r_quantile1", 0.03, 1, log=True),
+        trial.suggest_float("r_quantile2", 0.03, 1, log=True),
+        trial.suggest_float("r_quantile3", 0.03, 1, log=True),
+        trial.suggest_float("r_quantile4", 0.03, 1, log=True),
+        trial.suggest_float("r_quantile5", 0.03, 1, log=True),
+    ]
+    unlearning_rate = trial.suggest_float("unlearning_rate", 0.0001, 0.003, log=True)
     # cont_lr = 0.003  # trial.suggest_float("cont_lr", 0.0001, 0.008, log=True)
     logging.info(f"trial {trial.number} - {trial.params}")
 
@@ -102,7 +114,7 @@ def unlearning_func(
 
         # ! retain pass, update disruption scores
         step_with_abs_grad_before_aggregation(
-            model, next(retain_iter), interven_params, pow_=grad_pow
+            model, next(retain_iter), interven_params, in_pow, out_pow
         )
         for p in interven_params:
             p.disruption_score *= disruption_score_decay
@@ -133,6 +145,9 @@ def unlearning_func(
 
         # Unlearning step with two-stage masking
         for p in interven_params:
+            layer_num = int(re.match(r".*layers\.(\d+)", p.param_name).group(1))
+            r_quantile = r_quantiles[layer_num]
+
             flipped_disr = p.disruption_score * p.to_forget.sign()
             r_threshold = get_thresh(r_quantile, [flipped_disr])
             mask = flipped_disr > r_threshold
@@ -152,6 +167,7 @@ def unlearning_func(
             eval_(model, f_eval, r_eval, allowed_f_loss, step)
 
     return model
+
 
 # ! dump
 # # retain pass, update disruption scores

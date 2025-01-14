@@ -45,7 +45,7 @@ config = SimpleNamespace(
     # ! Training constants
     unlearn_steps=100,
     batch_size=16,
-    n_trials=50,
+    n_trials=100000,
 )
 relearn_config = SimpleNamespace(
     relearn_steps=100,
@@ -103,7 +103,7 @@ try:
     study = run_study(
         objective,
         config,
-        f"{_steps},{config.forget_set_name},regression_test",
+        f"{_steps},{config.forget_set_name},in_and_out_pow,per_layer_r_quantile,2",
         delete_existing=False,
         load_if_exists=False,
     )
