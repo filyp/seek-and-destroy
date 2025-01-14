@@ -19,15 +19,10 @@ def step_with_abs_grad_before_aggregation(model, batch, interven_params, pow_=2)
 
     def abs_grad_calculate(module, grad_input, grad_output):
         in_ = module.weight.input_activations
-        in_pos = (in_ * (in_ > 0)).abs() ** pow_
-        in_neg = (in_ * (in_ < 0)).abs() ** pow_
+        in_ = (in_.abs() ** pow_) * in_.sign()
         out = grad_output[0]
-        out_pos = (out * (out > 0)).abs() ** pow_
-        out_neg = (out * (out < 0)).abs() ** pow_
-        module.weight.disruption_score_pos += pt.einsum("bti,bto->oi", in_pos, out_pos)
-        module.weight.disruption_score_pos += pt.einsum("bti,bto->oi", in_neg, out_neg)
-        module.weight.disruption_score_neg += pt.einsum("bti,bto->oi", in_pos, out_neg)
-        module.weight.disruption_score_neg += pt.einsum("bti,bto->oi", in_neg, out_pos)
+        out = (out.abs() ** pow_) * out.sign()
+        module.weight.disruption_score += pt.einsum("bti,bto->oi", in_, out)
 
     # install hooks
     handles = []
@@ -51,26 +46,22 @@ def step_with_abs_grad_before_aggregation(model, batch, interven_params, pow_=2)
 
 
 def unlearning_func(
-    trial, config, retain_batches, forget_batches, f_eval, r_eval, allowed_f_loss
+    trial,
+    config,
+    retain_batches,
+    forget_batches,
+    f_eval,
+    r_eval,
+    allowed_f_loss,
+    visualize=False,
 ):
-
-    # # ! parameters
-    # retaining_rate = 0.0005
-    # disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.7, 1)
-    # grad_pow = trial.suggest_float("grad_pow", 0.8, 1.2)
-    # pos_grad_discard = trial.suggest_float("pos_grad_discard", -0.2, 1.2)
-    # r_quantile = trial.suggest_float("r_quantile", 0.05, 0.6, log=True)
-    # unlearning_rate = trial.suggest_float("unlearning_rate", 0.0001, 0.001, log=True)
-    # # cont_lr = 0.003  # trial.suggest_float("cont_lr", 0.0001, 0.008, log=True)
-    # logging.info(f"trial {trial.number} - {trial.params}")
-
     # ! parameters
     retaining_rate = 0.0005
     disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.8, 1)
     grad_pow = trial.suggest_float("grad_pow", 0.4, 0.6)
-    pos_grad_discard = 1  #trial.suggest_float("pos_grad_discard", 0.5, 1.2)
-    r_quantile = trial.suggest_float("r_quantile", 0.1, 0.3, log=True)
-    unlearning_rate = trial.suggest_float("unlearning_rate", 0.0005, 0.0015, log=True)
+    r_quantile = trial.suggest_float("r_quantile", 0.15, 0.25, log=True)
+    unlearning_rate = trial.suggest_float("unlearning_rate", 0.0006, 0.0012, log=True)
+    # cont_lr = 0.003  # trial.suggest_float("cont_lr", 0.0001, 0.008, log=True)
     logging.info(f"trial {trial.number} - {trial.params}")
 
     model = AutoModelForCausalLM.from_pretrained(config.model_id)
@@ -88,9 +79,7 @@ def unlearning_func(
         p.requires_grad = False
     for p in interven_params:
         p.requires_grad = True
-        p.disruption_score_pos = pt.zeros_like(p.data)
-        p.disruption_score_neg = pt.zeros_like(p.data)
-        # p.disruption_score = pt.zeros_like(p.data)
+        p.disruption_score = pt.zeros_like(p.data)
         p.to_forget = pt.zeros_like(p.data)
 
     # use several circuits, mixed together; load circuits and construct to_forget
@@ -111,25 +100,12 @@ def unlearning_func(
     for step in range(1, 1 + config.unlearn_steps):
         model.train()
 
-        # # ! retain pass
-        # model.zero_grad(set_to_none=True)
-        # r_input_ids = next(retain_iter)
-        # output = model(r_input_ids)
-        # loss = cross_entropy_loss(output, r_input_ids)
-        # loss.backward()
-        # # ! update disruption scores
-        # for p in interven_params:
-        #     grad = p.grad.clone().detach()
-        #     grad[p.to_forget.sign() == p.grad.sign()] *= pos_grad_discard
-        #     p.disruption_score *= disruption_score_decay
-        #     p.disruption_score += grad
-
+        # ! retain pass, update disruption scores
         step_with_abs_grad_before_aggregation(
             model, next(retain_iter), interven_params, pow_=grad_pow
         )
         for p in interven_params:
-            p.disruption_score_pos *= disruption_score_decay
-            p.disruption_score_neg *= disruption_score_decay
+            p.disruption_score *= disruption_score_decay
 
         # skip the rest of the loop during warmup
         if step <= disruption_score_warmup:
@@ -157,32 +133,35 @@ def unlearning_func(
 
         # Unlearning step with two-stage masking
         for p in interven_params:
-
-            flipped_disr = (
-                p.disruption_score_pos * (p.to_forget.sign() > 0) * pos_grad_discard
-                + p.disruption_score_neg * (p.to_forget.sign() < 0) * pos_grad_discard
-                - p.disruption_score_pos * (p.to_forget.sign() < 0)
-                - p.disruption_score_neg * (p.to_forget.sign() > 0)
-            )
+            flipped_disr = p.disruption_score * p.to_forget.sign()
             r_threshold = get_thresh(r_quantile, [flipped_disr])
             mask = flipped_disr > r_threshold
-
-            # flipped_disr = p.disruption_score * p.to_forget.sign()
-            # r_threshold = get_thresh(r_quantile, [flipped_disr])
-            # mask = flipped_disr > r_threshold
 
             # ! unlearn
             p.data -= mask * unlearning_rate * p.to_forget
 
-            # if step == config.unlearn_steps:
-            #     visualize_param(p, p.disruption_score_pos, mask, "pos")
-            #     visualize_param(p, p.disruption_score_neg, mask, "neg")
-            #     visualize_param(p, flipped_disr, mask, "sum")
-        # if step == config.unlearn_steps:
-            # layer_vs_pos_neg_sum_plot()
+            if step == config.unlearn_steps and visualize:
+                visualize_param(p, p.disruption_score_pos, mask, "pos")
+                visualize_param(p, p.disruption_score_neg, mask, "neg")
+                visualize_param(p, flipped_disr, mask, "sum")
+        if step == config.unlearn_steps and visualize:
+            layer_vs_pos_neg_sum_plot()
 
         # ! eval current loss
         if step % 10 == 0:
             eval_(model, f_eval, r_eval, allowed_f_loss, step)
 
     return model
+
+# ! dump
+# # retain pass, update disruption scores
+# # version that is not granular, and doesn't require hooks
+# model.zero_grad(set_to_none=True)
+# r_input_ids = next(retain_iter)
+# output = model(r_input_ids)
+# loss = cross_entropy_loss(output, r_input_ids)
+# loss.backward()
+# for p in interven_params:
+#     grad = p.grad.clone().detach()
+#     p.disruption_score *= disruption_score_decay
+#     p.disruption_score += grad

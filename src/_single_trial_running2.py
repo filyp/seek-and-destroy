@@ -15,7 +15,7 @@ import torch as pt
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from utils.data_loading import CachedBatches, dataset_loaders
-from utils.git_and_reproducibility import is_repo_clean
+from utils.git_and_reproducibility import get_last_study, is_repo_clean
 from utils.model_operations import relearn
 from utils.plots_and_stats import plot_slice_layout
 from utils.training import MockTrial, eval_, run_study, set_seeds
@@ -80,18 +80,16 @@ relearn_config = SimpleNamespace(
 )
 
 # %%
-
-import optuna
-from utils.training import get_storage
-storage = get_storage()
-study_summaries = optuna.study.get_all_study_summaries(storage)
-sorted_studies = sorted(study_summaries, key=lambda s: s.datetime_start)
-latest_study = sorted_studies[-1]
-study = optuna.load_study(study_name=latest_study.study_name, storage=storage)
+study = get_last_study(num=-1)
+params = study.best_trial.params
+params["unlearning_rate"] *= 1
+print(study.study_name)
+print(study.best_trial.values)
+print(params)
 
 set_seeds(42)
 params = MockTrial(
-    **study.best_trial.params,
+    **params,
     # disruption_score_decay=0.9224619659374058,
     # grad_pow=0.6221599323237587,
     # pos_grad_discard=0.8934652459686687,
@@ -100,10 +98,9 @@ params = MockTrial(
     # # cont_lr=0.003,
 )
 model = unlearning_func(
-    params, config, retain_batches, forget_batches, f_eval, r_eval, allowed_f_loss
+    params, config, retain_batches, forget_batches, f_eval, r_eval, allowed_f_loss, visualize=True
 )
 
 # %%
-
 forget_losses = relearn(model, relearn_config, retain_val_batches, forget_val_batches)
 print(config.circuit_names)

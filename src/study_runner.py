@@ -45,7 +45,7 @@ config = SimpleNamespace(
     # ! Training constants
     unlearn_steps=100,
     batch_size=16,
-    n_trials=2000,
+    n_trials=50,
 )
 relearn_config = SimpleNamespace(
     relearn_steps=100,
@@ -103,9 +103,9 @@ try:
     study = run_study(
         objective,
         config,
-        f"{_steps},{config.forget_set_name},pos_grad=1",
+        f"{_steps},{config.forget_set_name},regression_test",
         delete_existing=False,
-        load_if_exists=True,
+        load_if_exists=False,
     )
 except KeyboardInterrupt:
     study = get_last_study()
