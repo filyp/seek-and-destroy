@@ -102,8 +102,7 @@ _steps = f"{config.unlearn_steps},{relearn_config.relearn_steps}"
 study = run_study(
     objective,
     config,
-    # f"{_steps},{config.forget_set_name},r_mask_granular_asymmetric_nonglobal_FIXED",
-    f"{_steps},{config.forget_set_name},FIXED2_granular_asymmetric_nonglobal",
+    f"{_steps},{config.forget_set_name},pos_grad=1",
     delete_existing=False,
     load_if_exists=True,
 )

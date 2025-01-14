@@ -67,10 +67,10 @@ def unlearning_func(
     # ! parameters
     retaining_rate = 0.0005
     disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.8, 1)
-    grad_pow = trial.suggest_float("grad_pow", 0.0, 1.2)
-    pos_grad_discard = trial.suggest_float("pos_grad_discard", 0.5, 1.2)
-    r_quantile = trial.suggest_float("r_quantile", 0.1, 0.5, log=True)
-    unlearning_rate = trial.suggest_float("unlearning_rate", 0.0001, 0.003, log=True)
+    grad_pow = trial.suggest_float("grad_pow", 0.4, 0.6)
+    pos_grad_discard = 1  #trial.suggest_float("pos_grad_discard", 0.5, 1.2)
+    r_quantile = trial.suggest_float("r_quantile", 0.1, 0.3, log=True)
+    unlearning_rate = trial.suggest_float("unlearning_rate", 0.0005, 0.0015, log=True)
     logging.info(f"trial {trial.number} - {trial.params}")
 
     model = AutoModelForCausalLM.from_pretrained(config.model_id)
