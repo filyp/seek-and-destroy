@@ -15,12 +15,11 @@ def unlearning_func(
     trial, config, retain_batches, forget_batches, f_eval, r_eval, allowed_f_loss
 ):
     # ! parameters
-    # todo revert r_quantile later
-    r_quantile = 1  # trial.suggest_float("r_quantile", 0.1, 0.5, log=True)
+    r_quantile = trial.suggest_float("r_quantile", 0.05, 0.5, log=True)
     # retaining_rate = trial.suggest_float("retaining_rate", 0.0003, 0.0010, log=True)
     retaining_rate = 0.0005
-    # unlearning_rate = trial.suggest_float("unlearning_rate", 0.0001, 0.0010, log=True)
-    unlearning_rate = trial.suggest_float("unlearning_rate", 1e-5, 8e-5, log=True)
+    unlearning_rate = trial.suggest_float("unlearning_rate", 0.00003, 0.001, log=True)
+    # unlearning_rate = trial.suggest_float("unlearning_rate", 1e-5, 8e-5, log=True)
     disruption_score_decay = 0.9
     pos_grad_discard = 0  # trial.suggest_float("pos_grad_discard", 0, 1)
     cont_lr = 0 #trial.suggest_float("cont_lr", 0.0001, 0.008, log=True)
@@ -53,9 +52,6 @@ def unlearning_func(
                 p.to_forget += circuit[p.param_name] * strength
         del circuit
 
-    # # Get threshold for forgetting
-    # f_threshold = get_thresh(f_quantile, [p.to_forget.abs() for p in interven_params])
-
     optimizer = pt.optim.SGD(interven_params, lr=cont_lr)
 
     # ! unlearning loop
@@ -64,26 +60,28 @@ def unlearning_func(
     forget_iter = iter(forget_batches)
     for step in range(1, 1 + config.unlearn_steps):
         model.train()
-        r_input_ids = next(retain_iter)
 
-        # ! unlearn on the base model
+        # ! retain pass
         model.zero_grad(set_to_none=True)
+        r_input_ids = next(retain_iter)
         output = model(r_input_ids)
         loss = cross_entropy_loss(output, r_input_ids)
         loss.backward()
 
+        # ! update disruption scores
         for p in interven_params:
             grad = p.grad.clone().detach()
             grad[p.to_forget.sign() == p.grad.sign()] *= pos_grad_discard
             p.disruption_score *= disruption_score_decay
             p.disruption_score += grad
 
-            # ! retain
-            p.data -= retaining_rate * p.grad
-
-        # Skip during warmup
+        # skip the rest of the loop during warmup
         if step <= disruption_score_warmup:
             continue
+
+        # ! retain update
+        for p in interven_params:
+            p.data -= retaining_rate * p.grad
 
         # ! continuous unlearning
         model.zero_grad(set_to_none=True)
@@ -93,12 +91,18 @@ def unlearning_func(
         loss.backward()
         optimizer.step()
 
+        # calculate r_threshold globally
+        flipped_disrs = (
+            p.disruption_score * p.to_forget.sign()
+            for p in interven_params
+        )
+        r_threshold = get_thresh(r_quantile, flipped_disrs)
+
         # Unlearning step with two-stage masking
         for p in interven_params:
-            # Then from them, choose the ones least disrupting
             flipped_disr = p.disruption_score * p.to_forget.sign()
-            d_threshold = get_thresh(r_quantile, [flipped_disr])
-            mask = flipped_disr > d_threshold
+            # r_threshold = get_thresh(r_quantile, [flipped_disr])
+            mask = flipped_disr > r_threshold
 
             # ! unlearn
             p.data -= mask * unlearning_rate * p.to_forget

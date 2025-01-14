@@ -45,10 +45,10 @@ config = SimpleNamespace(
     # ! Training constants
     unlearn_steps=100,
     batch_size=16,
-    n_trials=50,
+    n_trials=100,
 )
 relearn_config = SimpleNamespace(
-    relearn_steps=400,
+    relearn_steps=100,
     relearn_lr=3e-4,
     relearn_lora_conf=dict(target_modules="all-linear"),
 )
@@ -103,7 +103,7 @@ study = run_study(
     objective,
     config,
     __file__,
-    f"{_steps},{config.forget_set_name},no_contunual_stream_deact",
+    f"{_steps},{config.forget_set_name},r_mask_flipped_pos_grad0,global_r_threshold",
     delete_existing=False,
     load_if_exists=False,
 )
@@ -120,6 +120,8 @@ get_stats_from_last_n_trials(study, n=10)
 # latest_study = sorted_studies[-1]
 # study = optuna.load_study(study_name=latest_study.study_name, storage=storage)
 
+# %%
+
 # storage = get_storage()
 # study_summaries = optuna.study.get_all_study_summaries(storage)
 # sorted_studies = sorted(study_summaries, key=lambda s: s.datetime_start)
@@ -129,5 +131,3 @@ get_stats_from_last_n_trials(study, n=10)
 #     print(study.study_name)
 #     # get_stats_from_last_n_trials(study, n=20)
 #     get_stats_from_last_n_trials(study, n=10)
-
-# %%

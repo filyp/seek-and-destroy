@@ -21,13 +21,6 @@ def set_seeds(seed):
     pt.use_deterministic_algorithms(True)
 
 
-# --- Training Utilities ---
-def eval_loss(model, batch):
-    model.eval()
-    with pt.no_grad():
-        return cross_entropy_loss(model(batch), batch)
-
-
 # --- Loss Functions ---
 def cross_entropy_loss(output, input_ids):
     return pt.nn.CrossEntropyLoss()(
@@ -111,9 +104,12 @@ class MockTrial:
 
 
 def eval_(model, f_eval_batch, r_eval_batch, allowed_f_loss=None, step=""):
-    res = {}
-    res["forget_loss"] = eval_loss(model, f_eval_batch)
-    res["retain_loss"] = eval_loss(model, r_eval_batch)
+    model.eval()
+    with pt.no_grad():
+        res = dict(
+            forget_loss=cross_entropy_loss(model(f_eval_batch), f_eval_batch),
+            retain_loss=cross_entropy_loss(model(r_eval_batch), r_eval_batch),
+        )
     logging.info(f"{step:4} " + " ".join(f"{v:11.2f}" for v in res.values()))
     assert not any(pt.isnan(v) for v in res.values())
 
@@ -183,5 +179,7 @@ def get_stats_from_last_n_trials(study, n=10):
     values = [t.values[0] for t in good_trials]
     last_n_mean = np.mean(values[-n:])
     last_n_std = np.std(values[-n:])
-    print(f"last {n} mean and std:\n{last_n_mean:.2f} ± {last_n_std:.2f}")
+    print(f"last {n} mean and std:")
+    print(f"{study.best_trial.values[0]:.2f}\t", end="")
+    print(f"{last_n_mean:.2f} ± {last_n_std:.2f}")
     return last_n_mean, last_n_std
