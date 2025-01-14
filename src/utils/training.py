@@ -123,7 +123,6 @@ def eval_(model, f_eval_batch, r_eval_batch, allowed_f_loss=None, step=""):
 def run_study(
     objective,
     config,
-    script_name,
     study_name,
     delete_existing=False,
     load_if_exists=False,
@@ -144,6 +143,7 @@ def run_study(
         direction="maximize",
         load_if_exists=load_if_exists,
     )
+    script_name = repo_root() / "src" / "study_runner.py"
     save_script_and_attach_logger(script_name, study.study_name)
     study.set_metric_names(["forget_loss"])
     study.set_user_attr("commit_hash", commit_hash())

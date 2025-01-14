@@ -1,5 +1,5 @@
 # %%
-import shutil
+import re
 
 import matplotlib.pyplot as plt
 import optuna.visualization as vis
@@ -66,3 +66,52 @@ def visualize_param(p, y, mask, type_):
     dir_name.mkdir(parents=True, exist_ok=True)
     file_name = dir_name / f"{p.param_name}_{type_}.png"
     plt.savefig(file_name)
+
+
+# 6x2 plot of to_forget vs disruption_score_pos and disruption_score_neg
+def layer_vs_pos_neg_sum_plot():
+    dir_ = repo_root() / "results" / "param_toforget_vs_disruption"
+    paths = dir_.glob("*.png")
+
+    # Sort the paths by layer number and pos/neg
+    def get_layer_num(path):
+        match = re.search(r"layers\.(\d+)", str(path))
+        return int(match.group(1)) if match else -1
+
+    def is_positive(path):
+        return "_pos." in str(path)
+
+    def is_sum(path):
+        return "_sum." in str(path)
+
+    # Sort paths by layer number and type (pos, neg, sum)
+    paths = sorted(
+        paths,
+        key=lambda x: (
+            get_layer_num(x),
+            2 if is_sum(x) else (1 if not is_positive(x) else 0),
+        ),
+    )
+
+    # Create 6x3 subplot
+    fig, axes = plt.subplots(6, 3, figsize=(15, 24))
+
+    # Plot each image
+    for i, path in enumerate(paths):
+        row = i // 3
+        col = i % 3
+        img = plt.imread(path)
+        axes[row, col].imshow(img)
+
+        # Extract layer number and type info for title
+        layer_num = get_layer_num(path)
+        plot_type = (
+            "Sum"
+            if is_sum(path)
+            else ("Negative" if not is_positive(path) else "Positive")
+        )
+        axes[row, col].set_title(f"Layer {layer_num} {plot_type}")
+        axes[row, col].axis("off")
+
+    plt.tight_layout()
+    plt.show()

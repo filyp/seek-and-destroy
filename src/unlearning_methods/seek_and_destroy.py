@@ -5,7 +5,7 @@ from transformers import AutoModelForCausalLM
 
 from utils.circuit_creation import filter_and_normalize_circuit, get_circuit
 from utils.model_operations import get_thresh
-from utils.plots_and_stats import visualize_param
+from utils.plots_and_stats import layer_vs_pos_neg_sum_plot, visualize_param
 from utils.training import cross_entropy_loss, eval_, loss_fns, stream_activation_loss
 
 disruption_score_warmup = 20
@@ -178,6 +178,8 @@ def unlearning_func(
             #     visualize_param(p, p.disruption_score_pos, mask, "pos")
             #     visualize_param(p, p.disruption_score_neg, mask, "neg")
             #     visualize_param(p, flipped_disr, mask, "sum")
+        # if step == config.unlearn_steps:
+            # layer_vs_pos_neg_sum_plot()
 
         # ! eval current loss
         if step % 10 == 0:

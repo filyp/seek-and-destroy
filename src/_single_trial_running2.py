@@ -79,14 +79,24 @@ relearn_config = SimpleNamespace(
     relearn_lora_conf=dict(target_modules="all-linear"),
 )
 
+# %%
+
+# import optuna
+# from utils.training import get_storage
+# storage = get_storage()
+# study_summaries = optuna.study.get_all_study_summaries(storage)
+# sorted_studies = sorted(study_summaries, key=lambda s: s.datetime_start)
+# latest_study = sorted_studies[-1]
+# study = optuna.load_study(study_name=latest_study.study_name, storage=storage)
+# study.best_trial.params
 
 set_seeds(42)
 params = MockTrial(
-    r_quantile=0.2,
-    unlearning_rate=0.0008,
-    pos_grad_discard=0.83,
-    grad_pow=0.4,
-    disruption_score_decay=0.9,
+    disruption_score_decay=0.9224619659374058,
+    grad_pow=0.6221599323237587,
+    pos_grad_discard=0.8934652459686687,
+    r_quantile=0.18665731358929513,
+    unlearning_rate=0.0011330033956548822,
     # cont_lr=0.003,
 )
 model = unlearning_func(

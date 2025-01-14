@@ -37,7 +37,7 @@ def save_script_and_attach_logger(file_name, study_name):
     folder = repo_root() / "results" / "logs"
     folder.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    path = folder / f"{timestamp} {study_name} {Path(file_name).stem}.log"
+    path = folder / f"{timestamp} {study_name}.log"
     shutil.copy(file_name, path)
     # attach logger
     for h in logging.getLogger().handlers[1:]:
