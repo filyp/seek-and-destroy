@@ -82,8 +82,8 @@ relearn_config = SimpleNamespace(
 
 set_seeds(42)
 params = MockTrial(
-    r_quantile=0.2,
-    unlearning_rate=5e-4,
+    r_quantile=0.33275486213227845,
+    unlearning_rate=0.0004992150029411757,
     # cont_lr=0.003,
 )
 model = unlearning_func(

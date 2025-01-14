@@ -45,7 +45,7 @@ config = SimpleNamespace(
     # ! Training constants
     unlearn_steps=100,
     batch_size=16,
-    n_trials=1000,
+    n_trials=2000,
 )
 relearn_config = SimpleNamespace(
     relearn_steps=100,
@@ -103,9 +103,10 @@ study = run_study(
     objective,
     config,
     __file__,
-    f"{_steps},{config.forget_set_name},r_mask_granular_asymmetric_nonglobal_FIXED",
+    # f"{_steps},{config.forget_set_name},r_mask_granular_asymmetric_nonglobal_FIXED",
+    f"{_steps},{config.forget_set_name},FIXED2_granular_asymmetric_nonglobal",
     delete_existing=False,
-    load_if_exists=True,
+    load_if_exists=False,
 )
 
 plot_slice_layout(study)
@@ -114,11 +115,14 @@ make_sure_optimal_values_are_not_near_range_edges(study)
 
 get_stats_from_last_n_trials(study, n=10)
 
+# %%
+
 # storage = get_storage()
 # study_summaries = optuna.study.get_all_study_summaries(storage)
 # sorted_studies = sorted(study_summaries, key=lambda s: s.datetime_start)
 # latest_study = sorted_studies[-1]
 # study = optuna.load_study(study_name=latest_study.study_name, storage=storage)
+# plot_slice_layout(study)
 
 # %%
 
