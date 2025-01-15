@@ -174,13 +174,13 @@ def make_sure_optimal_values_are_not_near_range_edges(study):
 
 # stats for the last n non-pruned trials
 def get_stats_from_last_n_trials(study, n=10):
-    good_trials = [
-        t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE
-    ]
-    values = [t.values[0] for t in good_trials]
+    ok_trials = [t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]
+    values = [t.values[0] for t in ok_trials]
+
+    max_val = study.best_trial.values[0]
     last_n_mean = np.mean(values[-n:])
     last_n_std = np.std(values[-n:])
-    print(f"last {n} mean and std:")
-    print(f"{study.best_trial.values[0]:.2f}\t", end="")
-    print(f"{last_n_mean:.2f} ± {last_n_std:.2f}")
+    pure_name = ",".join(study.study_name.split(",")[3:])
+    print("max_val, last_n_mean ± last_n_std, pure_name")
+    print(f"| {max_val:.2f} | {last_n_mean:.2f} ± {last_n_std:.2f} | {pure_name} |  |")
     return last_n_mean, last_n_std

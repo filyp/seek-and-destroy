@@ -10,21 +10,14 @@ disruption_score_warmup = 20
 
 
 def unlearning_func(
-    trial,
-    config,
-    retain_batches,
-    forget_batches,
-    f_eval,
-    r_eval,
-    allowed_f_loss,
-    visualize=False,
+    trial, config, retain_batches, forget_batches, f_eval, r_eval, allowed_f_loss
 ):
     # ! parameters
     retaining_rate = 6e-4
     disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.8, 1)
     grad_pow = trial.suggest_float("grad_pow", 0.1, 0.6)
     unlearning_rate = trial.suggest_float("unlearning_rate", 0.0001, 0.001, log=True)
-    # cont_lr = 0.003  # trial.suggest_float("cont_lr", 0.0001, 0.008, log=True)
+    cont_lr = trial.suggest_float("cont_lr", 0.0001, 0.008, log=True)
     logging.info(f"trial {trial.number} - {trial.params}")
 
     model = AutoModelForCausalLM.from_pretrained(config.model_id)
@@ -54,7 +47,7 @@ def unlearning_func(
                 p.to_forget += circuit[p.param_name] * strength
         del circuit
 
-    # optimizer = pt.optim.SGD(interven_params, lr=cont_lr)
+    optimizer = pt.optim.SGD(interven_params, lr=cont_lr)
 
     # ! unlearning loop
     logging.info("step      base_f      base_r")
@@ -81,21 +74,13 @@ def unlearning_func(
         for p in interven_params:
             p.data -= retaining_rate * p.grad
 
-        # # ! continuous unlearning
-        # model.zero_grad(set_to_none=True)
-        # f_input_ids = next(forget_iter)
-        # output = model(f_input_ids, output_hidden_states=True)
-        # loss = stream_activation_loss(output, f_input_ids)
-        # loss.backward()
-        # optimizer.step()
-
-        # # calculate r_threshold globally
-        # flipped_disrs = (
-        #     # p.disruption_score * p.to_forget.sign()
-        #     p.disruption_score
-        #     for p in interven_params
-        # )
-        # r_threshold = get_thresh(1 - r_quantile, flipped_disrs)
+        # ! continuous unlearning
+        model.zero_grad(set_to_none=True)
+        f_input_ids = next(forget_iter)
+        output = model(f_input_ids, output_hidden_states=True)
+        loss = stream_activation_loss(output, f_input_ids)
+        loss.backward()
+        optimizer.step()
 
         # Unlearning step with two-stage masking
         for p in interven_params:
@@ -105,14 +90,8 @@ def unlearning_func(
             # ! unlearn
             p.data -= mask * unlearning_rate * p.to_forget
 
-            # if step == config.unlearn_steps and visualize:
-            #     visualize_param(p, p.disruption_score, mask)
-        # if step == config.unlearn_steps and visualize:
-            # layer_vs_pos_neg_sum_plot()
-
         # ! eval current loss
         if step % 10 == 0:
             eval_(model, f_eval, r_eval, allowed_f_loss, step)
 
     return model
-
