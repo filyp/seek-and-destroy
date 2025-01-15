@@ -71,6 +71,7 @@ def get_storage(remote=False):
 
 def get_last_study(num=-1):
     storage = get_storage()
+    # redisstorage may be faster https://github.com/optuna/optuna/pull/974
     study_summaries = optuna.study.get_all_study_summaries(storage)
     sorted_studies = sorted(study_summaries, key=lambda s: s.datetime_start)
     latest_study = sorted_studies[num]

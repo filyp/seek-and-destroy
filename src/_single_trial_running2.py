@@ -82,25 +82,21 @@ relearn_config = SimpleNamespace(
 # %%
 study = get_last_study(num=-1)
 params = study.best_trial.params
-params["unlearning_rate"] *= 1
+# params["unlearning_rate"] *= 1
 print(study.study_name)
 print(study.best_trial.values)
 print(params)
 
+# %%
+
 set_seeds(42)
 params = MockTrial(
     **params,
-    # disruption_score_decay=0.9224619659374058,
-    # grad_pow=0.6221599323237587,
-    # pos_grad_discard=0.8934652459686687,
-    # r_quantile=0.18665731358929513,
-    # unlearning_rate=0.0011330033956548822,
-    # # cont_lr=0.003,
 )
 model = unlearning_func(
     params, config, retain_batches, forget_batches, f_eval, r_eval, allowed_f_loss, visualize=True
 )
 
-# %%
-forget_losses = relearn(model, relearn_config, retain_val_batches, forget_val_batches)
-print(config.circuit_names)
+# # %%
+# forget_losses = relearn(model, relearn_config, retain_val_batches, forget_val_batches)
+# print(config.circuit_names)

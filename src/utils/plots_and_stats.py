@@ -32,7 +32,7 @@ def plot_slice_layout(study):
 # # opt_history_fig.write_image(path)
 
 
-def visualize_param(p, y, mask, type_):
+def visualize_param(p, y, mask):
     x = p.to_forget
     c = mask
     # plot a 2d scatter plot
@@ -52,7 +52,7 @@ def visualize_param(p, y, mask, type_):
 
     # label
     plt.xlabel("to_forget")
-    plt.ylabel(f"disruption_score_{type_}")
+    plt.ylabel("disruption_score")
 
     # center at 0, 0
     xmax = max(abs(x))
@@ -64,7 +64,7 @@ def visualize_param(p, y, mask, type_):
     # plt.show()
     dir_name = repo_root() / "results" / f"param_toforget_vs_disruption"
     dir_name.mkdir(parents=True, exist_ok=True)
-    file_name = dir_name / f"{p.param_name}_{type_}.png"
+    file_name = dir_name / f"{p.param_name}.png"
     plt.savefig(file_name)
 
 
@@ -73,28 +73,16 @@ def layer_vs_pos_neg_sum_plot():
     dir_ = repo_root() / "results" / "param_toforget_vs_disruption"
     paths = dir_.glob("*.png")
 
-    # Sort the paths by layer number and pos/neg
+    # Sort the paths by layer number
     def get_layer_num(path):
         match = re.search(r"layers\.(\d+)", str(path))
         return int(match.group(1)) if match else -1
 
-    def is_positive(path):
-        return "_pos." in str(path)
+    # Sort paths by layer number
+    paths = sorted(paths, key=get_layer_num)
 
-    def is_sum(path):
-        return "_sum." in str(path)
-
-    # Sort paths by layer number and type (pos, neg, sum)
-    paths = sorted(
-        paths,
-        key=lambda x: (
-            get_layer_num(x),
-            2 if is_sum(x) else (1 if not is_positive(x) else 0),
-        ),
-    )
-
-    # Create 6x3 subplot
-    fig, axes = plt.subplots(6, 3, figsize=(15, 24))
+    # Create 2x3 subplot
+    fig, axes = plt.subplots(2, 3, figsize=(15, 8))
 
     # Plot each image
     for i, path in enumerate(paths):
@@ -103,14 +91,9 @@ def layer_vs_pos_neg_sum_plot():
         img = plt.imread(path)
         axes[row, col].imshow(img)
 
-        # Extract layer number and type info for title
+        # Extract layer number for title
         layer_num = get_layer_num(path)
-        plot_type = (
-            "Sum"
-            if is_sum(path)
-            else ("Negative" if not is_positive(path) else "Positive")
-        )
-        axes[row, col].set_title(f"Layer {layer_num} {plot_type}")
+        axes[row, col].set_title(f"Layer {layer_num}")
         axes[row, col].axis("off")
 
     plt.tight_layout()
