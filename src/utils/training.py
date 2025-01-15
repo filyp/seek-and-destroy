@@ -43,6 +43,24 @@ def clipped_correct_logit_loss(output, input_ids):
     return true_logits.clip(min=0).mean()
 
 
+def soft_clipped_correct_logit_loss(output, input_ids, atan_scale):
+    logits = output.logits[:, :-1, :].flatten(end_dim=1).to(pt.float32)
+    ids = input_ids[:, 1:].flatten()
+    true_logits = logits[pt.arange(len(ids)), ids]
+    soft_clipped = (true_logits / atan_scale).atan() * atan_scale
+    return soft_clipped.mean()
+
+
+def soft_clipped_cross_entropy_loss(output, input_ids, atan_scale):
+    logits = output.logits[:, :-1, :].flatten(end_dim=1).to(pt.float32)
+    ids = input_ids[:, 1:].flatten()
+    probs = pt.nn.functional.softmax(logits, dim=-1)
+    true_probs = probs[pt.arange(len(ids)), ids]
+    losses = -pt.log(true_probs)
+    soft_clipped = (losses / atan_scale).atan() * atan_scale
+    return soft_clipped.mean()
+
+
 def neg_cross_entropy_loss(output, input_ids):
     return -cross_entropy_loss(output, input_ids)
 
@@ -111,7 +129,8 @@ def eval_(model, f_eval_batch, r_eval_batch, allowed_f_loss=None, step=""):
             retain_loss=cross_entropy_loss(model(r_eval_batch), r_eval_batch),
         )
     logging.info(f"{step:4} " + " ".join(f"{v:11.2f}" for v in res.values()))
-    assert not any(pt.isnan(v) for v in res.values())
+    if any(pt.isnan(v) for v in res.values()):
+        raise optuna.TrialPruned()
 
     if allowed_f_loss is not None and res["retain_loss"] > allowed_f_loss:
         logging.info(f"Pruning trial because retain loss is too high")

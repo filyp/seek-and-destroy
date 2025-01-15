@@ -45,7 +45,7 @@ config = SimpleNamespace(
     # ! Training constants
     unlearn_steps=100,
     batch_size=16,
-    n_trials=200,
+    n_trials=100000,
 )
 relearn_config = SimpleNamespace(
     relearn_steps=100,
@@ -103,8 +103,8 @@ try:
     study = run_study(
         objective,
         config,
-        f"{_steps},{config.forget_set_name},stream_deactivation_masked_too2",
-        delete_existing=False,
+        f"{_steps},{config.forget_set_name},3_losses_continual",
+        delete_existing=True,
         load_if_exists=False,
     )
 except KeyboardInterrupt:
