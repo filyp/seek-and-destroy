@@ -103,7 +103,7 @@ try:
     study = run_study(
         objective,
         config,
-        f"{_steps},{config.forget_set_name},stream_deactivation_masked_too",
+        f"{_steps},{config.forget_set_name},stream_deactivation_masked_too2",
         delete_existing=False,
         load_if_exists=False,
     )

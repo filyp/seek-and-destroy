@@ -14,10 +14,10 @@ def unlearning_func(
 ):
     # ! parameters
     retaining_rate = 6e-4
-    disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.8, 1)
-    grad_pow = trial.suggest_float("grad_pow", 0.1, 1)
-    static_ulr = trial.suggest_float("static_ulr", 0.0001, 0.001, log=True)
-    continual_ulr = trial.suggest_float("continual_ulr", 0.0001, 0.008, log=True)
+    disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.9, 1)
+    static_ulr = trial.suggest_float("static_ulr", 0.0002, 0.0004, log=True)
+    continual_ulr = trial.suggest_float("continual_ulr", 0.00001, 0.0003, log=True)
+    grad_pow = trial.suggest_float("grad_pow", 0.3, 0.6)
     logging.info(f"trial {trial.number} - {trial.params}")
 
     model = AutoModelForCausalLM.from_pretrained(config.model_id)
