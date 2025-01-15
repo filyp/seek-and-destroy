@@ -415,3 +415,20 @@ plt.show()
 #     print(f"{name}: {perc_larger} params larger than 5% of max")
 
 del circuit
+
+
+# %%
+
+class DisruptionHooks:
+    def __init__(self, model):
+        self.model = model
+        print(f"__init__: Setting up {self.model}")
+        # Do all your initialization here
+        
+    def __exit__(self, exc_type, exc_value, traceback):
+        print(f"__exit__: Cleaning up {self.name}")
+        return False  # don't suppress exceptions
+
+# Usage:
+with DisruptionHooks(model) as cm:
+    print("Inside the context manager")

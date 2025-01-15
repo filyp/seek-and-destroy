@@ -45,7 +45,7 @@ config = SimpleNamespace(
     # ! Training constants
     unlearn_steps=100,
     batch_size=16,
-    n_trials=2000,
+    n_trials=300,
 )
 relearn_config = SimpleNamespace(
     relearn_steps=100,
@@ -97,13 +97,13 @@ def objective(trial):
     return forget_loss
 
 
-# assert is_repo_clean()
+assert is_repo_clean()
 _steps = f"{config.unlearn_steps},{relearn_config.relearn_steps}"
 try:
     study = run_study(
         objective,
         config,
-        f"{_steps},{config.forget_set_name},just_use_0_as_threshold",
+        f"{_steps},{config.forget_set_name},reference",
         delete_existing=False,
         load_if_exists=False,
     )

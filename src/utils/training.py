@@ -147,6 +147,7 @@ def run_study(
     save_script_and_attach_logger(script_name, study.study_name)
     study.set_metric_names(["forget_loss"])
     study.set_user_attr("commit_hash", commit_hash())
+    study.set_user_attr("is_repo_clean", is_repo_clean())
     for k, v in config.__dict__.items():
         study.set_user_attr(k, v)
     study.optimize(objective, n_trials=config.n_trials)
