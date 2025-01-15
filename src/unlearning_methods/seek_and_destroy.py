@@ -61,19 +61,10 @@ def unlearning_func(
     # ! parameters
     retaining_rate = trial.suggest_float("retaining_rate", 0.0005, 0.001, log=True)
     disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.8, 1)
-    in_pow = trial.suggest_float("in_pow", 0.8, 1.2)
+    in_pow = trial.suggest_float("in_pow", 0.6, 1.6)
     out_pow = trial.suggest_float("out_pow", 0.4, 0.8)
     # r_quantile = trial.suggest_float("r_quantile", 0.15, 0.25, log=True)
-    # r_quantiles = [
-    #     trial.suggest_float("r_quantile0", 0.03, 1, log=True),
-    #     trial.suggest_float("r_quantile1", 0.03, 1, log=True),
-    #     trial.suggest_float("r_quantile2", 0.03, 1, log=True),
-    #     trial.suggest_float("r_quantile3", 0.03, 1, log=True),
-    #     trial.suggest_float("r_quantile4", 0.03, 1, log=True),
-    #     trial.suggest_float("r_quantile5", 0.03, 1, log=True),
-    # ]
-    r_quantiles = [0, 1, 0, 0, 0, 0]
-    unlearning_rate = trial.suggest_float("unlearning_rate", 0.0003, 0.008, log=True)
+    unlearning_rate = trial.suggest_float("unlearning_rate", 0.00003, 0.002, log=True)
     # cont_lr = 0.003  # trial.suggest_float("cont_lr", 0.0001, 0.008, log=True)
     logging.info(f"trial {trial.number} - {trial.params}")
 
@@ -147,10 +138,11 @@ def unlearning_func(
         # Unlearning step with two-stage masking
         for p in interven_params:
             layer_num = int(re.match(r".*layers\.(\d+)", p.param_name).group(1))
-            r_quantile = r_quantiles[layer_num]
+            # r_quantile = r_quantiles[layer_num]
 
             flipped_disr = p.disruption_score * p.to_forget.sign()
-            r_threshold = get_thresh(r_quantile, [flipped_disr])
+            # r_threshold = get_thresh(r_quantile, [flipped_disr])
+            r_threshold = 0
             mask = flipped_disr > r_threshold
 
             # ! unlearn

@@ -45,7 +45,7 @@ config = SimpleNamespace(
     # ! Training constants
     unlearn_steps=100,
     batch_size=16,
-    n_trials=1000,
+    n_trials=2000,
 )
 relearn_config = SimpleNamespace(
     relearn_steps=100,
@@ -103,9 +103,14 @@ try:
     study = run_study(
         objective,
         config,
-        f"{_steps},{config.forget_set_name},only_attack_mlp_k_1_fully",
+        f"{_steps},{config.forget_set_name},just_use_0_as_threshold",
         delete_existing=False,
         load_if_exists=False,
     )
 except KeyboardInterrupt:
     study = get_last_study()
+
+# %%
+plot_slice_layout(study)
+make_sure_optimal_values_are_not_near_range_edges(study)
+get_stats_from_last_n_trials(study, n=10)
