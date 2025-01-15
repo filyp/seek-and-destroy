@@ -15,9 +15,9 @@ def unlearning_func(
     # ! parameters
     retaining_rate = 6e-4
     disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.8, 1)
-    grad_pow = trial.suggest_float("grad_pow", 0.1, 0.6)
-    unlearning_rate = trial.suggest_float("unlearning_rate", 0.0001, 0.001, log=True)
-    cont_lr = trial.suggest_float("cont_lr", 0.0001, 0.008, log=True)
+    grad_pow = trial.suggest_float("grad_pow", 0.1, 1)
+    static_ulr = trial.suggest_float("static_ulr", 0.0001, 0.001, log=True)
+    continual_ulr = trial.suggest_float("continual_ulr", 0.0001, 0.008, log=True)
     logging.info(f"trial {trial.number} - {trial.params}")
 
     model = AutoModelForCausalLM.from_pretrained(config.model_id)
@@ -36,7 +36,7 @@ def unlearning_func(
     for p in interven_params:
         p.requires_grad = True
         p.disruption_score = pt.zeros_like(p.data)
-        p.to_forget = pt.zeros_like(p.data)
+        p.static_to_forget = pt.zeros_like(p.data)
 
     # use several circuits, mixed together; load circuits and construct to_forget
     for circuit_name, strength in config.circuit_names:
@@ -44,10 +44,8 @@ def unlearning_func(
         circuit = filter_and_normalize_circuit(circuit, config.target_modules)
         for p in interven_params:
             if p.param_name in circuit:
-                p.to_forget += circuit[p.param_name] * strength
+                p.static_to_forget += circuit[p.param_name] * strength
         del circuit
-
-    optimizer = pt.optim.SGD(interven_params, lr=cont_lr)
 
     # ! unlearning loop
     logging.info("step      base_f      base_r")
@@ -67,6 +65,7 @@ def unlearning_func(
             p.disruption_score += (p.grad.abs() ** grad_pow) * p.grad.sign()
 
         # skip the rest of the loop during warmup
+        # todo remove the warmup to simplify?
         if step <= disruption_score_warmup:
             continue
 
@@ -74,21 +73,20 @@ def unlearning_func(
         for p in interven_params:
             p.data -= retaining_rate * p.grad
 
-        # ! continuous unlearning
+        # ! continuous unlearning (prepares grads)
         model.zero_grad(set_to_none=True)
         f_input_ids = next(forget_iter)
         output = model(f_input_ids, output_hidden_states=True)
         loss = stream_activation_loss(output, f_input_ids)
         loss.backward()
-        optimizer.step()
 
-        # Unlearning step with two-stage masking
+        # ! unlearning step with masking
         for p in interven_params:
-            flipped_disr = p.disruption_score * p.to_forget.sign()
-            mask = flipped_disr > 0
+            to_forget = static_ulr * p.static_to_forget
+            to_forget += continual_ulr * p.grad if p.grad is not None else 0
 
-            # ! unlearn
-            p.data -= mask * unlearning_rate * p.to_forget
+            mask = (p.disruption_score.sign() == to_forget.sign())
+            p.data -= mask * to_forget
 
         # ! eval current loss
         if step % 10 == 0:
