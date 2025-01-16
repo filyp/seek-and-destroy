@@ -1,7 +1,11 @@
 # %%
-# %load_ext autoreload
-# %autoreload 2
-# # # Automatically reload all modules
+from IPython import get_ipython
+
+# automatically reload all modules
+ipython = get_ipython()
+if ipython is not None:  # Only runs in IPython environment
+    ipython.run_line_magic("load_ext", "autoreload")
+    ipython.run_line_magic("autoreload", "2")
 
 # necessary for determinism:
 import os
@@ -19,7 +23,7 @@ import torch as pt
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from utils.data_loading import CachedBatches, dataset_loaders
-from utils.git_and_reproducibility import get_last_study, is_repo_clean
+from utils.git_and_reproducibility import *
 from utils.model_operations import relearn
 from utils.plots_and_stats import plot_slice_layout
 from utils.training import *
@@ -32,13 +36,13 @@ config = SimpleNamespace(
     # target_modules=["dense_4h_to_h"],
     target_modules=["dense_h_to_4h"],
     # circuit_names=[
-        # ("normal,neg_cross_entropy", 1),
-        # ("normal,neg_entropy", 1),
-        # "grad_misalign,only_pos",
-        # "k_dampens_grad,",
-        # "k_dampens_grad_mlp_local,",
-        # "k_dampens_grad_neuron_local,",
-        # "fading_backprop,neg_cross_entropy,0.6",
+    # ("normal,neg_cross_entropy", 1),
+    # ("normal,neg_entropy", 1),
+    # "grad_misalign,only_pos",
+    # "k_dampens_grad,",
+    # "k_dampens_grad_mlp_local,",
+    # "k_dampens_grad_neuron_local,",
+    # "fading_backprop,neg_cross_entropy,0.6",
     # ],
     # ! Model/data configs
     model_id="EleutherAI/pythia-14m",
@@ -101,13 +105,18 @@ def objective(trial):
     return forget_loss
 
 
-assert is_repo_clean()
-_steps = f"{config.unlearn_steps},{relearn_config.relearn_steps}"
+run_name = ""
+if not run_name:
+    assert is_repo_clean()
+    run_name = get_first_line_of_last_commit()
+else:
+    assert get_dirty_files() == "src/study_runner.py\n"
+
 try:
     study = run_study(
         objective,
         config,
-        f"{_steps},{config.forget_set_name},double_loop,mask",
+        f"{config.unlearn_steps},{relearn_config.relearn_steps},{config.forget_set_name},{run_name}",
         delete_existing=True,
         load_if_exists=False,
     )

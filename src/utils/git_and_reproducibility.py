@@ -76,3 +76,12 @@ def get_last_study(num=-1):
     sorted_studies = sorted(study_summaries, key=lambda s: s.datetime_start)
     latest_study = sorted_studies[num]
     return optuna.load_study(study_name=latest_study.study_name, storage=storage)
+
+
+def get_first_line_of_last_commit():
+    cmd = ["git", "log", "-1", "--pretty=%s"]
+    return subprocess.check_output(cmd, text=True).strip()
+
+
+def get_dirty_files():
+    return subprocess.check_output(["git", "diff", "--name-only"], text=True)
