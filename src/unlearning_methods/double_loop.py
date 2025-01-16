@@ -10,11 +10,11 @@ def unlearning_func(
     trial, config, retain_batches, forget_batches, f_eval, r_eval, allowed_f_loss
 ):
     # ! parameters
-    retaining_rate = trial.suggest_float("retaining_rate", 1e-4, 1e-3, log=True)
-    unlearning_lr = trial.suggest_float("unlearning_lr", 1e-4, 1e-3, log=True)
-    adv_lr = trial.suggest_float("adv_lr", 1e-4, 1e-3, log=True)
+    retaining_rate = 7e-4
+    unlearning_lr = trial.suggest_float("unlearning_lr", 5e-4, 1e-3, log=True)
+    adv_lr = trial.suggest_float("adv_lr", 5e-4, 1e-3, log=True)
     disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.8, 1)
-    fork_every_n_steps = trial.suggest_categorical("fork_every_n_steps", [5, 10, 25])
+    fork_every_n_steps = trial.suggest_int("fork_every_n_steps", 20, 100)
     adv_steps_per_orig_step = 1
     logging.info(f"trial {trial.number} - {trial.params}")
 
@@ -90,9 +90,9 @@ def unlearning_func(
         # ! unlearning step with masking
         for p, adv_p in zip(interven_params, adv_interven_params):
             to_forget = adv_p.grad
-            # mask = p.disruption_score.sign() == to_forget.sign()
-            # p.data -= adv_lr * mask * to_forget
-            p.data -= unlearning_lr * adv_p.grad
+            mask = p.disruption_score.sign() == to_forget.sign()
+            p.data -= adv_lr * mask * to_forget
+            # p.data -= unlearning_lr * adv_p.grad
 
         # ! eval current loss
         if step % 10 == 0:
