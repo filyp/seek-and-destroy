@@ -10,11 +10,11 @@ def unlearning_func(
     trial, config, retain_batches, forget_batches, f_eval, r_eval, allowed_f_loss
 ):
     # ! parameters
-    retaining_rate = 7e-4
-    unlearning_lr = trial.suggest_float("unlearning_lr", 5e-4, 1e-3, log=True)
-    adv_lr = trial.suggest_float("adv_lr", 5e-4, 1e-3, log=True)
+    retaining_rate = trial.suggest_float("retaining_rate", 1e-4, 1e-3, log=True)
+    unlearning_lr = trial.suggest_float("unlearning_lr", 1e-5, 1e-3, log=True)
+    adv_lr = trial.suggest_float("adv_lr", 1e-5, 1e-3, log=True)
     disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.8, 1)
-    fork_every_n_steps = trial.suggest_int("fork_every_n_steps", 20, 100)
+    fork_every_n_steps = trial.suggest_int("fork_every_n_steps", 20, 500, log=True)
     adv_steps_per_orig_step = 1
     logging.info(f"trial {trial.number} - {trial.params}")
 
