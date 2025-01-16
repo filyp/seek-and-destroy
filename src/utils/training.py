@@ -75,7 +75,7 @@ def stream_activation_loss(output, input_ids):
 
 
 # adapted from https://github.com/rishub-tamirisa/tamper-resistance/blob/41b749ca4d9bcb7608c7ead2ca48b0508714af99/modules/objectives.py#L114
-def negative_entropy_loss(output, input_ids) -> pt.Tensor:
+def neg_entropy_loss(output, input_ids) -> pt.Tensor:
     """
     Compute the negative mean entropy loss for the given logits.
 
@@ -99,7 +99,7 @@ loss_fns = dict(
     correct_logit=correct_logit_loss,
     neg_cross_entropy=neg_cross_entropy_loss,
     stream_activation=stream_activation_loss,
-    negative_entropy=negative_entropy_loss,
+    neg_entropy=neg_entropy_loss,
 )
 
 

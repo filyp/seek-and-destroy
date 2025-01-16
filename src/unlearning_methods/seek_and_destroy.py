@@ -6,21 +6,18 @@ from transformers import AutoModelForCausalLM
 from utils.circuit_creation import filter_and_normalize_circuit, get_circuit
 from utils.training import *
 
-disruption_score_warmup = 20
+# warmup_steps = 20
 
 
 def unlearning_func(
     trial, config, retain_batches, forget_batches, f_eval, r_eval, allowed_f_loss
 ):
     # ! parameters
-    # fmt: off
     retaining_rate = trial.suggest_float("retaining_rate", 1e-4, 1e-3, log=True)
     disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.8, 1)
-    static_ulr = 0 # trial.suggest_float("static_ulr", 0.00003, 0.001, log=True)
-    c_neg_entropy_ulr = trial.suggest_float("c_neg_entropy_ulr", 1e-6, 1e-3, log=True)
-    grad_pow = trial.suggest_float("grad_pow", 0.2, 1)
+    static_ulr = trial.suggest_float("static_ulr", 1e-5, 1e-3, log=True)
+    grad_pow = 1  # trial.suggest_float("grad_pow", 0.2, 1)
     logging.info(f"trial {trial.number} - {trial.params}")
-    # fmt: on
 
     model = AutoModelForCausalLM.from_pretrained(config.model_id)
     model.config.use_cache = False
@@ -52,41 +49,32 @@ def unlearning_func(
     # ! unlearning loop
     logging.info("step      base_f      base_r")
     retain_iter = iter(retain_batches)
-    forget_iter = iter(forget_batches)
+    # forget_iter = iter(forget_batches)
     for step in range(1, 1 + config.unlearn_steps):
         model.train()
 
-        # ! retain pass, update disruption scores
+        # ! retain pass
         model.zero_grad(set_to_none=True)
         r_input_ids = next(retain_iter)
         output = model(r_input_ids)
         loss = cross_entropy_loss(output, r_input_ids)
         loss.backward()
         for p in interven_params:
+            # ! update disruption scores
             p.disruption_score *= disruption_score_decay
             p.disruption_score += (p.grad.abs() ** grad_pow) * p.grad.sign()
 
-        # skip the rest of the loop during warmup
-        # todo remove the warmup to simplify?
-        if step <= disruption_score_warmup:
-            continue
+        # if step < warmup_steps:
+        #     continue
 
-        # ! retain update
         for p in interven_params:
+            # # previously we also had a warmup period, where here we skip to next step
+            # ! retain update
             p.data -= retaining_rate * p.grad
-
-        # ! continuous unlearning (prepares grads)
-        model.zero_grad(set_to_none=True)
-        f_input_ids = next(forget_iter)
-        output = model(f_input_ids, output_hidden_states=True)
-        loss = c_neg_entropy_ulr * negative_entropy_loss(output, f_input_ids)
-        loss.backward()
 
         # ! unlearning step with masking
         for p in interven_params:
             to_forget = static_ulr * p.static_to_forget
-            to_forget += p.grad
-
             mask = p.disruption_score.sign() == to_forget.sign()
             p.data -= mask * to_forget
 

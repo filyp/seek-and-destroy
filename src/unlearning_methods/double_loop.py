@@ -50,7 +50,7 @@ def unlearning_func(
     forget_iter = iter(forget_batches)
 
     # ! unlearning loop
-    # note: here each step uses 2+1 forward+backward passes, while s&d uses only 2
+    # note: here each step uses 2+1 forward+backward passes, while s&d uses only 1
     for step in range(1, 1 + config.unlearn_steps):
         model.train()
 
@@ -84,15 +84,14 @@ def unlearning_func(
         # ! get grads on neg_entropy loss from adversary
         adversary.zero_grad(set_to_none=True)
         output = adversary(f_input_ids)  # reuse f_input_ids from previous step
-        loss = negative_entropy_loss(output, f_input_ids)
+        loss = neg_entropy_loss(output, f_input_ids)
         loss.backward()
 
         # ! unlearning step with masking
         for p, adv_p in zip(interven_params, adv_interven_params):
             to_forget = adv_p.grad
             mask = p.disruption_score.sign() == to_forget.sign()
-            p.data -= adv_lr * mask * to_forget
-            # p.data -= unlearning_lr * adv_p.grad
+            p.data -= unlearning_lr * mask * to_forget
 
         # ! eval current loss
         if step % 10 == 0:

@@ -7,9 +7,6 @@ from transformers import AutoModelForCausalLM
 from utils.git_and_reproducibility import repo_root
 from utils.training import loss_fns
 
-# if you change this value, remember to delete cached circuits
-circuit_num_steps = 1000
-
 
 def filter_and_normalize_circuit(circuit, target_modules):
     # first filter to keep only the target modules
@@ -75,7 +72,7 @@ def get_normal_circuit(config, batches, loss_fn_name):
     # accumulate grads
     model.zero_grad(set_to_none=True)
     batch_iter = iter(batches)
-    for _ in tqdm(range(circuit_num_steps)):
+    for _ in tqdm(range(config.circuit_num_steps)):
         input_ids = next(batch_iter)
         output = model(input_ids, output_hidden_states=True)
         loss = loss_fn(output, input_ids)
@@ -103,7 +100,7 @@ def get_circuit_with_fading_backprop(config, batches, loss_fn_name, scale=0.9):
     # accumulate grads
     model.zero_grad(set_to_none=True)
     batch_iter = iter(batches)
-    for _ in tqdm(range(circuit_num_steps)):
+    for _ in tqdm(range(config.circuit_num_steps)):
         input_ids = next(batch_iter)
         loss = loss_fn(model(input_ids), input_ids)
         loss.backward()
@@ -142,7 +139,7 @@ def get_grad_misaligning(config, batches, info):
             module.register_forward_hook(save_input_activation_hook)
 
     batch_iter = iter(batches)
-    for _ in tqdm(range(circuit_num_steps)):
+    for _ in tqdm(range(config.circuit_num_steps)):
         input_ids = next(batch_iter)
         loss = loss_fn(model(input_ids), input_ids)
         loss.backward()
@@ -179,7 +176,7 @@ def get_circuit_k_dampens_grad(config, batches):
 
     # accumulate
     batch_iter = iter(batches)
-    for _ in tqdm(range(circuit_num_steps)):
+    for _ in tqdm(range(config.circuit_num_steps)):
         input_ids = next(batch_iter)
         loss = loss_fn(model(input_ids), input_ids)
         loss.backward()
@@ -224,7 +221,7 @@ def get_circuit_k_dampens_grad_mlp_local(config, batches):
 
     # accumulate
     batch_iter = iter(batches)
-    for _ in tqdm(range(circuit_num_steps)):
+    for _ in tqdm(range(config.circuit_num_steps)):
         input_ids = next(batch_iter)
         loss = loss_fn(model(input_ids), input_ids)
         loss.backward()
@@ -264,7 +261,7 @@ def get_circuit_k_dampens_grad_neuron_local(config, batches):
 
     # accumulate
     batch_iter = iter(batches)
-    for _ in tqdm(range(circuit_num_steps)):
+    for _ in tqdm(range(config.circuit_num_steps)):
         input_ids = next(batch_iter)
         loss = loss_fn(model(input_ids), input_ids)
         loss.backward()

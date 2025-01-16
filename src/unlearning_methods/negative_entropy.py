@@ -9,7 +9,7 @@ import logging
 import torch as pt
 from transformers import AutoModelForCausalLM
 
-from utils.training import cross_entropy_loss, eval_, negative_entropy_loss
+from utils.training import cross_entropy_loss, eval_, neg_entropy_loss
 
 
 def unlearning_func(
@@ -37,7 +37,7 @@ def unlearning_func(
         # ! unlearn
         model.zero_grad(set_to_none=True)
         output = model(f_input_ids)
-        loss = negative_entropy_loss(output, f_input_ids)
+        loss = neg_entropy_loss(output, f_input_ids)
         loss.backward()
         unl_optimizer.step()
 
