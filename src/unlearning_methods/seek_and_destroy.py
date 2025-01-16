@@ -16,13 +16,8 @@ def unlearning_func(
     # fmt: off
     retaining_rate = trial.suggest_float("retaining_rate", 1e-4, 1e-3, log=True)
     disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.8, 1)
-    static_ulr = trial.suggest_float("static_ulr", 0.00003, 0.001, log=True)
-    c_stream_activation_ulr = trial.suggest_float("c_stream_activation_ulr", 1e-9, 1e-4, log=True)
-    c_neg_entropy_ulr = trial.suggest_float("c_neg_entropy_ulr", 1e-9, 1e-4, log=True)
-    # c_neg_cross_entropy_ulr = trial.suggest_float("c_neg_cross_entropy_ulr", 1e-7, 1e-3, log=True)
-    # c_correct_logit_ulr = trial.suggest_float("c_correct_logit_ulr", 1e-7, 1e-3, log=True)
-    c_soft_clipped_ce_ulr = trial.suggest_float("c_soft_clipped_ce_ulr", 1e-14, 1e-7, log=True)
-    atan_scale = trial.suggest_float("atan_scale", 0.00001, 0.1, log=True)
+    static_ulr = 0 # trial.suggest_float("static_ulr", 0.00003, 0.001, log=True)
+    c_neg_entropy_ulr = trial.suggest_float("c_neg_entropy_ulr", 1e-6, 1e-3, log=True)
     grad_pow = trial.suggest_float("grad_pow", 0.2, 1)
     logging.info(f"trial {trial.number} - {trial.params}")
     # fmt: on
@@ -84,14 +79,7 @@ def unlearning_func(
         model.zero_grad(set_to_none=True)
         f_input_ids = next(forget_iter)
         output = model(f_input_ids, output_hidden_states=True)
-        loss = (
-            c_stream_activation_ulr * stream_activation_loss(output, f_input_ids)
-            + c_neg_entropy_ulr * negative_entropy_loss(output, f_input_ids)
-            # + c_neg_cross_entropy_ulr * neg_cross_entropy_loss(output, f_input_ids)
-            # + c_correct_logit_ulr * correct_logit_loss(output, f_input_ids)
-            - c_soft_clipped_ce_ulr
-            * soft_clipped_cross_entropy_loss(output, f_input_ids, atan_scale)
-        )
+        loss = c_neg_entropy_ulr * negative_entropy_loss(output, f_input_ids)
         loss.backward()
 
         # ! unlearning step with masking

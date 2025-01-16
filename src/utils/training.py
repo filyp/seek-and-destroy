@@ -40,6 +40,7 @@ def clipped_correct_logit_loss(output, input_ids):
     logits = output.logits[:, :-1, :].flatten(end_dim=1).to(pt.float32)
     ids = input_ids[:, 1:].flatten()
     true_logits = logits[pt.arange(len(ids)), ids]
+    # note: clipping at 0 is actually pretty useless, because logits don't come that low!
     return true_logits.clip(min=0).mean()
 
 
