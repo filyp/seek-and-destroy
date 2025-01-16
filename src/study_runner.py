@@ -32,8 +32,8 @@ config = SimpleNamespace(
     # target_modules=["dense_4h_to_h"],
     target_modules=["dense_h_to_4h"],
     circuit_names=[
-        # ("normal,neg_cross_entropy", 1),
-        ("normal,neg_entropy", 1),
+        ("normal,neg_cross_entropy", 1),
+        # ("normal,neg_entropy", 1),
         # "grad_misalign,only_pos",
         # "k_dampens_grad,",
         # "k_dampens_grad_mlp_local,",
@@ -107,7 +107,7 @@ try:
     study = run_study(
         objective,
         config,
-        f"{_steps},{config.forget_set_name},reference,S&D,mask,negent,no_grad_pow",
+        f"{_steps},{config.forget_set_name},reference,S&D,mask,negCE,no_grad_pow",
         delete_existing=True,
         load_if_exists=False,
     )
