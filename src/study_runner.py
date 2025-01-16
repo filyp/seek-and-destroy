@@ -27,17 +27,18 @@ from utils.training import *
 # %%
 
 config = SimpleNamespace(
-    method_name="seek_and_destroy",
+    # method_name="seek_and_destroy",
+    method_name="double_loop",
     # target_modules=["dense_4h_to_h"],
     target_modules=["dense_h_to_4h"],
-    circuit_names=[
-        ("normal,neg_cross_entropy", 1),
+    # circuit_names=[
+        # ("normal,neg_cross_entropy", 1),
         # "grad_misalign,only_pos",
         # "k_dampens_grad,",
         # "k_dampens_grad_mlp_local,",
         # "k_dampens_grad_neuron_local,",
         # "fading_backprop,neg_cross_entropy,0.6",
-    ],
+    # ],
     # ! Model/data configs
     model_id="EleutherAI/pythia-14m",
     retain_set_name="wikitext",
@@ -45,7 +46,7 @@ config = SimpleNamespace(
     # ! Training constants
     unlearn_steps=100,
     batch_size=16,
-    n_trials=200,
+    n_trials=500,
 )
 relearn_config = SimpleNamespace(
     relearn_steps=100,
@@ -103,7 +104,7 @@ try:
     study = run_study(
         objective,
         config,
-        f"{_steps},{config.forget_set_name},only_continual_neg_entropy no_static",
+        f"{_steps},{config.forget_set_name},double_loop,no_mask,1to1",
         delete_existing=True,
         load_if_exists=False,
     )

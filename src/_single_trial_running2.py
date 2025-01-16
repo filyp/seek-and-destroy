@@ -35,7 +35,8 @@ config = SimpleNamespace(
     retain_set_name="wikitext",
     forget_set_name="python",
     batch_size=16,
-    method_name="seek_and_destroy",
+    # method_name="seek_and_destroy",
+    method_name="double_loop",
 )
 
 # load datasets
@@ -60,7 +61,7 @@ config.__dict__.update(
     # target_modules=["dense_4h_to_h"],
     target_modules=["dense_h_to_4h"],
     circuit_names=[
-        ("normal,neg_cross_entropy", 1),
+        # ("normal,neg_cross_entropy", 1),
         # ("normal,stream_activation", 0.9),
         # ("fading_backprop,neg_cross_entropy,0.5", 1.1),
         # ("normal,neg_cross_entropy", 1),
@@ -79,24 +80,23 @@ relearn_config = SimpleNamespace(
     relearn_lora_conf=dict(target_modules="all-linear"),
 )
 
-# %%
-study = get_last_study(num=-1)
-params = study.best_trial.params
-print(study.study_name)
-print(study.best_trial.values)
-print(params)
+# # %%
+# study = get_last_study(num=-1)
+# params = study.best_trial.params
+# print(study.study_name)
+# print(study.best_trial.values)
+# print(params)
 
 # %%
 
 set_seeds(42)
 trial = MockTrial(
-    **params,
-    cont_lr=0,
+    # **params,
 )
 model = unlearning_func(
     trial, config, retain_batches, forget_batches, f_eval, r_eval, allowed_f_loss,
 )
 
-# # %%
-# forget_losses = relearn(model, relearn_config, retain_val_batches, forget_val_batches)
-# print(config.circuit_names)
+# %%
+forget_losses = relearn(model, relearn_config, retain_val_batches, forget_val_batches)
+print(config.circuit_names)
