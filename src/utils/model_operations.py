@@ -51,7 +51,7 @@ def relearn(model, config, retain_val_batches, forget_val_batches):
     # ! relearning loop
     logging.info("")
     f_losses = []
-    for step in range(1, 1 + config.relearn_steps):
+    for step in range(config.relearn_steps):
         # standard forward, backward, and update
         model.train()
         optimizer.zero_grad(set_to_none=True)
@@ -60,10 +60,10 @@ def relearn(model, config, retain_val_batches, forget_val_batches):
         loss_forget.backward()
         optimizer.step()
 
-        if step % 10 == 0:
-            res = eval_(model, f_eval_batch, r_eval_batch, step=step)
+        if (step + 1) % 12 == 0:
+            res = eval_(model, f_eval_batch, r_eval_batch, step=step + 1)
             f_losses.append(res["forget_loss"])
-            # wandb.log(res, step=step)
+            # wandb.log(res, step=step + 1)
 
     logging.info("")
     return f_losses

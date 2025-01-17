@@ -140,40 +140,6 @@ def eval_(model, f_eval_batch, r_eval_batch, allowed_f_loss=None, step=""):
     return res
 
 
-def run_study(
-    objective,
-    config,
-    study_name,
-    delete_existing=False,
-    load_if_exists=False,
-):
-    storage = get_storage()
-
-    # delete existing study if it exists
-    if delete_existing:
-        try:
-            _ = optuna.load_study(study_name=study_name, storage=storage)
-            optuna.delete_study(study_name=study_name, storage=storage)
-        except KeyError:
-            pass
-
-    study = optuna.create_study(
-        study_name=study_name,
-        storage=storage,
-        direction="maximize",
-        load_if_exists=load_if_exists,
-    )
-    script_name = repo_root() / "src" / "study_runner.py"
-    save_script_and_attach_logger(script_name, study.study_name)
-    study.set_metric_names(["forget_loss"])
-    study.set_user_attr("commit_hash", commit_hash())
-    study.set_user_attr("is_repo_clean", is_repo_clean())
-    for k, v in config.__dict__.items():
-        study.set_user_attr(k, v)
-    study.optimize(objective, n_trials=config.n_trials)
-    return study
-
-
 def make_sure_optimal_values_are_not_near_range_edges(study):
     # make sure the value is not in the top or bottom 10% of the range, logarithmically
     for param_name, value in study.best_trial.params.items():
@@ -204,3 +170,11 @@ def get_stats_from_last_n_trials(study, n=10):
     print("max_val, last_n_mean ± last_n_std, pure_name")
     print(f"| {max_val:.2f} | {last_n_mean:.2f}±{last_n_std:.2f} | {pure_name} |  |")
     return last_n_mean, last_n_std
+
+
+def delete_study_if_exists(study_name, storage):
+    try:
+        _ = optuna.load_study(study_name=study_name, storage=storage)
+        optuna.delete_study(study_name=study_name, storage=storage)
+    except KeyError:
+        pass

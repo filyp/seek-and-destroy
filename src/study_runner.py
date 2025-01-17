@@ -35,28 +35,19 @@ config = SimpleNamespace(
     method_name="double_loop",
     # target_modules=["dense_4h_to_h"],
     target_modules=["dense_h_to_4h"],
-    # circuit_names=[
-    # ("normal,neg_cross_entropy", 1),
-    # ("normal,neg_entropy", 1),
-    # "grad_misalign,only_pos",
-    # "k_dampens_grad,",
-    # "k_dampens_grad_mlp_local,",
-    # "k_dampens_grad_neuron_local,",
-    # "fading_backprop,neg_cross_entropy,0.6",
-    # ],
     # ! Model/data configs
     model_id="EleutherAI/pythia-14m",
     retain_set_name="wikitext",
     forget_set_name="python",
     # ! Training constants
-    unlearn_steps=500,
-    # if you change this value, remember to delete cached circuits
-    circuit_num_steps=500,
+    unlearn_steps=480,
+    # # if you change this value, remember to delete cached circuits
+    # circuit_num_steps=500,
     batch_size=16,
-    n_trials=1000,
+    n_trials=200,
 )
 relearn_config = SimpleNamespace(
-    relearn_steps=200,
+    relearn_steps=60,
     relearn_lr=3e-4,
     relearn_lora_conf=dict(target_modules="all-linear"),
 )
@@ -83,7 +74,7 @@ r_eval = next(iter(retain_val_batches))
 f_eval = next(iter(forget_val_batches))
 
 res = eval_(AutoModelForCausalLM.from_pretrained(config.model_id), f_eval, r_eval)
-allowed_f_loss = res["retain_loss"] + 0.1
+allowed_f_loss = res["retain_loss"]
 
 assert config.method_name.replace("_", "").isalpha()
 exec(f"from unlearning_methods.{config.method_name} import unlearning_func")
@@ -105,25 +96,36 @@ def objective(trial):
     return forget_loss
 
 
-run_name = ""
-if not run_name:
-    assert is_repo_clean()
-    run_name = get_first_line_of_last_commit()
-else:
-    assert get_dirty_files() == "src/study_runner.py\n"
+if __name__ == "__main__":
+    run_name = ""
+    if not run_name:
+        assert is_repo_clean()
+        run_name = get_first_line_of_last_commit()
+    else:
+        assert get_dirty_files() == "src/study_runner.py\n"
 
-try:
-    study = run_study(
-        objective,
-        config,
-        f"{config.unlearn_steps},{relearn_config.relearn_steps},{config.forget_set_name},{run_name}",
-        delete_existing=True,
-        load_if_exists=False,
-    )
-except KeyboardInterrupt:
-    study = get_last_study()
+    study_name = f"{config.unlearn_steps},{relearn_config.relearn_steps},{config.forget_set_name},{run_name}"
+    try:
+        storage = get_storage()
+        # delete_study_if_exists(study_name, storage)
+        study = optuna.create_study(
+            study_name=study_name,
+            storage=storage,
+            direction="maximize",
+            load_if_exists=False,
+        )
+        script_name = repo_root() / "src" / "study_runner.py"
+        save_script_and_attach_logger(script_name, study.study_name)
+        study.set_metric_names(["forget_loss"])
+        study.set_user_attr("commit_hash", commit_hash())
+        study.set_user_attr("is_repo_clean", is_repo_clean())
+        for k, v in config.__dict__.items():
+            study.set_user_attr(k, v)
+        study.optimize(objective, n_trials=config.n_trials)
+    except KeyboardInterrupt:
+        pass
 
-# %%
-plot_slice_layout(study)
-make_sure_optimal_values_are_not_near_range_edges(study)
-get_stats_from_last_n_trials(study, n=10)
+    # study = get_last_study()
+    plot_slice_layout(study)
+    make_sure_optimal_values_are_not_near_range_edges(study)
+    get_stats_from_last_n_trials(study, n=10)
