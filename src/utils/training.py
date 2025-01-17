@@ -86,8 +86,8 @@ def get_stats_from_last_n_trials(study, n=10):
     last_n_mean = np.mean(values[-n:])
     last_n_std = np.std(values[-n:])
     pure_name = ",".join(study.study_name.split(",")[3:])
-    print("max_val, last_n_mean ± last_n_std, pure_name")
-    print(f"| {max_val:.2f} | {last_n_mean:.2f}±{last_n_std:.2f} | {pure_name} |  |")
+    print("last_n_mean ± last_n_std, max_val, pure_name")
+    print(f"| {last_n_mean:.2f}±{last_n_std:.2f} | {max_val:.2f} | {pure_name} |  |")
     return last_n_mean, last_n_std
 
 

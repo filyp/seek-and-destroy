@@ -31,8 +31,11 @@ from utils.training import *
 # %%
 
 config = SimpleNamespace(
-    # method_name="seek_and_destroy",
-    method_name="double_loop",
+    method_name="seek_and_destroy",
+    # method_name="double_loop",
+    circuit_names=[
+        ("normal,neg_cross_entropy", 1),
+    ],
     # target_modules=["dense_4h_to_h"],
     target_modules=["dense_h_to_4h"],
     # ! Model/data configs
@@ -96,7 +99,7 @@ def objective(trial):
     return forget_loss
 
 
-if __name__ == "__main__":
+def run_study(storage):
     run_name = ""
     if not run_name:
         assert is_repo_clean()
@@ -106,7 +109,6 @@ if __name__ == "__main__":
 
     study_name = f"{config.unlearn_steps},{relearn_config.relearn_steps},{config.forget_set_name},{run_name}"
     try:
-        storage = get_storage()
         # delete_study_if_exists(study_name, storage)
         study = optuna.create_study(
             study_name=study_name,
@@ -129,3 +131,8 @@ if __name__ == "__main__":
     plot_slice_layout(study)
     make_sure_optimal_values_are_not_near_range_edges(study)
     get_stats_from_last_n_trials(study, n=10)
+
+
+if __name__ == "__main__":
+    storage = get_storage()
+    run_study(storage)
