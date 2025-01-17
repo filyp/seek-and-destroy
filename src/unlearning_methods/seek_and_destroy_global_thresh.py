@@ -7,7 +7,8 @@ from transformers import AutoModelForCausalLM
 from utils.git_and_reproducibility import repo_root
 from utils.model_operations import get_thresh
 from utils.plots_and_stats import visualize_param
-from utils.training import cross_entropy_loss, eval_, loss_fns
+from utils.training import eval_
+from utils.loss_fns import *
 
 disruption_score_warmup = 20
 

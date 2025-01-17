@@ -9,7 +9,8 @@ import logging
 import torch as pt
 from transformers import AutoModelForCausalLM
 
-from utils.training import cross_entropy_loss, eval_, neg_entropy_loss
+from utils.loss_fns import *
+from utils.training import eval_
 
 
 def unlearning_func(

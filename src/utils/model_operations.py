@@ -5,7 +5,8 @@ import torch as pt
 import wandb
 from peft import LoraConfig, get_peft_model
 
-from utils.training import cross_entropy_loss, eval_
+from utils.loss_fns import *
+from utils.training import eval_
 
 
 def only_grad_on(model, params_to_grad):
