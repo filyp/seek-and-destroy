@@ -10,12 +10,13 @@ import optuna
 
 
 def repo_root() -> Path:
-    raw_root = subprocess.check_output(["git", "rev-parse", "--show-toplevel"])
-    return Path(raw_root.decode("utf-8").strip())
+    cmd = ["git", "rev-parse", "--show-toplevel"]
+    root = subprocess.check_output(cmd, text=True).strip()
+    return Path(root)
 
 
 def commit_hash() -> str:
-    return subprocess.check_output(["git", "rev-parse", "HEAD"]).decode("utf-8").strip()
+    return subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip()
 
 
 def is_repo_clean() -> bool:
@@ -79,8 +80,8 @@ def get_last_study(num=-1):
 
 
 def get_first_line_of_last_commit():
-    cmd = ["git", "log", "-1", "--pretty=%s"]
-    return subprocess.check_output(cmd, text=True).strip()
+    cmd = ["git", "log", "-1", "--pretty=%B"]
+    return subprocess.check_output(cmd, text=True).splitlines()[0]
 
 
 def get_dirty_files():

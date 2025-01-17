@@ -5,7 +5,7 @@ from tqdm import tqdm
 from transformers import AutoModelForCausalLM
 
 from utils.git_and_reproducibility import repo_root
-from utils.training import loss_fns
+from utils.loss_fns import loss_fns
 
 
 def filter_and_normalize_circuit(circuit, target_modules):

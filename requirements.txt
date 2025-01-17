@@ -20,3 +20,4 @@ plotly
 nbformat
 kaleido
 psycopg2-binary
+modal
