@@ -11,12 +11,13 @@ def unlearning_func(
     trial, config, retain_batches, forget_batches, f_eval, r_eval, allowed_f_loss
 ):
     # ! parameters
-    # retaining_rate = 4e-4
-    retaining_rate = trial.suggest_float("retaining_rate", 1e-4, 3e-3, log=True)
-    # unlearning_lr = trial.suggest_float("unlearning_lr", 3e-3, 1e-2, log=True)
-    unlearning_lr = trial.suggest_float("unlearning_lr", 3e-5, 1e-2, log=True)
-    # adv_lr = trial.suggest_float("adv_lr", 0.005, 0.015, log=True)
-    adv_lr = trial.suggest_float("adv_lr", 0.001, 0.015, log=True)
+    retaining_rate = 4e-4
+    # retaining_rate = trial.suggest_float("retaining_rate", 1e-4, 3e-3, log=True)
+    unlearning_lr = trial.suggest_float("unlearning_lr", 3e-3, 1e-2, log=True)
+    # unlearning_lr = trial.suggest_float("unlearning_lr", 3e-5, 1e-2, log=True)
+    adv_lr = trial.suggest_float("adv_lr", 0.005, 0.015, log=True)
+    # adv_lr = trial.suggest_float("adv_lr", 0.001, 0.015, log=True)
+    grad_pow = trial.suggest_float("grad_pow", 0.3, 1)
 
     disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.5, 0.8)
     fork_every_n_steps = trial.suggest_int("fork_every_n_steps", 24, 120, step=24)
@@ -71,7 +72,7 @@ def unlearning_func(
         for p in interven_params:
             # ! update disruption scores
             p.disruption_score *= disruption_score_decay
-            p.disruption_score += p.grad
+            p.disruption_score += (p.grad.abs() ** grad_pow) * p.grad.sign()
             # ! retain update
             p.data -= retaining_rate * p.grad
         model.zero_grad(set_to_none=True)
@@ -99,8 +100,7 @@ def unlearning_func(
         for p, adv_p in zip(interven_params, adv_interven_params):
             to_forget = adv_p.grad
             mask = p.disruption_score.sign() == to_forget.sign()
-            # p.data -= unlearning_lr * mask * to_forget
-            p.data -= unlearning_lr * to_forget
+            p.data -= unlearning_lr * mask * to_forget
 
         # ! eval current loss
         if (step + steps_per_loop) % 24 == 0:

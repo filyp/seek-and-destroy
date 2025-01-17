@@ -50,11 +50,16 @@ def save_script_and_attach_logger(file_name, study_name):
     logging.info(f"commit hash: {commit_hash()}")
 
 
-def get_storage(remote=False):
-    if remote:
-        secrets_file = repo_root() / "secret.json"
-        assert secrets_file.exists(), "secret.json not found"
-        db_url = json.load(open(secrets_file))["db_url"]
+def get_storage(db_url=None):
+    if db_url is None:
+        # on default use local sqlite db
+        path = repo_root() / "db.sqlite3"
+        path = os.path.relpath(path, Path.cwd())
+        return f"sqlite:///{path}"
+    else:
+        # secrets_file = repo_root() / "secret.json"
+        # assert secrets_file.exists(), "secret.json not found"
+        # db_url = json.load(open(secrets_file))["db_url"]
         return optuna.storages.RDBStorage(
             url=db_url,
             engine_kwargs={
@@ -64,10 +69,6 @@ def get_storage(remote=False):
                 "connect_args": {"sslmode": "require"},
             },
         )
-    else:
-        path = repo_root() / "db.sqlite3"
-        path = os.path.relpath(path, Path.cwd())
-        return f"sqlite:///{path}"
 
 
 def get_last_study(num=-1):
