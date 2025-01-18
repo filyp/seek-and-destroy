@@ -31,11 +31,7 @@ from utils.training import *
 # %%
 
 config = SimpleNamespace(
-    method_name="double_loop",
-    # method_name="seek_and_destroy",
-    # circuit_names=[
-    #     ("normal,neg_cross_entropy", 1),
-    # ],
+    method_name="tar_masked",
     # target_modules=["dense_4h_to_h"],
     target_modules=["dense_h_to_4h"],
     # ! Model/data configs

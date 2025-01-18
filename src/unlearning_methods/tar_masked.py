@@ -18,6 +18,8 @@ def unlearning_func(
     disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.5, 0.8)
     fork_every_n_steps = trial.suggest_int("fork_every_n_steps", 24, 120, step=24)
     adv_per_orig_step = 1
+    correct_logit_bias = trial.suggest_float("correct_logit_bias", -1, 10)
+    only_grad_correct = False
     logging.info(f"trial {trial.number} - {trial.params}")
     assert adv_per_orig_step in [1, 2, 4, 6, 10]
     assert fork_every_n_steps % 24 == 0
@@ -77,7 +79,7 @@ def unlearning_func(
             adversary.load_state_dict(model.state_dict())
 
         for _ in range(adv_per_orig_step):
-            # ! relearn on the adversary
+            # ! relearn the adversary
             adversary.zero_grad(set_to_none=True)
             f_input_ids = next(forget_iter)
             output = adversary(f_input_ids)
@@ -86,10 +88,13 @@ def unlearning_func(
             for adv_p in adv_interven_params:
                 adv_p.data -= adv_lr * adv_p.grad
 
-        # ! get grads on neg_entropy loss from adversary
+        # ! get unlearning grads loss from adversary
         adversary.zero_grad(set_to_none=True)
         output = adversary(f_input_ids)  # reuse f_input_ids from previous step
-        loss = neg_entropy_loss(output, f_input_ids)
+        # loss = neg_entropy_loss(output, f_input_ids)
+        loss = flipped_prob_loss(
+            output, f_input_ids, correct_logit_bias, only_grad_correct
+        )
         loss.backward()
 
         # ! unlearning step with masking

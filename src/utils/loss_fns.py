@@ -80,3 +80,45 @@ loss_fns = dict(
     stream_activation=stream_activation_loss,
     neg_entropy=neg_entropy_loss,
 )
+
+
+def flipped_prob_loss(output, input_ids, correct_logit_bias=0, only_grad_correct=False):
+    """Compute loss that tries to reduce probability of correct tokens.
+    
+    In contrast to neg_entropy_loss, it's monotonic in respect to the correct logit.
+    It has two asymptotes: on the right has derivative 1, on the left has derivative 0.
+
+    Args:
+        output: Model output containing logits
+        input_ids: Input token IDs
+        correct_logit_bias: Bias added to correct token logits
+        only_grad_correct:
+            If True, only compute gradients for correct token positions
+            If False, compute gradients for all tokens
+    """
+    orig_logits = output.logits[:, :-1, :].flatten(end_dim=1).to(pt.float32)
+    ids = input_ids[:, 1:].flatten()
+    target_indices = (pt.arange(len(ids)), ids)
+
+    if only_grad_correct:
+        # create a detached copy of logits
+        logits = orig_logits.detach().clone()
+        # only keep gradients for the target tokens
+        logits[target_indices] = orig_logits[target_indices]
+    else:
+        logits = orig_logits
+
+    # shift up the correct logits, so that they'll need to be brought further down
+    logits[target_indices] += correct_logit_bias
+
+    # # for numerical reasons shift logits (this does not change probabilities)
+    # logits = logits - logits.max(dim=-1, keepdims=True).values
+    # # softmax
+    # exp_logits = logits.exp()
+    # probs = exp_logits / exp_logits.sum(dim=-1, keepdims=True)
+    probs = pt.nn.functional.softmax(logits, dim=-1)
+
+    true_probs = probs[pt.arange(len(ids)), ids]
+    # ! invert the probability
+    losses = -pt.log(1 - true_probs)
+    return losses.mean()
