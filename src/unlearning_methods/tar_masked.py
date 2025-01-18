@@ -12,14 +12,15 @@ def unlearning_func(
 ):
     # ! parameters
     retaining_rate = trial.suggest_float("retaining_rate", 1e-4, 3e-3, log=True)
-    unlearning_lr = trial.suggest_float("unlearning_lr", 3e-3, 1e-2, log=True)
+    # unlearning_lr = trial.suggest_float("unlearning_lr", 3e-3, 1e-2, log=True)
+    unlearning_lr = trial.suggest_float("unlearning_lr", 1e-5, 1e-2, log=True)
     adv_lr = trial.suggest_float("adv_lr", 0.005, 0.015, log=True)
 
     disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.5, 0.8)
     fork_every_n_steps = trial.suggest_int("fork_every_n_steps", 24, 120, step=24)
     adv_per_orig_step = 1
     correct_logit_bias = trial.suggest_float("correct_logit_bias", -1, 10)
-    only_grad_correct = False
+    only_grad_correct = True
     logging.info(f"trial {trial.number} - {trial.params}")
     assert adv_per_orig_step in [1, 2, 4, 6, 10]
     assert fork_every_n_steps % 24 == 0
