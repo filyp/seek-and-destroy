@@ -72,6 +72,18 @@ def neg_entropy_loss(output, input_ids) -> pt.Tensor:
     return entropy.mean() * -1
 
 
+def biased_neg_entropy_loss(output, input_ids, correct_logit_bias) -> pt.Tensor:
+    logits = output.logits[:, :-1, :].flatten(end_dim=1).to(pt.float32)
+    ids = input_ids[:, 1:].flatten()
+    # shift up the correct logits, so that they'll need to be brought further down
+    logits[pt.arange(len(ids)), ids] += correct_logit_bias
+    # calculate entropy
+    softmax = pt.nn.functional.softmax(logits, dim=-1)
+    log_softmax = pt.nn.functional.log_softmax(logits, dim=-1)
+    entropy = pt.sum(-softmax * log_softmax, dim=-1).mean()
+    return entropy.mean() * -1
+
+
 loss_fns = dict(
     cross_entropy=cross_entropy_loss,
     clipped_correct_logit=clipped_correct_logit_loss,
@@ -84,7 +96,7 @@ loss_fns = dict(
 
 def flipped_prob_loss(output, input_ids, correct_logit_bias=0, only_grad_correct=False):
     """Compute loss that tries to reduce probability of correct tokens.
-    
+
     In contrast to neg_entropy_loss, it's monotonic in respect to the correct logit.
     It has two asymptotes: on the right has derivative 1, on the left has derivative 0.
 
