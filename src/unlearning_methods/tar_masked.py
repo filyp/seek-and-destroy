@@ -18,8 +18,9 @@ def unlearning_func(
     disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.5, 0.8)
     fork_every_n_steps = trial.suggest_int("fork_every_n_steps", 24, 120, step=24)
     adv_per_orig_step = 1
-    correct_logit_bias = trial.suggest_float("correct_logit_bias", -1, 10)
+    # correct_logit_bias = trial.suggest_float("correct_logit_bias", -1, 10)
     # only_grad_correct = True
+    clip_at = trial.suggest_float("clip_at", -10, 40)
     logging.info(f"trial {trial.number} - {trial.params}")
     assert adv_per_orig_step in [1, 2, 4, 6, 10]
     assert fork_every_n_steps % 24 == 0
@@ -96,7 +97,8 @@ def unlearning_func(
         #     output, f_input_ids, correct_logit_bias, only_grad_correct
         # )
         # loss = neg_entropy_loss(output, f_input_ids)
-        loss = biased_neg_entropy_loss(output, f_input_ids, correct_logit_bias)
+        # loss = biased_neg_entropy_loss(output, f_input_ids, correct_logit_bias)
+        loss = correct_logit_minus_avg_loss(output, f_input_ids, clip_at)
         loss.backward()
 
         # ! unlearning step with masking
