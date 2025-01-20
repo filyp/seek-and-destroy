@@ -12,14 +12,14 @@ def unlearning_func(
 ):
     # ! parameters
     adv_lr = trial.suggest_float("adv_lr", 0.0005, 0.015, log=True)
-    clip_at = trial.suggest_float("clip_at", -100, 10)
-    disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.5, 1)
-    fork_every_n_steps = trial.suggest_int("fork_every_n_steps", 24, 72, step=24)
+    clip_at = trial.suggest_float("clip_at", -20, 20)
+    retain_momentum_decay = trial.suggest_float("retain_momentum_decay", 0.8, 1)
+    forget_momentum_decay = trial.suggest_float("forget_momentum_decay", 0.8, 1)
+    adv_decay = trial.suggest_float("adv_decay", 0.9, 1)
+    fork_every_n_steps = trial.suggest_int("fork_every_n_steps", 24, 96, step=24)
     retaining_rate = 1e-3
-    unlearning_lr = trial.suggest_float("unlearning_lr", 1e-3, 3e-2, log=True)
+    unlearning_lr = trial.suggest_float("unlearning_lr", 1e-3, 1e-1, log=True)
     adv_per_orig_step = 1
-    # correct_logit_bias = trial.suggest_float("correct_logit_bias", -1, 10)
-    # only_grad_correct = True
     logging.info(f"trial {trial.number} - {trial.params}")
     assert adv_per_orig_step in [1, 2, 4, 6, 10]
     assert fork_every_n_steps % 24 == 0
@@ -48,7 +48,8 @@ def unlearning_func(
         p.requires_grad = id(p) in [id(p) for p in adv_interven_params]
 
     for p in interven_params:
-        p.disruption_score = pt.zeros_like(p.data)
+        p.retain_momentum = pt.zeros_like(p.data)
+        p.forget_momentum = pt.zeros_like(p.data)
 
     # ! unlearning loop
     logging.info("step      base_f      base_r")
@@ -69,10 +70,11 @@ def unlearning_func(
         loss.backward()
         for p in interven_params:
             # ! update disruption scores
-            p.disruption_score *= disruption_score_decay
-            p.disruption_score += p.grad * (1 - disruption_score_decay)
+            p.retain_momentum *= retain_momentum_decay
+            p.retain_momentum += p.grad * (1 - retain_momentum_decay)
             # ! retain update
-            p.data -= retaining_rate * p.disruption_score
+            p.data -= retaining_rate * p.retain_momentum
+
         model.zero_grad(set_to_none=True)
 
         if step % fork_every_n_steps == 0:
@@ -85,26 +87,27 @@ def unlearning_func(
             output = adversary(f_input_ids)
             loss = cross_entropy_loss(output, f_input_ids)
             loss.backward()
-            for adv_p in adv_interven_params:
+            for p, adv_p in zip(interven_params, adv_interven_params):
                 adv_p.data -= adv_lr * adv_p.grad
+                # decay adversary into base model
+                adv_p.data *= adv_decay
+                adv_p.data += p.data * (1 - adv_decay)
+
 
         # ! get unlearning grads loss from adversary
         adversary.zero_grad(set_to_none=True)
         output = adversary(f_input_ids)  # reuse f_input_ids from previous step
-        # loss = neg_entropy_loss(output, f_input_ids)
-        # loss = flipped_prob_loss(
-        #     output, f_input_ids, correct_logit_bias, only_grad_correct
-        # )
-        # loss = neg_entropy_loss(output, f_input_ids)
-        # loss = biased_neg_entropy_loss(output, f_input_ids, correct_logit_bias)
         loss = correct_logit_minus_avg_loss(output, f_input_ids, clip_at)
         loss.backward()
 
         # ! unlearning step with masking
         for p, adv_p in zip(interven_params, adv_interven_params):
-            to_forget = adv_p.grad
-            mask = p.disruption_score.sign() == to_forget.sign()
-            p.data -= unlearning_lr * mask * to_forget
+            p.forget_momentum *= forget_momentum_decay
+            p.forget_momentum += adv_p.grad * (1 - forget_momentum_decay)
+            mask = p.retain_momentum.sign() == p.forget_momentum.sign()
+            update = mask * p.forget_momentum
+            update /= update.norm()
+            p.data -= unlearning_lr * update
 
         # ! eval current loss
         if (step + steps_per_loop) % 24 == 0:
