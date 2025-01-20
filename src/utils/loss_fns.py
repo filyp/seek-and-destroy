@@ -141,5 +141,8 @@ def correct_logit_minus_avg_loss(output, input_ids, clip_at):
     ids = input_ids[:, 1:].flatten()
     true_logits = logits[pt.arange(len(ids)), ids]
     true_logits -= logits.mean(dim=-1)
-    true_logits.clip(min=clip_at)
+    # # append true_logits to debug.txt
+    # with open("debug.txt", "a") as f:
+    #     f.write(f"{true_logits.mean():.0f}, {min(true_logits):.0f}\n")
+    true_logits = true_logits.clip(min=clip_at)
     return true_logits.mean()

@@ -5,6 +5,8 @@ import subprocess
 
 import modal
 
+from study_runner import run_study
+
 repo = "https://github.com/filyp/seek-and-destroy.git"
 branch = "main"
 
@@ -33,10 +35,7 @@ def remote_func(db_url):
     from utils.loss_fns import neg_cross_entropy_loss
 
     storage = get_storage(db_url)
-
-    tokenizer = AutoTokenizer.from_pretrained("EleutherAI/pythia-14m")
-    model = AutoModelForCausalLM.from_pretrained("EleutherAI/pythia-14m")
-    print(neg_cross_entropy_loss)
+    run_study(storage)
 
 
 @app.local_entrypoint()

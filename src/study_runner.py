@@ -33,17 +33,19 @@ from utils.training import *
 config = SimpleNamespace(
     method_name="tar_masked",
     # target_modules=["dense_4h_to_h"],
-    target_modules=["dense_h_to_4h"],
+    # target_modules=["dense_h_to_4h"],
+    target_modules=["down_proj"],
     # ! Model/data configs
-    model_id="EleutherAI/pythia-14m",
+    # model_id="EleutherAI/pythia-14m",
+    model_id="HuggingFaceTB/SmolLM-135M",
     retain_set_name="wikitext",
     forget_set_name="python",
     # ! Training constants
-    unlearn_steps=480,
+    unlearn_steps=240,
     # # if you change this value, remember to delete cached circuits
     # circuit_num_steps=500,
     batch_size=16,
-    n_trials=300,
+    n_trials=200,
 )
 relearn_config = SimpleNamespace(
     relearn_steps=60,
