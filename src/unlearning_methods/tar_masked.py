@@ -11,19 +11,19 @@ def unlearning_func(
     trial, config, retain_batches, forget_batches, f_eval, r_eval, allowed_f_loss
 ):
     # ! parameters
-    adv_decay = trial.suggest_float("adv_decay", 0.8, 1)
-    adv_lr = trial.suggest_float("adv_lr", 0.002, 0.01, log=True)
-    clip_at = trial.suggest_float("clip_at", -5, 7)
-    forget_momentum_decay = trial.suggest_float("forget_momentum_decay", 0, 1)
-    fork_every_n_steps = trial.suggest_int("fork_every_n_steps", 24, 72, step=24)
-    retain_momentum_decay = trial.suggest_float("retain_momentum_decay", 0.7, 0.9)
-    retaining_rate = trial.suggest_float("retaining_rate", 2e-4, 2e-3, log=True)
-    unlearning_rate = trial.suggest_float("unlearning_rate", 2e-2, 5e-2, log=True)
+    adv_decay = trial.suggest_float("adv_decay", 0.75, 0.9)
+    adv_lr = trial.suggest_float("adv_lr", 0.002, 0.006, log=True)
+    clip_at = trial.suggest_float("clip_at", 0, 5)
+    forget_momentum_decay = trial.suggest_float("forget_momentum_decay", 0.4, 0.8)
+    fork_every_n_steps = trial.suggest_int("fork_every_n_steps", 6, 60, step=3)
+    retain_momentum_decay = trial.suggest_float("retain_momentum_decay", 0, 0.8)
+    retaining_rate = trial.suggest_float("retaining_rate", 5e-5, 2e-3, log=True)
+    unlearning_rate = trial.suggest_float("unlearning_rate", 3e-2, 5e-2, log=True)
 
     adv_per_orig_step = 1
     logging.info(f"trial {trial.number} - {trial.params}")
-    assert adv_per_orig_step in [1, 2, 4, 6, 10]
-    assert fork_every_n_steps % 24 == 0
+    assert adv_per_orig_step in [1, 2, 4]
+    # assert fork_every_n_steps % 12 == 0
 
     model = AutoModelForCausalLM.from_pretrained(config.model_id)
     adversary = AutoModelForCausalLM.from_pretrained(config.model_id)
@@ -111,7 +111,7 @@ def unlearning_func(
             p.data -= unlearning_rate * update
 
         # ! eval current loss
-        if (step + steps_per_loop) % 24 == 0:
+        if (step + steps_per_loop) % 12 == 0:
             eval_(model, f_eval, r_eval, allowed_f_loss, step + steps_per_loop)
 
     return model

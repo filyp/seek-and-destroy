@@ -45,7 +45,7 @@ config = SimpleNamespace(
     # # if you change this value, remember to delete cached circuits
     # circuit_num_steps=500,
     batch_size=16,
-    n_trials=1000,
+    n_trials=5000,
 )
 relearn_config = SimpleNamespace(
     relearn_steps=180,
