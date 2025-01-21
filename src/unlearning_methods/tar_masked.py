@@ -10,6 +10,8 @@ from utils.training import *
 def unlearning_func(
     trial, config, retain_batches, forget_batches, f_eval, r_eval, allowed_f_loss
 ):
+    # todo not only decay to base, but also apply unlearning updates to adversary
+    # todo f_power?
     # ! parameters
     adv_decay = trial.suggest_float("adv_decay", 0.75, 0.78)
     adv_lr = trial.suggest_float("adv_lr", 0.0025, 0.004, log=True)

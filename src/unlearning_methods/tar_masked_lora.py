@@ -18,17 +18,18 @@ def only_grad_on(model, params):
 def unlearning_func(
     trial, config, retain_batches, forget_batches, f_eval, r_eval, allowed_f_loss
 ):
-    # todo decay loras?
     # ! parameters
-    adv_lr = trial.suggest_float("adv_lr", 0.02, 0.1, log=True)
-    clip_at = 3  # trial.suggest_float("clip_at", 0, 4)
+    adv_decay = trial.suggest_float("adv_decay", 0.9, 1)
+    adv_lr = trial.suggest_float("adv_lr", 0.02, 0.2, log=True)
+    clip_at = trial.suggest_float("clip_at", 0, 5)
     forget_momentum_decay = trial.suggest_float("forget_momentum_decay", 0.5, 0.8)
-    fork_every_n_loops = trial.suggest_int("fork_every_n_loops", 12, 30, step=6)
-    lora_rank = 10  # trial.suggest_int("lora_rank", 4, 12)
-    retain_momentum_decay = trial.suggest_float("retain_momentum_decay", 0.4, 0.8)
-    retaining_rate = trial.suggest_float("retaining_rate", 3e-4, 2e-3, log=True)
-    unlearning_rate = trial.suggest_float("unlearning_rate", 2.5e-2, 5e-2, log=True)
-    lora_amount = trial.suggest_int("lora_amount", 1, 4)
+    fork_every_n_loops = trial.suggest_int("fork_every_n_loops", 12, 60, step=6)
+    f_power = trial.suggest_float("f_power", 0.5, 2)
+    lora_amount = trial.suggest_int("lora_amount", 1, 3)
+    lora_rank = trial.suggest_int("lora_rank", 6, 10)
+    retain_momentum_decay = trial.suggest_float("retain_momentum_decay", 0.4, 0.7)
+    retaining_rate = trial.suggest_float("retaining_rate", 2e-4, 1e-3, log=True)
+    unlearning_rate = trial.suggest_float("unlearning_rate", 3e-2, 6e-2, log=True)
 
     logging.info(f"trial {trial.number} - {trial.params}")
 
@@ -76,14 +77,19 @@ def unlearning_func(
                 # ! retain update
                 p.data -= retaining_rate * p.retain_momentum
 
-        if loop_num % fork_every_n_loops == 0:
-            peft_model.delete_adapter("adv0")
-            peft_model.add_adapter("adv0", lora_config)
+        if loop_num % (fork_every_n_loops // lora_amount) == 0:
+            forking_count = loop_num // (fork_every_n_loops // lora_amount)
+            adv_to_restart = f"adv{forking_count % lora_amount}"
+            peft_model.delete_adapter(adv_to_restart)
+            peft_model.add_adapter(adv_to_restart, lora_config)
+            # print(f"{loop_num} restarted {adv_to_restart}")
 
         # ! relearn the adversary
+        adv_to_use = f"adv{loop_num % lora_amount}"
+        # print(f"{loop_num} using {adv_to_use}")
         for p in model.parameters():
             p.requires_grad = False
-        peft_model.set_adapter("adv0")
+        peft_model.set_adapter(adv_to_use)
         model.zero_grad(set_to_none=True)
         f_input_ids = next(forget_iter)
         output = model(f_input_ids)
@@ -91,11 +97,13 @@ def unlearning_func(
         loss.backward()
         for n, p in model.named_parameters():
             if p.grad is not None:
-                assert "adv0" in n
+                assert adv_to_use in n
                 p.data -= adv_lr * p.grad
+                # decay adversary
+                p.data *= adv_decay
 
         # ! get unlearning grads loss from adversary
-        peft_model.set_adapter("adv0")
+        peft_model.set_adapter(adv_to_use)
         only_grad_on(model, interven_params)
         model.zero_grad(set_to_none=True)
         output = model(f_input_ids)  # reuse f_input_ids from previous step
@@ -105,9 +113,11 @@ def unlearning_func(
         # ! unlearning step with masking
         for p in interven_params:
             p.forget_momentum *= forget_momentum_decay
-            p.forget_momentum += p.grad * (1 - forget_momentum_decay)
+            grad = (p.grad.abs() ** (1 / f_power)) * p.grad.sign()
+            p.forget_momentum += grad * (1 - forget_momentum_decay)
             mask = p.retain_momentum.sign() == p.forget_momentum.sign()
-            update = mask * p.forget_momentum
+            update = (p.forget_momentum.abs() ** f_power) * p.forget_momentum.sign()
+            update *= mask
             update /= update.norm()
             p.data -= unlearning_rate * update
 
@@ -118,6 +128,7 @@ def unlearning_func(
                 eval_(model, f_eval, r_eval, allowed_f_loss, _passes_done)
 
     # ! remove lora
-    peft_model.delete_adapter("adv0")
+    for lora_index in range(lora_amount):
+        peft_model.delete_adapter(f"adv{lora_index}")
 
     return model

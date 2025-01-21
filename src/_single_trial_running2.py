@@ -27,14 +27,14 @@ set_seeds(42)
 trial = MockTrial(
     # **params,
     adv_lr=1e-3,
-    clip_at=10,
+    clip_at=0,
     retain_momentum_decay=0.9,
     forget_momentum_decay=0.9,
-    fork_every_n_steps=72,
+    fork_every_n_loops=12,
     retaining_rate=1e-3,
-    unlearning_lr=1e-3 * 15,
-    # unlearning_lr=1e-3,
-    adv_per_orig_step=1,
+    unlearning_rate=1e-3 * 15,
+    lora_rank=10,
+    lora_amount=3,
     adv_decay=0.99,
 )
 model = unlearning_func(
