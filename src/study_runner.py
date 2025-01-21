@@ -42,14 +42,14 @@ config = SimpleNamespace(
     retain_set_name="wikitext",
     forget_set_name="python",
     # ! Training constants
-    unlearn_steps=480,
+    unlearn_steps=960,
     # # if you change this value, remember to delete cached circuits
     # circuit_num_steps=500,
     batch_size=16,
     n_trials=5000,
 )
 relearn_config = SimpleNamespace(
-    relearn_steps=180,
+    relearn_steps=360,
     relearn_lr=3e-4,
     relearn_lora_conf=dict(target_modules="all-linear"),
 )

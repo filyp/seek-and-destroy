@@ -18,7 +18,7 @@ config.__dict__.update(
     # target_modules=["dense_h_to_4h", "dense"],
     # target_modules=["dense_h_to_4h", "dense_4h_to_h"],
     # ! Training constants
-    unlearn_steps=480,
+    unlearn_steps=960,
 )
 
 Path("debug.txt").write_text("")  # clear data in debug.txt

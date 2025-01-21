@@ -15,14 +15,14 @@ def unlearning_func(
     adv_lr = trial.suggest_float("adv_lr", 0.0025, 0.004, log=True)
     clip_at = 3  # trial.suggest_float("clip_at", 0, 4)
     forget_momentum_decay = 0  # trial.suggest_float("forget_momentum_decay", 0.4, 0.8)
-    fork_every_n_steps = trial.suggest_int("fork_every_n_steps", 45, 54, step=3)
+    fork_every_n_passes = trial.suggest_int("fork_every_n_passes", 12, 30, step=6)
     retain_momentum_decay = 0  # trial.suggest_float("retain_momentum_decay", 0, 0.8)
     retaining_rate = 2e-3  # trial.suggest_float("retaining_rate", 5e-5, 2e-3, log=True)
     unlearning_rate = trial.suggest_float("unlearning_rate", 2e-3, 4.5e-2, log=True)
 
-    adv_per_orig_step = 1
+    # adv_per_orig_step = 1
     logging.info(f"trial {trial.number} - {trial.params}")
-    assert adv_per_orig_step in [1, 2, 4]
+    # assert adv_per_orig_step in [1, 2, 4]
     # assert fork_every_n_steps % 12 == 0
 
     model = AutoModelForCausalLM.from_pretrained(config.model_id)
@@ -58,9 +58,9 @@ def unlearning_func(
     forget_iter = iter(forget_batches)
 
     # ! unlearning loop
-    steps_per_loop = adv_per_orig_step + 2
-    assert config.unlearn_steps % steps_per_loop == 0
-    for step in range(0, config.unlearn_steps, steps_per_loop):
+    passes_per_loop = 6
+    assert config.unlearn_steps % passes_per_loop == 0
+    for loop_num in range(config.unlearn_steps // passes_per_loop):
         model.train()
 
         # ! retain pass
@@ -78,21 +78,21 @@ def unlearning_func(
 
         model.zero_grad(set_to_none=True)
 
-        if step % fork_every_n_steps == 0:
+        if loop_num % fork_every_n_passes == 0:
             adversary.load_state_dict(model.state_dict())
 
-        for _ in range(adv_per_orig_step):
-            # ! relearn the adversary
-            adversary.zero_grad(set_to_none=True)
-            f_input_ids = next(forget_iter)
-            output = adversary(f_input_ids)
-            loss = cross_entropy_loss(output, f_input_ids)
-            loss.backward()
-            for p, adv_p in zip(interven_params, adv_interven_params):
-                adv_p.data -= adv_lr * adv_p.grad
-                # decay adversary into base model
-                adv_p.data *= adv_decay
-                adv_p.data += p.data * (1 - adv_decay)
+        # for _ in range(adv_per_orig_step):
+        # ! relearn the adversary
+        adversary.zero_grad(set_to_none=True)
+        f_input_ids = next(forget_iter)
+        output = adversary(f_input_ids)
+        loss = cross_entropy_loss(output, f_input_ids)
+        loss.backward()
+        for p, adv_p in zip(interven_params, adv_interven_params):
+            adv_p.data -= adv_lr * adv_p.grad
+            # decay adversary into base model
+            adv_p.data *= adv_decay
+            adv_p.data += p.data * (1 - adv_decay)
 
         # ! get unlearning grads loss from adversary
         adversary.zero_grad(set_to_none=True)
@@ -110,7 +110,8 @@ def unlearning_func(
             p.data -= unlearning_rate * update
 
         # ! eval current loss
-        if (step + steps_per_loop) % 12 == 0:
-            eval_(model, f_eval, r_eval, allowed_f_loss, step + steps_per_loop)
+        _passes_done = (loop_num + 1) * passes_per_loop
+        if _passes_done % 24 == 0:
+            eval_(model, f_eval, r_eval, allowed_f_loss, _passes_done)
 
     return model

@@ -50,8 +50,9 @@ def unlearning_func(
     logging.info("step      base_f      base_r")
     retain_iter = iter(retain_batches)
     # forget_iter = iter(forget_batches)
-    assert config.unlearn_steps % 2 == 0
-    for step in range(0, config.unlearn_steps, 2):
+    passes_per_loop = 4
+    assert config.unlearn_steps % passes_per_loop == 0
+    for loop_num in range(config.unlearn_steps // passes_per_loop):
         model.train()
 
         # ! retain pass
@@ -80,7 +81,8 @@ def unlearning_func(
             p.data -= mask * to_forget
 
         # ! eval current loss
-        if (step + 2) % 24 == 0:
-            eval_(model, f_eval, r_eval, allowed_f_loss, step + 2)
+        _passes_done = (loop_num + 1) * passes_per_loop
+        if _passes_done % 24 == 0:
+            eval_(model, f_eval, r_eval, allowed_f_loss, _passes_done)
 
     return model
