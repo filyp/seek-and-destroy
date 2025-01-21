@@ -19,17 +19,17 @@ def unlearning_func(
     trial, config, retain_batches, forget_batches, f_eval, r_eval, allowed_f_loss
 ):
     # ! parameters
-    adv_decay = trial.suggest_float("adv_decay", 0.9, 1)
-    adv_lr = trial.suggest_float("adv_lr", 0.02, 0.2, log=True)
-    clip_at = trial.suggest_float("clip_at", 0, 5)
-    forget_momentum_decay = trial.suggest_float("forget_momentum_decay", 0.5, 0.8)
-    fork_every_n_loops = trial.suggest_int("fork_every_n_loops", 12, 60, step=6)
+    adv_decay = trial.suggest_float("adv_decay", 0.95, 1)
+    adv_lr = trial.suggest_float("adv_lr", 0.03, 0.15, log=True)
+    clip_at = trial.suggest_float("clip_at", -5, 2)
     f_power = trial.suggest_float("f_power", 0.5, 2)
+    forget_momentum_decay = trial.suggest_float("forget_momentum_decay", 0.5, 0.8)
+    fork_every_n_loops = trial.suggest_int("fork_every_n_loops", 12, 42, step=6)
     lora_amount = trial.suggest_int("lora_amount", 1, 3)
-    lora_rank = trial.suggest_int("lora_rank", 6, 10)
-    retain_momentum_decay = trial.suggest_float("retain_momentum_decay", 0.4, 0.7)
-    retaining_rate = trial.suggest_float("retaining_rate", 2e-4, 1e-3, log=True)
-    unlearning_rate = trial.suggest_float("unlearning_rate", 3e-2, 6e-2, log=True)
+    lora_rank = trial.suggest_int("lora_rank", 6, 9)
+    retain_momentum_decay = trial.suggest_float("retain_momentum_decay", 0.3, 0.6)
+    retaining_rate = trial.suggest_float("retaining_rate", 8e-4, 2e-3, log=True)
+    unlearning_rate = trial.suggest_float("unlearning_rate", 2e-2, 5e-2, log=True)
 
     logging.info(f"trial {trial.number} - {trial.params}")
 
