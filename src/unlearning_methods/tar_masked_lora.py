@@ -17,8 +17,8 @@ def unlearning_func(
     forget_momentum_decay = 0  # trial.suggest_float("forget_momentum_decay", 0.4, 0.8)
     fork_every_n_steps = trial.suggest_int("fork_every_n_steps", 45, 54, step=3)
     retain_momentum_decay = 0  # trial.suggest_float("retain_momentum_decay", 0, 0.8)
-    retaining_rate = 2e-3  # trial.suggest_float("retaining_rate", 5e-5, 2e-3, log=True)
-    unlearning_rate = trial.suggest_float("unlearning_rate", 2e-3, 4.5e-2, log=True)
+    retaining_rate = 0.2 #  trial.suggest_float("retaining_rate", 5e-5, 2e-3, log=True)
+    unlearning_rate = trial.suggest_float("unlearning_rate", 3.6e-2, 4.5e-2, log=True)
 
     adv_per_orig_step = 1
     logging.info(f"trial {trial.number} - {trial.params}")
@@ -93,6 +93,7 @@ def unlearning_func(
                 # decay adversary into base model
                 adv_p.data *= adv_decay
                 adv_p.data += p.data * (1 - adv_decay)
+
 
         # ! get unlearning grads loss from adversary
         adversary.zero_grad(set_to_none=True)
