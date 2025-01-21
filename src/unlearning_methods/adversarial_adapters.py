@@ -12,6 +12,7 @@ config.ret_lora_config = dict(
 best_model_path = repo_root() / "models" / "best_model.pt"
 best_value = 0
 
+
 # %%
 def objective(trial):
     # ! parameters
@@ -30,7 +31,7 @@ def objective(trial):
 
     disruption_score_decay = trial.suggest_float("disruption_score_decay", 0.0, 0.95)
     disruption_score_warmup = trial.suggest_int("disruption_score_warmup", 1, 20)
-    
+
     unlearn_lr_backoff = trial.suggest_float("unlearn_lr_backoff", 0.9, 1)
 
     # sample number of steps from loglog distribution, between 10 and 1000

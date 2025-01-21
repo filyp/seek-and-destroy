@@ -31,7 +31,8 @@ from utils.training import *
 # %%
 
 config = SimpleNamespace(
-    method_name="tar_masked",
+    # method_name="tar_masked",
+    method_name="tar_masked_lora",
     # target_modules=["dense_4h_to_h"],
     target_modules=["dense_h_to_4h"],
     # target_modules=["down_proj"],
