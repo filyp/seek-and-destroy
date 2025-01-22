@@ -57,7 +57,7 @@ def unlearning_func(
     forget_iter = iter(forget_batches)
 
     # ! unlearning loop
-    passes_per_loop = 6  # todo actually optimize unlearning to reuse forward pass
+    passes_per_loop = 5
     assert config.unlearn_steps % passes_per_loop == 0
     for loop_num in range(config.unlearn_steps // passes_per_loop):
         model.train()
@@ -82,31 +82,27 @@ def unlearning_func(
             adv_to_restart = f"adv{forking_count % lora_amount}"
             peft_model.delete_adapter(adv_to_restart)
             peft_model.add_adapter(adv_to_restart, lora_config)
-            # print(f"{loop_num} restarted {adv_to_restart}")
 
         # ! relearn the adversary
         adv_to_use = f"adv{loop_num % lora_amount}"
-        # print(f"{loop_num} using {adv_to_use}")
-        for p in model.parameters():
-            p.requires_grad = False
         peft_model.set_adapter(adv_to_use)
+        _lora_params = [p for n, p in model.named_parameters() if adv_to_use in n]
+        # we already need grads on both, if we want to later reuse the computation graph
+        only_grad_on(model, interven_params + _lora_params)
         model.zero_grad(set_to_none=True)
         f_input_ids = next(forget_iter)
         output = model(f_input_ids)
         loss = cross_entropy_loss(output, f_input_ids)
-        loss.backward()
+        loss.backward(retain_graph=True)
         for n, p in model.named_parameters():
-            if p.grad is not None:
-                assert adv_to_use in n
+            if adv_to_use in n:
                 p.data -= adv_lr * p.grad
                 # decay adversary
                 p.data *= adv_decay
 
-        # ! get unlearning grads loss from adversary
-        peft_model.set_adapter(adv_to_use)
-        only_grad_on(model, interven_params)
+        # ! get unlearning grads from adversary
+        # reuse the computation graph from previous block
         model.zero_grad(set_to_none=True)
-        output = model(f_input_ids)  # reuse f_input_ids from previous step
         loss = correct_logit_minus_avg_loss(output, f_input_ids, clip_at)
         loss.backward()
 
@@ -123,7 +119,7 @@ def unlearning_func(
 
         # ! eval current loss
         _passes_done = (loop_num + 1) * passes_per_loop
-        if _passes_done % 24 == 0:
+        if _passes_done % 30 == 0:
             with peft_model.disable_adapter():
                 eval_(model, f_eval, r_eval, allowed_f_loss, _passes_done)
 

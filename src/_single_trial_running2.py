@@ -18,7 +18,7 @@ config.__dict__.update(
     # target_modules=["dense_h_to_4h", "dense"],
     # target_modules=["dense_h_to_4h", "dense_4h_to_h"],
     # ! Training constants
-    unlearn_steps=960,
+    unlearn_steps=1200,
 )
 
 Path("debug.txt").write_text("")  # clear data in debug.txt
@@ -26,13 +26,16 @@ Path("debug.txt").write_text("")  # clear data in debug.txt
 set_seeds(42)
 trial = MockTrial(
     # **params,
+    adv_update=0.5,
     adv_lr=1e-3,
+    f_power=1,
     clip_at=0,
     retain_momentum_decay=0.9,
     forget_momentum_decay=0.9,
     fork_every_n_loops=12,
     retaining_rate=1e-3,
-    unlearning_rate=1e-3 * 15,
+    # unlearning_rate=1e-3 * 15,
+    unlearning_rate=1e-3 * 10,
     lora_rank=10,
     lora_amount=3,
     adv_decay=0.99,

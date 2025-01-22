@@ -15,7 +15,6 @@ def unlearning_func(
     adv_lr = trial.suggest_float("adv_lr", 0.0025, 0.004, log=True)
     adv_update = trial.suggest_float("adv_update", 0, 1)
     clip_at = 0  # trial.suggest_float("clip_at", 0, 4)
-    f_power = trial.suggest_float("f_power", 0.5, 2)
     forget_momentum_decay = trial.suggest_float("forget_momentum_decay", 0.4, 0.7)
     fork_every_n_loops = trial.suggest_int("fork_every_n_loops", 12, 30)
     retain_momentum_decay = trial.suggest_float("retain_momentum_decay", 0.2, 0.7)
@@ -60,7 +59,7 @@ def unlearning_func(
     forget_iter = iter(forget_batches)
 
     # ! unlearning loop
-    passes_per_loop = 6
+    passes_per_loop = 5
     assert config.unlearn_steps % passes_per_loop == 0
     for loop_num in range(config.unlearn_steps // passes_per_loop):
         model.train()
@@ -90,7 +89,7 @@ def unlearning_func(
         f_input_ids = next(forget_iter)
         output = adversary(f_input_ids)
         loss = cross_entropy_loss(output, f_input_ids)
-        loss.backward()
+        loss.backward(retain_graph=True)
         for p, adv_p in zip(interven_params, adv_interven_params):
             # apply adversary update
             adv_p.data -= adv_lr * adv_p.grad
@@ -99,33 +98,24 @@ def unlearning_func(
             adv_p.data += p.data * (1 - adv_decay)
 
         # ! get unlearning grads loss from adversary
+        # reuse the computation graph from previous block
         adversary.zero_grad(set_to_none=True)
-        output = adversary(f_input_ids)  # reuse f_input_ids from previous step
         loss = correct_logit_minus_avg_loss(output, f_input_ids, clip_at)
         loss.backward()
 
         # ! unlearning step with masking
         for p, adv_p in zip(interven_params, adv_interven_params):
-            # p.forget_momentum *= forget_momentum_decay
-            # p.forget_momentum += adv_p.grad * (1 - forget_momentum_decay)
-            # mask = p.retain_momentum.sign() == p.forget_momentum.sign()
-            # update = mask * p.forget_momentum
-            # update /= update.norm()
-            # p.data -= unlearning_rate * update
-            # adv_p.data -= unlearning_rate * update * adv_update
             p.forget_momentum *= forget_momentum_decay
-            grad = (adv_p.grad.abs() ** (1 / f_power)) * adv_p.grad.sign()
-            p.forget_momentum += grad * (1 - forget_momentum_decay)
+            p.forget_momentum += adv_p.grad * (1 - forget_momentum_decay)
             mask = p.retain_momentum.sign() == p.forget_momentum.sign()
-            update = (p.forget_momentum.abs() ** f_power) * p.forget_momentum.sign()
-            update *= mask
+            update = mask * p.forget_momentum
             update /= update.norm()
             p.data -= unlearning_rate * update
             adv_p.data -= unlearning_rate * update * adv_update
 
         # ! eval current loss
         _passes_done = (loop_num + 1) * passes_per_loop
-        if _passes_done % 24 == 0:
+        if _passes_done % 30 == 0:
             eval_(model, f_eval, r_eval, allowed_f_loss, _passes_done)
 
     return model
