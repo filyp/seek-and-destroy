@@ -10,17 +10,17 @@ from utils.training import *
 def unlearning_func(
     trial, config, retain_batches, forget_batches, f_eval, r_eval, allowed_f_loss
 ):
-    # todo not only decay to base, but also apply unlearning updates to adversary
-    # todo f_power?
     # ! parameters
-    adv_decay = trial.suggest_float("adv_decay", 0.75, 0.78)
+    adv_decay = trial.suggest_float("adv_decay", 0.75, 0.8)
     adv_lr = trial.suggest_float("adv_lr", 0.0025, 0.004, log=True)
-    clip_at = 3  # trial.suggest_float("clip_at", 0, 4)
-    forget_momentum_decay = 0  # trial.suggest_float("forget_momentum_decay", 0.4, 0.8)
-    fork_every_n_passes = trial.suggest_int("fork_every_n_passes", 12, 30, step=6)
-    retain_momentum_decay = 0  # trial.suggest_float("retain_momentum_decay", 0, 0.8)
-    retaining_rate = 2e-3  # trial.suggest_float("retaining_rate", 5e-5, 2e-3, log=True)
-    unlearning_rate = trial.suggest_float("unlearning_rate", 2e-3, 4.5e-2, log=True)
+    adv_update = trial.suggest_float("adv_update", 0, 1)
+    clip_at = 0  # trial.suggest_float("clip_at", 0, 4)
+    f_power = trial.suggest_float("f_power", 0.5, 2)
+    forget_momentum_decay = trial.suggest_float("forget_momentum_decay", 0.4, 0.7)
+    fork_every_n_loops = trial.suggest_int("fork_every_n_loops", 12, 30)
+    retain_momentum_decay = trial.suggest_float("retain_momentum_decay", 0.2, 0.7)
+    retaining_rate = trial.suggest_float("retaining_rate", 8e-4, 3e-3, log=True)
+    unlearning_rate = trial.suggest_float("unlearning_rate", 3e-2, 5e-2, log=True)
 
     # adv_per_orig_step = 1
     logging.info(f"trial {trial.number} - {trial.params}")
@@ -64,6 +64,7 @@ def unlearning_func(
     assert config.unlearn_steps % passes_per_loop == 0
     for loop_num in range(config.unlearn_steps // passes_per_loop):
         model.train()
+        adversary.train()
 
         # ! retain pass
         model.zero_grad(set_to_none=True)
@@ -77,20 +78,21 @@ def unlearning_func(
             p.retain_momentum += p.grad * (1 - retain_momentum_decay)
             # ! retain update
             p.data -= retaining_rate * p.retain_momentum
-
         model.zero_grad(set_to_none=True)
 
-        if loop_num % fork_every_n_passes == 0:
+        if loop_num % fork_every_n_loops == 0:
             adversary.load_state_dict(model.state_dict())
 
         # for _ in range(adv_per_orig_step):
         # ! relearn the adversary
+        # todo actually could store only the intervened params for adversary
         adversary.zero_grad(set_to_none=True)
         f_input_ids = next(forget_iter)
         output = adversary(f_input_ids)
         loss = cross_entropy_loss(output, f_input_ids)
         loss.backward()
         for p, adv_p in zip(interven_params, adv_interven_params):
+            # apply adversary update
             adv_p.data -= adv_lr * adv_p.grad
             # decay adversary into base model
             adv_p.data *= adv_decay
@@ -104,12 +106,22 @@ def unlearning_func(
 
         # ! unlearning step with masking
         for p, adv_p in zip(interven_params, adv_interven_params):
+            # p.forget_momentum *= forget_momentum_decay
+            # p.forget_momentum += adv_p.grad * (1 - forget_momentum_decay)
+            # mask = p.retain_momentum.sign() == p.forget_momentum.sign()
+            # update = mask * p.forget_momentum
+            # update /= update.norm()
+            # p.data -= unlearning_rate * update
+            # adv_p.data -= unlearning_rate * update * adv_update
             p.forget_momentum *= forget_momentum_decay
-            p.forget_momentum += adv_p.grad * (1 - forget_momentum_decay)
+            grad = (adv_p.grad.abs() ** (1 / f_power)) * adv_p.grad.sign()
+            p.forget_momentum += grad * (1 - forget_momentum_decay)
             mask = p.retain_momentum.sign() == p.forget_momentum.sign()
-            update = mask * p.forget_momentum
+            update = (p.forget_momentum.abs() ** f_power) * p.forget_momentum.sign()
+            update *= mask
             update /= update.norm()
             p.data -= unlearning_rate * update
+            adv_p.data -= unlearning_rate * update * adv_update
 
         # ! eval current loss
         _passes_done = (loop_num + 1) * passes_per_loop
