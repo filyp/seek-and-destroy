@@ -1,16 +1,19 @@
 general_config:
-  multistudy_name: "test"
+  multistudy_name: "first"
   # method_name: tar_masked_lora
   method_name: tar_masked
   target_modules:
     - dense_h_to_4h
+  unlearning_loss_fn: correct_logit_minus_avg
   model_id: EleutherAI/pythia-14m
   # model_id: HuggingFaceTB/SmolLM-135M
   retain_set_name: wikitext
   forget_set_name: python
   unlearn_steps: 600
   batch_size: 16
-  n_trials: 1000
+  n_trials: 500
+  use_masking: true
+  use_normalization: true
 
 relearn_config:
   relearn_steps: 300
@@ -19,11 +22,11 @@ relearn_config:
     target_modules: all-linear
 
 hyperparams:
-  adv_decay: [0.75, 0.8, false]
+  adv_decay: [0.75, 1, false]
   adv_lr: [0.0025, 0.004, true]
   adv_update: [0, 1, false]
   clip_at: [-5, 5, false]
-  forget_momentum_decay: [0.4, 0.7, false]
+  forget_momentum_decay: [0.2, 0.7, false]
   fork_every_n_loops: [12, 30, false]
   retain_momentum_decay: [0.2, 0.7, false]
   retaining_rate: [8.e-4, 3.e-3, true]
@@ -32,6 +35,38 @@ hyperparams:
 variants:
   full: {}
   no_f_momentum:
-    forget_momentum_decay: 0
+    forget_momentum_decay: [0, 0, false]
   no_r_momentum:
-    retain_momentum_decay: 0
+    retain_momentum_decay: [0, 0, false]
+  no_adv_decay:
+    adv_decay: [1, 1, false]
+  no_adv_update:
+    adv_update: [0, 0, false]
+  neg_entropy:
+    unlearning_loss_fn: neg_entropy
+  neg_cross_entropy:
+    unlearning_loss_fn: neg_cross_entropy
+  no_masking:
+    use_masking: false
+    unlearning_rate: [1.e-3, 5.e-2, true]
+  no_normalization:
+    use_normalization: false
+    # set manually to keep a similar update scale across variants
+    normalization_factor: 0.1
+    unlearning_rate: [1.e-3, 5.e-2, true]
+  tar:
+    forget_momentum_decay: [0, 0, false]
+    retain_momentum_decay: [0, 0, false]
+    adv_decay: [1, 1, false]
+    adv_update: [0, 0, false]
+    unlearning_loss_fn: neg_entropy
+    use_masking: false
+    use_normalization: false
+    normalization_factor: 0.1
+    unlearning_rate: [1.e-3, 5.e-2, true]
+   
+  # todo:
+  # lora
+  # TAR that can use safeguarding step
+  # CB
+  # no adversary

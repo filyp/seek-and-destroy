@@ -93,16 +93,26 @@ def tar_masked_lora(
         # ! get unlearning grads from adversary
         # reuse the computation graph from previous block
         model.zero_grad(set_to_none=True)
-        loss = correct_logit_minus_avg_loss(output, f_input_ids, h.clip_at)
+        loss_fn = loss_fns[config.unlearning_loss_fn]
+        loss = loss_fn(output, f_input_ids, h.clip_at)
         loss.backward()
 
         # ! unlearning step with masking
         for p in interven_params:
             p.forget_momentum *= h.forget_momentum_decay
             p.forget_momentum += p.grad * (1 - h.forget_momentum_decay)
-            mask = p.retain_momentum.sign() == p.forget_momentum.sign()
-            update = mask * p.forget_momentum
-            update /= update.norm()
+
+            if config.use_masking:
+                mask = p.retain_momentum.sign() == p.forget_momentum.sign()
+                update = mask * p.forget_momentum
+            else:
+                update = p.forget_momentum
+
+            if config.use_normalization:
+                update /= update.norm()
+            else:
+                update *= config.normalization_factor
+
             p.data -= h.unlearning_rate * update
 
         # ! eval current loss

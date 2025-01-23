@@ -7,44 +7,93 @@ if ipython is not None:  # Only runs in IPython environment
     ipython.run_line_magic("load_ext", "autoreload")
     ipython.run_line_magic("autoreload", "2")
 
-from study_runner import *
+# %%
+# necessary for determinism:
+import os
+
+os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
+# os.environ['CUBLAS_WORKSPACE_CONFIG'] = ":16:8"  # less mem but slower
+
+import logging
+from types import SimpleNamespace
+
+import torch as pt
+import yaml
+from transformers import AutoModelForCausalLM, AutoTokenizer
+
+from unlearning_methods.tar_masked import tar_masked
+from unlearning_methods.tar_masked_lora import tar_masked_lora
+from utils.data_loading import CachedBatches, dataset_loaders
+from utils.git_and_reproducibility import *
+from utils.model_operations import relearn
+from utils.training import *
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s %(levelname)s  %(message)s",
+    datefmt="%H:%M:%S",
+    handlers=[logging.StreamHandler()],
+)
+
+# %%
+# load YAML configuration
+config_path = repo_root() / "configs" / "config.yaml"
+with open(config_path, "r") as f:
+    full_config = yaml.safe_load(f)
 
 # %%
 
-search_conf.__dict__.update(
-    # target_modules=["dense_4h_to_h"],
-    target_modules=["dense_h_to_4h"],
-    # target_modules=["dense"],
-    # target_modules=["dense_h_to_4h", "dense"],
-    # target_modules=["dense_h_to_4h", "dense_4h_to_h"],
-    # ! Training constants
-    unlearn_steps=1200,
-)
+hyperparam_ranges = full_config["hyperparams"]
+config = full_config["general_config"]
 
-Path("debug.txt").write_text("")  # clear data in debug.txt
+config = SimpleNamespace(**config)
+relearn_config = SimpleNamespace(**full_config["relearn_config"])
+
+print(f"{hyperparam_ranges=}")
+
+pt.set_default_device("cuda")
+
+# load datasets
+set_seeds(42)
+tokenizer = AutoTokenizer.from_pretrained(config.model_id)
+retain_set = dataset_loaders[config.retain_set_name](tokenizer)
+forget_set = dataset_loaders[config.forget_set_name](tokenizer)
+retain_batches = CachedBatches(retain_set["train"], config.batch_size)
+forget_batches = CachedBatches(forget_set["train"], config.batch_size)
+retain_val_batches = CachedBatches(retain_set["validation"], config.batch_size)
+forget_val_batches = CachedBatches(forget_set["validation"], config.batch_size)
+r_eval = next(iter(retain_val_batches))
+f_eval = next(iter(forget_val_batches))
+
+allowed_f_loss = eval_(
+    AutoModelForCausalLM.from_pretrained(config.model_id), f_eval, r_eval
+)["retain_loss"]
+
+unlearning_func = dict(
+    tar_masked_lora=tar_masked_lora,
+    tar_masked=tar_masked,
+)[config.method_name]
+
+
+# construct hyperparams
+hyperparams = {
+    hp_name: (low + high) / 2 for hp_name, (low, high, log) in hyperparam_ranges.items()
+}
+hyperparams = SimpleNamespace(**hyperparams)
 
 set_seeds(42)
-trial = MockTrial(
-    # **params,
-    adv_update=0.5,
-    adv_lr=1e-3,
-    f_power=1,
-    clip_at=0,
-    retain_momentum_decay=0.9,
-    forget_momentum_decay=0.9,
-    fork_every_n_loops=12,
-    retaining_rate=1e-3,
-    # unlearning_rate=1e-3 * 15,
-    unlearning_rate=1e-3 * 10,
-    lora_rank=10,
-    lora_amount=3,
-    adv_decay=0.99,
-)
 model = unlearning_func(
-    trial, search_conf, retain_batches, forget_batches, f_eval, r_eval, allowed_f_loss
+    hyperparams,
+    config,
+    retain_batches,
+    forget_batches,
+    f_eval,
+    r_eval,
+    allowed_f_loss,
 )
 
-relearn_config.__dict__.update(relearn_steps=240)
-forget_losses = relearn(model, relearn_config, retain_val_batches, forget_val_batches)
-
+# set_seeds(42)
+# forget_losses = relearn(
+#     model, relearn_config, retain_val_batches, forget_val_batches
+# )
 # %%

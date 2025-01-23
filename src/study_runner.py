@@ -1,4 +1,7 @@
-# usage: python study_runner.py PATH_TO_CONFIG VARIANT_NUM
+# to run a single variant:
+# python study_runner.py PATH_TO_CONFIG VARIANT_NUM
+# to run all variants one after another:
+# python study_runner.py PATH_TO_CONFIG
 
 # necessary for determinism:
 import os
@@ -29,9 +32,11 @@ logging.basicConfig(
 )
 
 
-def run_study(storage, config_path, variant_num):
-    # assert is_repo_clean()
-    # Load YAML configuration
+def run_study(storage, config_path, variant_num, if_study_exists="fail"):
+    assert if_study_exists in ["fail", "delete", "load"]
+    assert is_repo_clean()
+
+    # load YAML configuration
     with open(config_path, "r") as f:
         full_config = yaml.safe_load(f)
 
@@ -53,6 +58,7 @@ def run_study(storage, config_path, variant_num):
         f"|{config.multistudy_name}|{variant_name}"
     )
     print(f"{study_name=}")
+    print(f"{hyperparam_ranges=}")
 
     pt.set_default_device("cuda")
 
@@ -106,33 +112,44 @@ def run_study(storage, config_path, variant_num):
         forget_loss = min(forget_losses)
         return forget_loss
 
+    if if_study_exists == "delete":
+        delete_study_if_exists(study_name, storage)
+    study = optuna.create_study(
+        study_name=study_name,
+        storage=storage,
+        direction="maximize",
+        load_if_exists=(if_study_exists == "load"),
+    )
+    save_file_and_attach_logger(config_path, study.study_name)
+    study.set_metric_names(["forget_loss"])
+    study.set_user_attr("commit_hash", commit_hash())
+    study.set_user_attr("is_repo_clean", is_repo_clean())
+    for k, v in config.__dict__.items():
+        study.set_user_attr(k, v)
     try:
-        # delete_study_if_exists(study_name, storage)
-        study = optuna.create_study(
-            study_name=study_name,
-            storage=storage,
-            direction="maximize",
-            load_if_exists=False,
-        )
-        save_file_and_attach_logger(config_path, study.study_name)
-        study.set_metric_names(["forget_loss"])
-        study.set_user_attr("commit_hash", commit_hash())
-        study.set_user_attr("is_repo_clean", is_repo_clean())
-        for k, v in config.__dict__.items():
-            study.set_user_attr(k, v)
         study.optimize(objective, n_trials=config.n_trials)
     except KeyboardInterrupt:
         pass
 
-    # study = get_last_study()
-    # plot_slice_layout(study)
-    make_sure_optimal_values_are_not_near_range_edges(study)
-    get_stats_from_last_n_trials(study, n=100)
+    # # study = get_last_study()
+    # # plot_slice_layout(study)
+    # make_sure_optimal_values_are_not_near_range_edges(study)
+    # get_stats_from_last_n_trials(study, n=100)
 
 
 if __name__ == "__main__":
-    config_path = str(sys.argv[1])
-    variant_num = int(sys.argv[2])
-
     storage = get_storage()
-    run_study(storage, config_path, variant_num)
+    config_path = str(sys.argv[1])
+
+    if len(sys.argv) > 2:
+        # ! run a single variant
+        variant_num = int(sys.argv[2])
+        run_study(storage, config_path, variant_num, if_study_exists="delete")
+
+    else:
+        # ! run all variants one after another
+        with open(config_path, "r") as f:
+            full_config = yaml.safe_load(f)
+
+        for variant_num in range(len(full_config["variants"])):
+            run_study(storage, config_path, variant_num, if_study_exists="delete")
