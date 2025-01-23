@@ -125,7 +125,7 @@ def run_study(storage):
         pass
 
     # study = get_last_study()
-    plot_slice_layout(study)
+    # plot_slice_layout(study)
     make_sure_optimal_values_are_not_near_range_edges(study)
     get_stats_from_last_n_trials(study, n=10)
 

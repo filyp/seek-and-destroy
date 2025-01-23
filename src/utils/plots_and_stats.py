@@ -1,61 +1,137 @@
 # %%
+import os
 import re
 
 import matplotlib.pyplot as plt
 import optuna.visualization as vis
+import plotly.graph_objects as go
+from optuna.visualization._slice import _generate_slice_subplot, _get_slice_plot_info
 from plotly.subplots import make_subplots
 
 from utils.git_and_reproducibility import repo_root
 
 common_layout = dict(
-    template="plotly_white",
+    # template="plotly_white",
+    template="simple_white",
+    # template="presentation",  # too big points
+    # template="ggplot2",   # weird to look at
     font=dict(family="Times Roman", size=20),
     # title_font_size=30,
 )
 
 
-def plot_slice_layout(study, dir_="plots/slice_layout"):
-    layout = common_layout | dict(
-        title={"text": study.study_name, "xanchor": "center", "x": 0.5, "y": 0.95},
-    )
-
-    slice_fig = vis.plot_slice(study, target_name="Final forget loss")
-    slice_fig.update_layout(**layout)
-
-    dir_name = repo_root() / dir_
+def save_img(fig, file_name):
+    dir_name = repo_root() / "plots" / file_name
     dir_name.mkdir(parents=True, exist_ok=True)
-    slice_fig.write_image(dir_name / f"{study.study_name}.png")
-    slice_fig.write_image(dir_name / f"{study.study_name}.svg")
-    slice_fig.write_image(dir_name / f"{study.study_name}.pdf")
-    return slice_fig
+    fig.write_image(dir_name / f"{file_name}.svg")
+    fig.write_image(dir_name / f"{file_name}.pdf")
+    return dir_name / f"{file_name}.svg"
 
 
-def plot_opt_history_and_importances(study, dir_="plots/opt_history_and_importances"):
-    opt_history_fig = vis.plot_optimization_history(study)
-    importances_fig = vis.plot_param_importances(study)
+# def plot_slice_layout(study, dir_="plots/slice_layout"):
+#     layout = common_layout | dict(
+#         title={"text": study.study_name, "xanchor": "center", "x": 0.5, "y": 0.95},
+#     )
 
-    # join fig and fig2 horizontally
-    combined_fig = make_subplots(rows=1, cols=2, horizontal_spacing=0.22)
+#     slice_fig = vis.plot_slice(study, target_name="Final forget loss")
+#     slice_fig.update_layout(**layout)
 
-    for trace in opt_history_fig.data:
-        combined_fig.add_trace(trace, row=1, col=1)
-    for trace in importances_fig.data:
-        combined_fig.add_trace(trace, row=1, col=2)
+#     dir_name = repo_root() / dir_
+#     dir_name.mkdir(parents=True, exist_ok=True)
+#     slice_fig.write_image(dir_name / f"{study.study_name}.svg")
+#     slice_fig.write_image(dir_name / f"{study.study_name}.pdf")
+#     return slice_fig
 
-    # Update the layout
-    layout = common_layout | dict(
-        title={"text": study.study_name, "xanchor": "center", "x": 0.5, "y": 0.95},
+
+def stacked_slice_plot(studies):
+    study_names = [s.study_name for s in studies]
+
+    # Calculate overall y-axis range across all studies
+    _values = [t.values[0] for s in studies for t in s.trials if t.values is not None]
+    y_min = min(_values)
+    y_max = max(_values)
+
+    layout = go.Layout(common_layout)
+    figure = make_subplots(
+        rows=len(study_names),
+        cols=len(studies[0].best_params),
+        shared_yaxes=True,
+        shared_xaxes="all",
+        vertical_spacing=0.12,
+    )
+    common_prefix = os.path.commonprefix(study_names)
+    figure.update_layout(layout)
+    figure.update_layout(title={"text": common_prefix, "xanchor": "center", "x": 0.5})
+
+    for i, study in enumerate(studies, start=1):
+        info = _get_slice_plot_info(study, None, None, "Final forget loss")
+        showscale = True
+        for j, subplot_info in enumerate(info.subplots, start=1):
+            trace = _generate_slice_subplot(subplot_info)
+            trace[0].update(marker={"showscale": showscale})
+            if showscale:
+                showscale = False
+            for t in trace:
+                figure.add_trace(t, row=i, col=j)
+
+            figure.update_xaxes(
+                title_text=subplot_info.param_name,
+                row=i,
+                col=j,
+                matches="x" + str(j),
+                showticklabels=True,
+            )
+            # Set y-axis range for all subplots
+            figure.update_yaxes(range=[y_min, y_max], row=i, col=j)
+
+            if j == 1:
+                subtitle = study.study_name[len(common_prefix) :]
+                figure.update_yaxes(title_text=subtitle, row=i, col=j)
+            if not subplot_info.is_numerical:
+                figure.update_xaxes(
+                    type="category",
+                    categoryorder="array",
+                    categoryarray=subplot_info.x_labels,
+                    row=i,
+                    col=j,
+                )
+            elif subplot_info.is_log:
+                figure.update_xaxes(type="log", row=i, col=j)
+
+    figure.update_layout(
+        width=300 * len(info.subplots),
+        height=400 * len(study_names),
+    )
+    return figure
+
+
+def stacked_history_and_importance_plots(studies):
+    study_names = [s.study_name for s in studies]
+    common_prefix = os.path.commonprefix(study_names)
+
+    # Calculate overall y-axis range
+    _values = [t.values[0] for s in studies for t in s.trials if t.values is not None]
+    y_min = min(_values)
+    y_max = max(_values)
+
+    figure = make_subplots(rows=len(studies), cols=2, horizontal_spacing=0.22)
+
+    for i, study in enumerate(studies, start=1):
+        for trace in vis.plot_optimization_history(study).data:
+            figure.add_trace(trace, row=i, col=1)
+            subtitle = study.study_name[len(common_prefix) :]
+            figure.update_yaxes(title_text=subtitle, row=i, col=1, range=[y_min, y_max])
+        for trace in vis.plot_param_importances(study).data:
+            figure.add_trace(trace, row=i, col=2)
+
+    figure.update_layout(**common_layout)
+    figure.update_layout(
+        title={"text": common_prefix, "xanchor": "center", "x": 0.5},
         width=1200,
+        height=400 * len(studies),
         showlegend=False,
     )
-    combined_fig.update_layout(**layout)
-
-    dir_name = repo_root() / dir_
-    dir_name.mkdir(parents=True, exist_ok=True)
-    combined_fig.write_image(dir_name / f"{study.study_name}.png")
-    combined_fig.write_image(dir_name / f"{study.study_name}.svg")
-    combined_fig.write_image(dir_name / f"{study.study_name}.pdf")
-    return combined_fig
+    return figure
 
 
 # opt_history_fig = vis.plot_optimization_history(study)
@@ -132,4 +208,5 @@ def plot_opt_history_and_importances(study, dir_="plots/opt_history_and_importan
 #     plt.tight_layout()
 #     plt.show()
 
+# %%
 # %%
