@@ -20,11 +20,10 @@ def unlearning_func(
     retain_momentum_decay = trial.suggest_float("retain_momentum_decay", 0.2, 0.7)
     retaining_rate = trial.suggest_float("retaining_rate", 8e-4, 3e-3, log=True)
     unlearning_rate = trial.suggest_float("unlearning_rate", 3e-2, 5e-2, log=True)
+    logging.info(f"trial {trial.number} - {trial.params}")
 
     # adv_per_orig_step = 1
-    logging.info(f"trial {trial.number} - {trial.params}")
     # assert adv_per_orig_step in [1, 2, 4]
-    # assert fork_every_n_steps % 12 == 0
 
     model = AutoModelForCausalLM.from_pretrained(config.model_id)
     adversary = AutoModelForCausalLM.from_pretrained(config.model_id)

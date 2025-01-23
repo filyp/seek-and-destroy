@@ -8,6 +8,7 @@ wandb
 models
 circuits
 results
+plots
 src/db.sqlite3
 paper
 archive/old_results

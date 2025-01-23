@@ -3,26 +3,59 @@ import re
 
 import matplotlib.pyplot as plt
 import optuna.visualization as vis
+from plotly.subplots import make_subplots
 
 from utils.git_and_reproducibility import repo_root
 
+common_layout = dict(
+    template="plotly_white",
+    font=dict(family="Times Roman", size=20),
+    # title_font_size=30,
+)
 
-def plot_slice_layout(study):
-    layout = dict(
-        template="plotly_white",
-        font=dict(family="Times Roman", size=20),
+
+def plot_slice_layout(study, dir_="plots/slice_layout"):
+    layout = common_layout | dict(
         title={"text": study.study_name, "xanchor": "center", "x": 0.5, "y": 0.95},
-        title_font_size=30,
     )
 
     slice_fig = vis.plot_slice(study, target_name="Final forget loss")
     slice_fig.update_layout(**layout)
 
-    dir_name = repo_root() / "results" / f"slice_layout"
+    dir_name = repo_root() / dir_
     dir_name.mkdir(parents=True, exist_ok=True)
-    file_name = dir_name / f"{study.study_name}.png"
-    slice_fig.write_image(file_name)
+    slice_fig.write_image(dir_name / f"{study.study_name}.png")
+    slice_fig.write_image(dir_name / f"{study.study_name}.svg")
+    slice_fig.write_image(dir_name / f"{study.study_name}.pdf")
     return slice_fig
+
+
+def plot_opt_history_and_importances(study, dir_="plots/opt_history_and_importances"):
+    opt_history_fig = vis.plot_optimization_history(study)
+    importances_fig = vis.plot_param_importances(study)
+
+    # join fig and fig2 horizontally
+    combined_fig = make_subplots(rows=1, cols=2, horizontal_spacing=0.22)
+
+    for trace in opt_history_fig.data:
+        combined_fig.add_trace(trace, row=1, col=1)
+    for trace in importances_fig.data:
+        combined_fig.add_trace(trace, row=1, col=2)
+
+    # Update the layout
+    layout = common_layout | dict(
+        title={"text": study.study_name, "xanchor": "center", "x": 0.5, "y": 0.95},
+        width=1200,
+        showlegend=False,
+    )
+    combined_fig.update_layout(**layout)
+
+    dir_name = repo_root() / dir_
+    dir_name.mkdir(parents=True, exist_ok=True)
+    combined_fig.write_image(dir_name / f"{study.study_name}.png")
+    combined_fig.write_image(dir_name / f"{study.study_name}.svg")
+    combined_fig.write_image(dir_name / f"{study.study_name}.pdf")
+    return combined_fig
 
 
 # opt_history_fig = vis.plot_optimization_history(study)
@@ -98,3 +131,5 @@ def plot_slice_layout(study):
 
 #     plt.tight_layout()
 #     plt.show()
+
+# %%

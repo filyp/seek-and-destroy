@@ -3,6 +3,7 @@ import re
 from copy import deepcopy
 
 import optuna
+from plotly.subplots import make_subplots
 
 from utils.git_and_reproducibility import *
 from utils.model_operations import *
@@ -23,8 +24,15 @@ study = optuna.load_study(study_name=latest_study.study_name, storage=storage)
 # study = optuna.load_study(study_name=study_name, storage=storage)
 print(study.study_name)
 
+# %%
+
 slice_fig = plot_slice_layout(study)
 slice_fig
+
+# %%
+
+importances_fig = plot_opt_history_and_importances(study)
+importances_fig
 
 # %%
 # # ! rerun the best trial, with more steps
