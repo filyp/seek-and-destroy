@@ -11,7 +11,7 @@ from study_runner import *
 
 # %%
 
-config.__dict__.update(
+search_conf.__dict__.update(
     # target_modules=["dense_4h_to_h"],
     target_modules=["dense_h_to_4h"],
     # target_modules=["dense"],
@@ -41,7 +41,7 @@ trial = MockTrial(
     adv_decay=0.99,
 )
 model = unlearning_func(
-    trial, config, retain_batches, forget_batches, f_eval, r_eval, allowed_f_loss
+    trial, search_conf, retain_batches, forget_batches, f_eval, r_eval, allowed_f_loss
 )
 
 relearn_config.__dict__.update(relearn_steps=240)

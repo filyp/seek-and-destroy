@@ -21,3 +21,4 @@ nbformat
 kaleido
 psycopg2-binary
 modal
+PyYAML

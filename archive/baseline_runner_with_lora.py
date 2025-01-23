@@ -154,7 +154,7 @@ if __name__ == "__main__":
         direction="maximize",
         # load_if_exists=True,
     )
-    save_script_and_attach_logger(__file__, study.study_name)
+    save_file_and_attach_logger(__file__, study.study_name)
     study.set_metric_names(["forget_loss"])
     study.set_user_attr("commit_hash", commit_hash())
     for k, v in config.__dict__.items():

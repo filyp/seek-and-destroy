@@ -31,7 +31,7 @@ def add_tag_to_current_commit(tag: str) -> None:
     subprocess.run(["git", "tag", tag], check=True)
 
 
-def save_script_and_attach_logger(file_name, study_name):
+def save_file_and_attach_logger(file_name, study_name):
     # for reproducibility save the file state and append output into it
     # save script
     # folder = repo_root() / "results" / datetime.now().strftime("%Y-%m-%d")

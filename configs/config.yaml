@@ -1,0 +1,37 @@
+general_config:
+  multistudy_name: "test"
+  # method_name: tar_masked_lora
+  method_name: tar_masked
+  target_modules:
+    - dense_h_to_4h
+  model_id: EleutherAI/pythia-14m
+  # model_id: HuggingFaceTB/SmolLM-135M
+  retain_set_name: wikitext
+  forget_set_name: python
+  unlearn_steps: 600
+  batch_size: 16
+  n_trials: 1000
+
+relearn_config:
+  relearn_steps: 300
+  relearn_lr: 3.0e-4
+  relearn_lora_conf:
+    target_modules: all-linear
+
+hyperparams:
+  adv_decay: [0.75, 0.8, false]
+  adv_lr: [0.0025, 0.004, true]
+  adv_update: [0, 1, false]
+  clip_at: [-5, 5, false]
+  forget_momentum_decay: [0.4, 0.7, false]
+  fork_every_n_loops: [12, 30, false]
+  retain_momentum_decay: [0.2, 0.7, false]
+  retaining_rate: [8.e-4, 3.e-3, true]
+  unlearning_rate: [3.e-2, 5.e-2, true]
+
+variants:
+  full: {}
+  no_f_momentum:
+    forget_momentum_decay: 0
+  no_r_momentum:
+    retain_momentum_decay: 0

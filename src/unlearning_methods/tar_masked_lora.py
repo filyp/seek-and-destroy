@@ -15,23 +15,13 @@ def only_grad_on(model, params):
         p.requires_grad = True
 
 
-def unlearning_func(
-    trial, config, retain_batches, forget_batches, f_eval, r_eval, allowed_f_loss
+def tar_masked_lora(
+    h, config, retain_batches, forget_batches, f_eval, r_eval, allowed_f_loss
 ):
-    # ! parameters
-    adv_decay = trial.suggest_float("adv_decay", 0.95, 1)
-    adv_lr = trial.suggest_float("adv_lr", 0.03, 0.15, log=True)
-    clip_at = trial.suggest_float("clip_at", -5, 2)
-    f_power = trial.suggest_float("f_power", 0.5, 2)
-    forget_momentum_decay = trial.suggest_float("forget_momentum_decay", 0.5, 0.8)
-    fork_every_n_loops = trial.suggest_int("fork_every_n_loops", 12, 42, step=6)
-    lora_amount = trial.suggest_int("lora_amount", 1, 3)
-    lora_rank = trial.suggest_int("lora_rank", 6, 9)
-    retain_momentum_decay = trial.suggest_float("retain_momentum_decay", 0.3, 0.6)
-    retaining_rate = trial.suggest_float("retaining_rate", 8e-4, 2e-3, log=True)
-    unlearning_rate = trial.suggest_float("unlearning_rate", 2e-2, 5e-2, log=True)
-
-    logging.info(f"trial {trial.number} - {trial.params}")
+    # adv_update is not used
+    h.fork_every_n_loops = (int(h.fork_every_n_loops) // 6) * 6  # round to nearest 6
+    lora_amount = 1  # trial.suggest_int("lora_amount", 1, 3)
+    lora_rank = 8  # trial.suggest_int("lora_rank", 6, 9)
 
     model = AutoModelForCausalLM.from_pretrained(config.model_id)
     model.config.use_cache = False
@@ -72,13 +62,13 @@ def unlearning_func(
             loss.backward()
             for p in interven_params:
                 # ! update disruption scores
-                p.retain_momentum *= retain_momentum_decay
-                p.retain_momentum += p.grad * (1 - retain_momentum_decay)
+                p.retain_momentum *= h.retain_momentum_decay
+                p.retain_momentum += p.grad * (1 - h.retain_momentum_decay)
                 # ! retain update
-                p.data -= retaining_rate * p.retain_momentum
+                p.data -= h.retaining_rate * p.retain_momentum
 
-        if loop_num % (fork_every_n_loops // lora_amount) == 0:
-            forking_count = loop_num // (fork_every_n_loops // lora_amount)
+        if loop_num % (h.fork_every_n_loops // lora_amount) == 0:
+            forking_count = loop_num // (h.fork_every_n_loops // lora_amount)
             adv_to_restart = f"adv{forking_count % lora_amount}"
             peft_model.delete_adapter(adv_to_restart)
             peft_model.add_adapter(adv_to_restart, lora_config)
@@ -96,26 +86,24 @@ def unlearning_func(
         loss.backward(retain_graph=True)
         for n, p in model.named_parameters():
             if adv_to_use in n:
-                p.data -= adv_lr * p.grad
+                p.data -= h.adv_lr * p.grad
                 # decay adversary
-                p.data *= adv_decay
+                p.data *= h.adv_decay
 
         # ! get unlearning grads from adversary
         # reuse the computation graph from previous block
         model.zero_grad(set_to_none=True)
-        loss = correct_logit_minus_avg_loss(output, f_input_ids, clip_at)
+        loss = correct_logit_minus_avg_loss(output, f_input_ids, h.clip_at)
         loss.backward()
 
         # ! unlearning step with masking
         for p in interven_params:
-            p.forget_momentum *= forget_momentum_decay
-            grad = (p.grad.abs() ** (1 / f_power)) * p.grad.sign()
-            p.forget_momentum += grad * (1 - forget_momentum_decay)
+            p.forget_momentum *= h.forget_momentum_decay
+            p.forget_momentum += p.grad * (1 - h.forget_momentum_decay)
             mask = p.retain_momentum.sign() == p.forget_momentum.sign()
-            update = (p.forget_momentum.abs() ** f_power) * p.forget_momentum.sign()
-            update *= mask
+            update = mask * p.forget_momentum
             update /= update.norm()
-            p.data -= unlearning_rate * update
+            p.data -= h.unlearning_rate * update
 
         # ! eval current loss
         _passes_done = (loop_num + 1) * passes_per_loop
