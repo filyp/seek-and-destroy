@@ -9,7 +9,15 @@ from utils.training import eval_
 
 
 def compute_loss(
-    step, model, frozen_model, forget_inputs, retain_inputs, target_layers, alpha, config
+    percent_done,
+    model,
+    frozen_model,
+    forget_inputs,
+    retain_inputs,
+    target_layers,
+    config,
+    retaining_rate,
+    unlearning_rate,
 ):
     # === retain ===
     retain_attention_mask = pt.ones_like(retain_inputs)
@@ -31,8 +39,8 @@ def compute_loss(
     )
 
     # Those are pretty much arbitrary, the important thing is that retain_coeff increases as the training progresses and forget_coeff decreases.
-    retain_coeff = alpha * (step / (2 * config.unlearn_steps))
-    forget_coeff = alpha * (1 - (step / (2 * config.unlearn_steps)))
+    retain_coeff = retaining_rate * (percent_done / 2)
+    forget_coeff = unlearning_rate * (1 - percent_done / 2)
 
     # ===== loss components =====
     layers_forget_attention_mask = forget_attention_mask.repeat(
@@ -78,8 +86,7 @@ def compute_loss(
     # Circuit Breaker control
     if forget_coeff > 0:
         lora_forget_outputs = model(**forget_inputs).hidden_states
-        lora_forget_hidden = pt.stack(
-            [lora_forget_outputs[l] for l in target_layers])
+        lora_forget_hidden = pt.stack([lora_forget_outputs[l] for l in target_layers])
 
         normalized_lora_forget_outputs = lora_forget_hidden / (
             pt.norm(lora_forget_hidden, dim=-1, keepdim=True, dtype=pt.float)
@@ -100,44 +107,47 @@ def compute_loss(
     return loss
 
 
-def unlearning_func(
-    trial, config, retain_batches, forget_batches, f_eval, r_eval, allowed_f_loss
+def circuit_breaker_without_lora(
+    h, config, retain_batches, forget_batches, f_eval, r_eval, allowed_f_loss
 ):
-    logging.info(f"trial {trial.number} - {trial.params}")
-    logging.info(f"Forget loss - Retain loss")
-
     # Create main model and frozen copy
     model = AutoModelForCausalLM.from_pretrained(config.model_id)
 
     frozen_model = deepcopy(model)
     frozen_model.eval()
 
-    # Parameters
-    alpha = trial.suggest_float("alpha", 0.1, 2.0)
-    lr = trial.suggest_float("lr", 1e-4, 1e-2)
-
     num_layers = model.config.num_hidden_layers
     target_layers = [num_layers // 2]
 
-    optimizer = pt.optim.Adam(model.parameters(), lr=1e-4)
+    optimizer = pt.optim.Adam(model.parameters(), lr=1)
 
     retain_iter = iter(retain_batches)
     forget_iter = iter(forget_batches)
 
-    for step in range(1, 1 + config.unlearn_steps):
+    passes_per_loop = 5
+    for loop_num in range(config.unlearn_steps // passes_per_loop):
         r_input_ids = next(retain_iter)
         f_input_ids = next(forget_iter)
 
         model.zero_grad()
         loss = compute_loss(
-            step, model, frozen_model, f_input_ids, r_input_ids, target_layers, alpha, config
+            loop_num / (config.unlearn_steps // passes_per_loop),
+            model,
+            frozen_model,
+            f_input_ids,
+            r_input_ids,
+            target_layers,
+            config,
+            h.retaining_rate,
+            h.unlearning_rate,
         )
 
         loss.backward()
         optimizer.step()
 
-        # Evaluation
-        if step % 10 == 0:
-            eval_(model, f_eval, r_eval, allowed_f_loss, step)
+        # ! eval current loss
+        _passes_done = (loop_num + 1) * passes_per_loop
+        if _passes_done % 60 == 0:
+            eval_(model, f_eval, r_eval, allowed_f_loss, _passes_done)
 
     return model

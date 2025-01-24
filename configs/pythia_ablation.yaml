@@ -76,19 +76,23 @@ variants:
     unlearning_rate: [1.e-3, 5.e-2, true]
     unlearning_loss_fn: neg_entropy
     # todo needs also repE loss
-  circuit_breaker:
-    # note: it's trained without LoRA as was the original circuit breaker paper
-    forget_momentum_decay: [0, 0, false]
-    retain_momentum_decay: [0, 0, false]
-    adv_decay: [1, 1, false]
-    adv_update: [0, 0, false]
-    use_masking: false
-    use_normalization: false
-    normalization_factor: 0.1
-    unlearning_rate: [1.e-3, 5.e-2, true]
-    train_adversary: false
-    # todo needs also repE forget loss
-    # todo needs also repE retain loss
+  circuit_breaker_without_lora:
+    method_name: circuit_breaker_without_lora
+    # retaining_rate: [5.e-4, 5.e-3, true]
+    # unlearning_rate: [3.e-2, 7.e-2, true]
+  # circuit_breaker:
+  #   # note: it's trained without LoRA as was the original circuit breaker paper
+  #   forget_momentum_decay: [0, 0, false]
+  #   retain_momentum_decay: [0, 0, false]
+  #   adv_decay: [1, 1, false]
+  #   adv_update: [0, 0, false]
+  #   use_masking: false
+  #   use_normalization: false
+  #   normalization_factor: 0.1
+  #   unlearning_rate: [1.e-3, 5.e-2, true]
+  #   train_adversary: false
+  #   # todo needs also repE forget loss
+  #   # todo needs also repE retain loss
     
   # todo full + repE loss
   # todo TAR that can use safeguarding step?

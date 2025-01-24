@@ -19,6 +19,9 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from unlearning_methods.tar_masked import tar_masked
 from unlearning_methods.tar_masked_lora import tar_masked_lora
+from unlearning_methods.circuit_breakers_without_LoRA import (
+    circuit_breaker_without_lora,
+)
 from utils.data_loading import CachedBatches, dataset_loaders
 from utils.git_and_reproducibility import *
 from utils.model_operations import relearn
@@ -81,6 +84,7 @@ def run_study(storage, config_path, variant_num, if_study_exists="fail"):
     unlearning_func = dict(
         tar_masked_lora=tar_masked_lora,
         tar_masked=tar_masked,
+        circuit_breaker_without_lora=circuit_breaker_without_lora,
     )[config.method_name]
 
     def objective(trial):
@@ -133,7 +137,6 @@ def run_study(storage, config_path, variant_num, if_study_exists="fail"):
         study.optimize(objective, n_trials=config.n_trials)
     except KeyboardInterrupt:
         pass
-
 
 
 if __name__ == "__main__":
