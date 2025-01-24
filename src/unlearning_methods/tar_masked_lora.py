@@ -21,8 +21,6 @@ def tar_masked_lora(
     # adv_update is not used
     assert config.train_adversary, "TAR LoRA doesn't support no adversary"
     h.fork_every_n_loops = (int(h.fork_every_n_loops) // 6) * 6  # round to nearest 6
-    lora_amount = 1  # trial.suggest_int("lora_amount", 1, 3)
-    lora_rank = 8  # trial.suggest_int("lora_rank", 6, 9)
 
     model = AutoModelForCausalLM.from_pretrained(config.model_id)
     model.config.use_cache = False
@@ -33,9 +31,9 @@ def tar_masked_lora(
         if any(f"{m}.weight" in name for m in config.target_modules)
     ]
 
-    lora_config = LoraConfig(r=lora_rank, target_modules=config.target_modules)
+    lora_config = LoraConfig(r=config.lora_rank, target_modules=config.target_modules)
     peft_model = get_peft_model(model, lora_config, adapter_name="adv0")
-    for lora_index in range(1, lora_amount):
+    for lora_index in range(1, config.lora_amount):
         peft_model.add_adapter(f"adv{lora_index}", lora_config)
 
     for p in interven_params:
@@ -48,7 +46,8 @@ def tar_masked_lora(
     forget_iter = iter(forget_batches)
 
     # ! unlearning loop
-    passes_per_loop = 5
+    passes_per_loop = 4 + int(config.train_adversary)
+    assert 60 % passes_per_loop == 0
     assert config.unlearn_steps % passes_per_loop == 0
     for loop_num in range(config.unlearn_steps // passes_per_loop):
         model.train()
@@ -68,14 +67,14 @@ def tar_masked_lora(
                 # ! retain update
                 p.data -= h.retaining_rate * p.retain_momentum
 
-        if loop_num % (h.fork_every_n_loops // lora_amount) == 0:
-            forking_count = loop_num // (h.fork_every_n_loops // lora_amount)
-            adv_to_restart = f"adv{forking_count % lora_amount}"
+        if loop_num % (h.fork_every_n_loops // config.lora_amount) == 0:
+            forking_count = loop_num // (h.fork_every_n_loops // config.lora_amount)
+            adv_to_restart = f"adv{forking_count % config.lora_amount}"
             peft_model.delete_adapter(adv_to_restart)
             peft_model.add_adapter(adv_to_restart, lora_config)
 
         # ! relearn the adversary
-        adv_to_use = f"adv{loop_num % lora_amount}"
+        adv_to_use = f"adv{loop_num % config.lora_amount}"
         peft_model.set_adapter(adv_to_use)
         _lora_params = [p for n, p in model.named_parameters() if adv_to_use in n]
         # we already need grads on both, if we want to later reuse the computation graph
@@ -123,7 +122,7 @@ def tar_masked_lora(
                 eval_(model, f_eval, r_eval, allowed_f_loss, _passes_done)
 
     # ! remove lora
-    for lora_index in range(lora_amount):
+    for lora_index in range(config.lora_amount):
         peft_model.delete_adapter(f"adv{lora_index}")
 
     return model

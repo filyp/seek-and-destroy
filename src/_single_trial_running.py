@@ -37,17 +37,20 @@ logging.basicConfig(
 
 # %%
 # load YAML configuration
-config_path = repo_root() / "configs" / "config.yaml"
+config_path = repo_root() / "configs" / "pythia_ablation.yaml"
 with open(config_path, "r") as f:
     full_config = yaml.safe_load(f)
-
-# %%
 
 hyperparam_ranges = full_config["hyperparams"]
 config = full_config["general_config"]
 
 config = SimpleNamespace(**config)
 relearn_config = SimpleNamespace(**full_config["relearn_config"])
+
+# custom
+# config.train_adversary = False
+
+# %%
 
 print(f"{hyperparam_ranges=}")
 
@@ -92,8 +95,12 @@ model = unlearning_func(
     allowed_f_loss,
 )
 
-# set_seeds(42)
-# forget_losses = relearn(
-#     model, relearn_config, retain_val_batches, forget_val_batches
-# )
 # %%
+
+set_seeds(42)
+forget_losses = relearn(
+    model, relearn_config, retain_val_batches, forget_val_batches
+)
+
+# %%
+

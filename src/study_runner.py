@@ -85,10 +85,13 @@ def run_study(storage, config_path, variant_num, if_study_exists="fail"):
 
     def objective(trial):
         # construct hyperparams
-        hyperparams = {
-            hp_name: trial.suggest_float(hp_name, low, high, log=log)
-            for hp_name, (low, high, log) in hyperparam_ranges.items()
-        }
+        hyperparams = dict()
+        for hp_name, distribution in hyperparam_ranges.items():
+            if isinstance(distribution, list):
+                low, high, log = distribution
+                hyperparams[hp_name] = trial.suggest_float(hp_name, low, high, log=log)
+            else:
+                hyperparams[hp_name] = distribution
         hyperparams = SimpleNamespace(**hyperparams)
         logging.info(f"trial {trial.number} - {trial.params}")
 
@@ -131,10 +134,6 @@ def run_study(storage, config_path, variant_num, if_study_exists="fail"):
     except KeyboardInterrupt:
         pass
 
-    # # study = get_last_study()
-    # # plot_slice_layout(study)
-    # make_sure_optimal_values_are_not_near_range_edges(study)
-    # get_stats_from_last_n_trials(study, n=100)
 
 
 if __name__ == "__main__":

@@ -46,6 +46,7 @@ def tar_masked(
 
     # ! unlearning loop
     passes_per_loop = 4 + int(config.train_adversary)
+    assert 60 % passes_per_loop == 0
     assert config.unlearn_steps % passes_per_loop == 0
     for loop_num in range(config.unlearn_steps // passes_per_loop):
         model.train()
@@ -65,7 +66,8 @@ def tar_masked(
             p.data -= h.retaining_rate * p.retain_momentum
         model.zero_grad(set_to_none=True)
 
-        if loop_num % h.fork_every_n_loops == 0:
+        if (loop_num % h.fork_every_n_loops == 0) or (not config.train_adversary):
+            # if not training adversary, make sure it's always the same as base model
             adversary.load_state_dict(model.state_dict())
 
         # for _ in range(adv_per_orig_step):
@@ -116,7 +118,6 @@ def tar_masked(
 
         # ! eval current loss
         _passes_done = (loop_num + 1) * passes_per_loop
-        print(f"passes done: {_passes_done}")
         if _passes_done % 60 == 0:
             eval_(model, f_eval, r_eval, allowed_f_loss, _passes_done)
 

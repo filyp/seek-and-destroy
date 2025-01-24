@@ -1,5 +1,4 @@
 general_config:
-  # method_name: tar_masked_lora
   method_name: tar_masked
   target_modules:
     - dense_h_to_4h
@@ -13,6 +12,7 @@ general_config:
   n_trials: 500
   use_masking: true
   use_normalization: true
+  train_adversary: true
 
 relearn_config:
   relearn_steps: 300
@@ -21,15 +21,16 @@ relearn_config:
     target_modules: all-linear
 
 hyperparams:
-  adv_decay: [0.75, 1, false]
-  adv_lr: [0.0025, 0.004, true]
+  adv_decay: [0.5, 1, false]
+  adv_lr: [0.001, 0.005, true]
   adv_update: [0, 1, false]
-  clip_at: [-5, 5, false]
-  forget_momentum_decay: [0.2, 0.7, false]
-  fork_every_n_loops: [12, 30, false]
-  retain_momentum_decay: [0.2, 0.7, false]
-  retaining_rate: [8.e-4, 3.e-3, true]
-  unlearning_rate: [3.e-2, 5.e-2, true]
+  # clip_at: 0  # can just be set to number, but then it can't be tuned in varints too
+  clip_at: [-10, 10, false]
+  forget_momentum_decay: [0, 0.99, false]
+  fork_every_n_loops: [6, 42, false]
+  retain_momentum_decay: [0, 0.99, false]
+  retaining_rate: [5.e-4, 5.e-3, true]
+  unlearning_rate: [3.e-2, 7.e-2, true]
 
 variants:
   full: {}
@@ -46,26 +47,51 @@ variants:
   neg_cross_entropy:
     unlearning_loss_fn: neg_cross_entropy
   no_masking:
+    # note, here some other params have no effect
     use_masking: false
-    unlearning_rate: [1.e-3, 5.e-2, true]
+    unlearning_rate: [3.e-3, 5.e-2, true]
   no_normalization:
     use_normalization: false
     # set manually to keep a similar update scale across variants
-    normalization_factor: 0.1
-    unlearning_rate: [1.e-3, 5.e-2, true]
+    normalization_factor: 0.15
+    # unlearning_rate should actually be similar
+  no_adversary:
+    train_adversary: false
+  freeze_clip_at:
+    clip_at: [0, 0, false]
+  lora:
+    method_name: tar_masked_lora
+    lora_amount: 1
+    lora_rank: 8
+    adv_lr: [0.001, 0.04, true]  # LoRA can have a higher learning rate
+    adv_update: [0, 0, false]  # adv_update has no effect anyway
   tar:
     forget_momentum_decay: [0, 0, false]
     retain_momentum_decay: [0, 0, false]
     adv_decay: [1, 1, false]
     adv_update: [0, 0, false]
-    unlearning_loss_fn: neg_entropy
     use_masking: false
     use_normalization: false
     normalization_factor: 0.1
     unlearning_rate: [1.e-3, 5.e-2, true]
-   
-  # todo:
-  # lora
-  # TAR that can use safeguarding step
-  # CB
-  # no adversary
+    unlearning_loss_fn: neg_entropy
+    # todo needs also repE loss
+  circuit_breaker:
+    # note: it's trained without LoRA as was the original circuit breaker paper
+    forget_momentum_decay: [0, 0, false]
+    retain_momentum_decay: [0, 0, false]
+    adv_decay: [1, 1, false]
+    adv_update: [0, 0, false]
+    use_masking: false
+    use_normalization: false
+    normalization_factor: 0.1
+    unlearning_rate: [1.e-3, 5.e-2, true]
+    train_adversary: false
+    # todo needs also repE forget loss
+    # todo needs also repE retain loss
+    
+  # todo full + repE loss
+  # todo TAR that can use safeguarding step?
+  
+  # todo tuning unlearning_rate per module? - separate experiment with SmolLM
+  # todo only decrease weights

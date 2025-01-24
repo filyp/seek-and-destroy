@@ -21,10 +21,11 @@ common_layout = dict(
 
 
 def save_img(fig, file_name):
-    dir_name = repo_root() / "plots" / file_name
+    dir_name = repo_root() / "plots"
     dir_name.mkdir(parents=True, exist_ok=True)
-    fig.write_image(dir_name / f"{file_name}.svg")
-    fig.write_image(dir_name / f"{file_name}.pdf")
+    # fig.write_image(dir_name / f"{file_name}.svg")  # too big and sometimes distorted
+    fig.write_image(dir_name / f"{file_name}.pdf")  # needed for paper
+    fig.write_image(dir_name / f"{file_name}.png")  # needed for notes
     return dir_name / f"{file_name}.svg"
 
 
@@ -57,20 +58,19 @@ def stacked_slice_plot(studies):
         cols=len(studies[0].best_params),
         shared_yaxes=True,
         shared_xaxes="all",
-        vertical_spacing=0.12,
+        vertical_spacing=0.4 / len(studies),
     )
     common_prefix = os.path.commonprefix(study_names)
     figure.update_layout(layout)
     figure.update_layout(title={"text": common_prefix, "xanchor": "center", "x": 0.5})
 
+    showscale = True
     for i, study in enumerate(studies, start=1):
         info = _get_slice_plot_info(study, None, None, "Final forget loss")
-        showscale = True
         for j, subplot_info in enumerate(info.subplots, start=1):
             trace = _generate_slice_subplot(subplot_info)
             trace[0].update(marker={"showscale": showscale})
-            if showscale:
-                showscale = False
+            showscale = False  # only needs to be set once
             for t in trace:
                 figure.add_trace(t, row=i, col=j)
 
