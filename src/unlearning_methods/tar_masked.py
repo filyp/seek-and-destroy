@@ -45,7 +45,7 @@ def tar_masked(
     forget_iter = iter(forget_batches)
 
     # ! unlearning loop
-    passes_per_loop = 5
+    passes_per_loop = 4 + int(config.train_adversary)
     assert config.unlearn_steps % passes_per_loop == 0
     for loop_num in range(config.unlearn_steps // passes_per_loop):
         model.train()
@@ -74,14 +74,18 @@ def tar_masked(
         adversary.zero_grad(set_to_none=True)
         f_input_ids = next(forget_iter)
         output = adversary(f_input_ids)
-        loss = cross_entropy_loss(output, f_input_ids)
-        loss.backward(retain_graph=True)
-        for p, adv_p in zip(interven_params, adv_interven_params):
-            # apply adversary update
-            adv_p.data -= h.adv_lr * adv_p.grad
-            # decay adversary into base model
-            adv_p.data *= h.adv_decay
-            adv_p.data += p.data * (1 - h.adv_decay)
+        if config.train_adversary:
+            loss = cross_entropy_loss(output, f_input_ids)
+            loss.backward(retain_graph=True)
+            for p, adv_p in zip(interven_params, adv_interven_params):
+                # apply adversary update
+                adv_p.data -= h.adv_lr * adv_p.grad
+                # decay adversary into base model
+                adv_p.data *= h.adv_decay
+                adv_p.data += p.data * (1 - h.adv_decay)
+        else:
+            for p, adv_p in zip(interven_params, adv_interven_params):
+                assert (p.data == adv_p.data).all()
 
         # ! get unlearning grads loss from adversary
         # reuse the computation graph from previous block
@@ -112,7 +116,8 @@ def tar_masked(
 
         # ! eval current loss
         _passes_done = (loop_num + 1) * passes_per_loop
-        if _passes_done % 30 == 0:
+        print(f"passes done: {_passes_done}")
+        if _passes_done % 60 == 0:
             eval_(model, f_eval, r_eval, allowed_f_loss, _passes_done)
 
     return model

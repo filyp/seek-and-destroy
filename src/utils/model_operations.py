@@ -69,7 +69,7 @@ def relearn(model, config, retain_val_batches, forget_val_batches, use_lora=Fals
         optimizer.step()
 
         _passes_done = (loop_num + 1) * passes_per_loop
-        if _passes_done % 30 == 0:
+        if _passes_done % 60 == 0:
             res = eval_(model, f_eval_batch, r_eval_batch, step=_passes_done)
             f_losses.append(res["forget_loss"])
             # wandb.log(res, step=_passes_done)

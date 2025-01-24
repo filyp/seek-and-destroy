@@ -19,6 +19,7 @@ def tar_masked_lora(
     h, config, retain_batches, forget_batches, f_eval, r_eval, allowed_f_loss
 ):
     # adv_update is not used
+    assert config.train_adversary, "TAR LoRA doesn't support no adversary"
     h.fork_every_n_loops = (int(h.fork_every_n_loops) // 6) * 6  # round to nearest 6
     lora_amount = 1  # trial.suggest_int("lora_amount", 1, 3)
     lora_rank = 8  # trial.suggest_int("lora_rank", 6, 9)
@@ -117,7 +118,7 @@ def tar_masked_lora(
 
         # ! eval current loss
         _passes_done = (loop_num + 1) * passes_per_loop
-        if _passes_done % 30 == 0:
+        if _passes_done % 60 == 0:
             with peft_model.disable_adapter():
                 eval_(model, f_eval, r_eval, allowed_f_loss, _passes_done)
 

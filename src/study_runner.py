@@ -55,7 +55,7 @@ def run_study(storage, config_path, variant_num, if_study_exists="fail"):
     study_name = (
         f"{config.unlearn_steps},{relearn_config.relearn_steps},"
         f"{config.forget_set_name}"
-        f"|{config.multistudy_name}|{variant_name}"
+        f"|{Path(config_path).stem}|{variant_name}"
     )
     print(f"{study_name=}")
     print(f"{hyperparam_ranges=}")

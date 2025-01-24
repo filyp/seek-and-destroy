@@ -1,5 +1,4 @@
 general_config:
-  multistudy_name: "first"
   # method_name: tar_masked_lora
   method_name: tar_masked
   target_modules:
