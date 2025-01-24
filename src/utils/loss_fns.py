@@ -1,4 +1,5 @@
 import torch as pt
+import gc
 
 
 def cross_entropy_loss(output, input_ids, _dummy=None):
@@ -18,6 +19,96 @@ def stream_activation_loss(output, input_ids, _dummy=None):
         # last activation is huge for some reason, so ignore it
         for activation in output.hidden_states[:-1]
     )
+
+
+def circuit_breaker_loss(
+    model,
+    frozen_model,
+    forget_inputs,
+    retain_inputs,
+    target_layers,
+):
+    # === retain ===
+    retain_attention_mask = pt.ones_like(retain_inputs)
+    # ==== cb ====
+    forget_attention_mask = pt.ones_like(forget_inputs)
+
+    assert forget_attention_mask.shape == retain_attention_mask.shape
+
+    # ==== Forward Inputs ====
+    retain_inputs = dict(
+        input_ids=retain_inputs,
+        attention_mask=retain_attention_mask,
+        output_hidden_states=True,
+    )
+    forget_inputs = dict(
+        input_ids=forget_inputs,
+        attention_mask=forget_attention_mask,
+        output_hidden_states=True,
+    )
+
+    # ===== loss components =====
+    layers_forget_attention_mask = forget_attention_mask.repeat(
+        len(target_layers), 1, 1
+    ).unsqueeze(-1)
+
+    frozen_model.eval()
+    with pt.no_grad():
+        # Retain control
+
+        orig_retain_outputs = frozen_model(**retain_inputs).hidden_states
+        orig_retain_hidden = pt.stack(orig_retain_outputs).detach()
+        layers_retain_attention_mask = retain_attention_mask.repeat(
+            len(orig_retain_outputs), 1, 1
+        ).unsqueeze(-1)
+        orig_retain_hidden *= layers_retain_attention_mask
+
+        del orig_retain_outputs
+        gc.collect()
+
+        # Circuit Breaker control
+
+        forget_outputs = frozen_model(**forget_inputs).hidden_states
+        forget_hidden = pt.stack(
+            [forget_outputs[l].detach() for l in target_layers]
+        )
+
+        del forget_outputs
+        gc.collect()
+
+    model.train()
+
+    # Retain control
+
+    lora_retain_outputs = model(**retain_inputs).hidden_states
+    lora_retain_hidden = (
+        pt.stack(lora_retain_outputs) * layers_retain_attention_mask
+    )
+    retain_loss = pt.norm(
+        lora_retain_hidden - orig_retain_hidden, dim=-1, p=2, dtype=pt.float
+    ).nanmean()
+
+    # Circuit Breaker control
+
+    lora_forget_outputs = model(**forget_inputs).hidden_states
+    lora_forget_hidden = pt.stack(
+        [lora_forget_outputs[l] for l in target_layers])
+
+    normalized_lora_forget_outputs = lora_forget_hidden / (
+        pt.norm(lora_forget_hidden, dim=-1, keepdim=True, dtype=pt.float)
+    )
+    normalized_forget_outputs = forget_hidden / (
+        pt.norm(forget_hidden, dim=-1, keepdim=True, dtype=pt.float)
+    )
+    inner_product = (
+        normalized_lora_forget_outputs * normalized_forget_outputs
+    ) * layers_forget_attention_mask
+    forget_loss = (
+        pt.relu(inner_product.sum(dim=-1)).sum()
+        / layers_forget_attention_mask.sum()
+    )
+
+    return retain_loss, forget_loss
 
 
 # adapted from https://github.com/rishub-tamirisa/tamper-resistance/blob/41b749ca4d9bcb7608c7ead2ca48b0508714af99/modules/objectives.py#L114
