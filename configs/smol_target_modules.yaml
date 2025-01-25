@@ -17,9 +17,9 @@ general_config:
   additional_param_name: null
 
 relearn_config:
-  relearn_steps: 240
-  relearn_lr: 8.0e-4
-  # todo try lora relearning?
+  relearn_steps: 120
+  relearn_lr: 1.0e-4
+  # for Smol I checked that no-LoRA relearns better
   relearn_lora_conf:
     target_modules: all-linear
 

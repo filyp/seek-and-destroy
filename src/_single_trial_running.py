@@ -15,6 +15,7 @@ os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 # os.environ['CUBLAS_WORKSPACE_CONFIG'] = ":16:8"  # less mem but slower
 
 import logging
+from copy import deepcopy
 from types import SimpleNamespace
 
 import torch as pt
@@ -37,8 +38,8 @@ logging.basicConfig(
 
 # %%
 # load YAML configuration
-# config_path = repo_root() / "configs" / "pythia_ablation.yaml"
-config_path = repo_root() / "configs" / "smol_target_modules.yaml"
+config_path = repo_root() / "configs" / "pythia_ablation.yaml"
+# config_path = repo_root() / "configs" / "smol_target_modules.yaml"
 with open(config_path, "r") as f:
     full_config = yaml.safe_load(f)
 
@@ -100,11 +101,21 @@ model = unlearning_func(
 
 set_seeds(42)
 
+relearn_config.relearn_lr = 1e-4
+# relearn_config.relearn_lr = 0.5e-1
+relearn_config.relearn_steps = 50
+
 forget_losses = relearn(
-    # model, relearn_config, retain_val_batches, forget_val_batches, use_lora=True
-    model, relearn_config, retain_val_batches, forget_val_batches, use_lora=False
+    deepcopy(model),
+    relearn_config,
+    retain_val_batches,
+    forget_val_batches,
 )
+
+# %%
 
 
 # %%
 
+for n, p in model.named_parameters():
+    print(n, p.requires_grad)

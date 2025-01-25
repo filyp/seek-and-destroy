@@ -18,7 +18,7 @@ general_config:
 
 relearn_config:
   relearn_steps: 300
-  relearn_lr: 3.0e-4
+  relearn_lr: 1.0e-4
   relearn_lora_conf:
     target_modules: all-linear
 
@@ -33,7 +33,7 @@ hyperparams:
   # todo repE retaining rate
 
 variants:
-  # surgical_tar: {}
+  surgical_tar: {}
 
   # ! ablations
   no_r_momentum:
