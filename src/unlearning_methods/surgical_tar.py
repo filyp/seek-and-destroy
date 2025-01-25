@@ -120,7 +120,7 @@ def surgical_tar(
                 update /= update.norm()
             else:
                 # neede to keep a similar update scale across variants
-                update *= config.normalization_factor
+                update *= config.update_scale_factor
 
             p.data -= h.unlearning_rate * update
 

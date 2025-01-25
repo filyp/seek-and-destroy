@@ -2,8 +2,10 @@
 import json
 import os
 import subprocess
+import sys
 
 import modal
+import yaml
 
 from study_runner import run_study
 
@@ -20,7 +22,7 @@ app = modal.App("example-get-started", image=image)
 
 
 @app.function(gpu="L4", cpu=(1, 1), timeout=3600)
-def remote_func(db_url):
+def remote_func(db_url, config_path, if_study_exists):
     # clone repo
     subprocess.run(["git", "clone", repo, "/root/code"], check=True)
     os.chdir("/root/code")
@@ -35,10 +37,16 @@ def remote_func(db_url):
     from utils.loss_fns import neg_cross_entropy_loss
 
     storage = get_storage(db_url)
-    run_study(storage)
+
+    with open(config_path, "r") as f:
+        full_config = yaml.safe_load(f)
+
+    # ! run all variants one after another
+    for variant_num in range(len(full_config["variants"])):
+        run_study(storage, config_path, variant_num, if_study_exists)
 
 
 @app.local_entrypoint()
-def main():
+def main(config_path: str, if_study_exists: str="fail"):
     db_url = json.load(open("secret.json"))["db_url"]
-    remote_func.remote(db_url)
+    remote_func.remote(db_url, config_path, if_study_exists)

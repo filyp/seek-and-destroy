@@ -90,7 +90,7 @@ def tar(
         # ! unlearning step
         for p, adv_p in zip(interven_params, adv_interven_params):
             update = adv_p.grad
-            update *= config.normalization_factor
+            update *= config.update_scale_factor
 
             p.data -= h.unlearning_rate * update
 

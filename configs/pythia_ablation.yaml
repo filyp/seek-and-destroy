@@ -10,6 +10,7 @@ general_config:
   unlearn_steps: 600
   batch_size: 16
   n_trials: 200
+  # method specific
   use_masking: true
   use_normalization: true
   train_adversary: true
@@ -32,7 +33,8 @@ hyperparams:
   # todo repE retaining rate
 
 variants:
-  surgical_tar: {}
+  # surgical_tar: {}
+
   # ! ablations
   no_r_momentum:
     retain_momentum_decay: [0, 0, false]
@@ -47,7 +49,7 @@ variants:
   no_normalization:
     use_normalization: false
     # set manually to keep a similar update scale across variants
-    normalization_factor: 0.15
+    update_scale_factor: 0.15
     # unlearning_rate should actually be similar
   no_adversary:
     train_adversary: false
@@ -74,7 +76,7 @@ variants:
     adv_lr: [0.001, 0.05, true]  # LoRA can have a higher learning rate
   tar:
     method_name: tar
-    normalization_factor: 0.15
+    update_scale_factor: 0.15
     adv_decay: [1, 1, false]  # has no effect here, so set it to 1
     unlearning_rate: [1.e-3, 5.e-2, true]
     # todo needs also repE loss
@@ -88,7 +90,7 @@ variants:
   #   adv_update: [0, 0, false]
   #   use_masking: false
   #   use_normalization: false
-  #   normalization_factor: 0.1
+  #   update_scale_factor: 0.1
   #   unlearning_rate: [1.e-3, 5.e-2, true]
   #   train_adversary: false
   #   # todo needs also repE forget loss
