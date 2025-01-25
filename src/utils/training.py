@@ -88,12 +88,12 @@ def get_stats_from_last_n_trials(study, n=10):
 
     max_val = study.best_trial.values[0]
     last_n_mean = np.mean(values[-n:])
-    last_n_std = np.std(values[-n:])
+    last_n_sem = np.std(values[-n:]) / np.sqrt(n)
     pure_name = study.study_name.split("|")[-1]
-    result = f"| {last_n_mean:.2f}±{last_n_std:.2f} | {max_val:.2f} | {pure_name} |  |"
-    # print("last_n_mean ± last_n_std, max_val, pure_name")
+    result = f"| {last_n_mean:.2f}±{last_n_sem:.2f} | {max_val:.2f} | {pure_name} |  |"
+    # print("last_n_mean ± last_n_sem, max_val, pure_name")
     # print(result)
-    return result, last_n_mean, last_n_std
+    return result, last_n_mean, last_n_sem
 
 
 def delete_study_if_exists(study_name, storage):

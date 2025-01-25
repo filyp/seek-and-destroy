@@ -1,7 +1,4 @@
 # %%
-import os
-import re
-from copy import deepcopy
 from types import SimpleNamespace
 
 import optuna
@@ -28,8 +25,7 @@ config_path = repo_root() / "configs" / "pythia_ablation.yaml"
 with open(config_path, "r") as f:
     full_config = yaml.safe_load(f)
 
-multistudy_name = "first"  # todo use the line below
-# multistudy_name = Path(config_path).stem
+multistudy_name = Path(config_path).stem
 
 config = SimpleNamespace(**full_config["general_config"])
 relearn_config = SimpleNamespace(**full_config["relearn_config"])
@@ -65,7 +61,7 @@ for study in studies:
 
 # %% get stats for the last 100 trials
 markdown_table = """\
-| last 10<br>mean±std | max   | study_name | notes |
+| last 10<br>mean±sem | max   | study_name | notes |
 | ------------------- | ----- | ---------- | ----- |"""
 for study in studies:
     markdown_line, _, _ = get_stats_from_last_n_trials(study, n=30)

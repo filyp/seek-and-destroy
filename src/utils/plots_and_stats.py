@@ -77,10 +77,10 @@ def stacked_slice_plot(studies):
             # Share x axes only if not additional_param
             if "additional_param" in subplot_info.param_name:
                 matches = None
-                title_text = subplot_info.param_name
+                title_text = study.user_attrs["additional_param_name"]
             else:
                 matches = "x" + str(j)
-                title_text = study.user_attrs["additional_param_name"]
+                title_text = subplot_info.param_name
             figure.update_xaxes(
                 title_text=title_text,
                 row=i,
