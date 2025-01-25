@@ -21,7 +21,8 @@ image = (
 app = modal.App("example-get-started", image=image)
 
 
-@app.function(gpu="L4", cpu=(1, 1))
+# no timeout
+@app.function(gpu="L4", cpu=(1, 1), timeout=24 * 3600)
 def remote_func(db_url, config_path, if_study_exists):
     # clone repo
     subprocess.run(["git", "clone", repo, "/root/code"], check=True)
@@ -47,6 +48,6 @@ def remote_func(db_url, config_path, if_study_exists):
 
 
 @app.local_entrypoint()
-def main(config_path: str, if_study_exists: str="fail"):
+def main(config_path: str, if_study_exists: str = "fail"):
     db_url = json.load(open("secret.json"))["db_url"]
     remote_func.remote(db_url, config_path, if_study_exists)
