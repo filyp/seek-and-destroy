@@ -21,7 +21,7 @@ image = (
 app = modal.App("example-get-started", image=image)
 
 
-@app.function(gpu="L4", cpu=(1, 1), timeout=3600)
+@app.function(gpu="L4", cpu=(1, 1))
 def remote_func(db_url, config_path, if_study_exists):
     # clone repo
     subprocess.run(["git", "clone", repo, "/root/code"], check=True)
