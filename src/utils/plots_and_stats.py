@@ -57,7 +57,7 @@ def stacked_slice_plot(studies):
         rows=len(study_names),
         cols=len(studies[0].best_params),
         shared_yaxes=True,
-        shared_xaxes="all",
+        # shared_xaxes="all",
         vertical_spacing=0.4 / len(studies),
     )
     common_prefix = os.path.commonprefix(study_names)
@@ -74,11 +74,18 @@ def stacked_slice_plot(studies):
             for t in trace:
                 figure.add_trace(t, row=i, col=j)
 
+            # Share x axes only if not additional_param
+            if "additional_param" in subplot_info.param_name:
+                matches = None
+                title_text = subplot_info.param_name
+            else:
+                matches = "x" + str(j)
+                title_text = study.user_attrs["additional_param_name"]
             figure.update_xaxes(
-                title_text=subplot_info.param_name,
+                title_text=title_text,
                 row=i,
                 col=j,
-                matches="x" + str(j),
+                matches=matches,
                 showticklabels=True,
             )
             # Set y-axis range for all subplots

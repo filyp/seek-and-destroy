@@ -7,7 +7,7 @@ from utils.loss_fns import *
 from utils.training import *
 
 
-def tar_masked(
+def surgical_tar(
     h, config, retain_batches, forget_batches, f_eval, r_eval, allowed_f_loss
 ):
     h.fork_every_n_loops = int(h.fork_every_n_loops)
@@ -16,6 +16,8 @@ def tar_masked(
     adversary = AutoModelForCausalLM.from_pretrained(config.model_id)
     model.config.use_cache = False
     adversary.config.use_cache = False
+    
+    clip_at = h.additional_param if config.additional_param_name == "clip_at" else 0
 
     # get params to intervene on
     interven_params = [
@@ -37,7 +39,8 @@ def tar_masked(
 
     for p in interven_params:
         p.retain_momentum = pt.zeros_like(p.data)
-        p.forget_momentum = pt.zeros_like(p.data)
+        if config.additional_param_name == "forget_momentum_decay":
+            p.forget_momentum = pt.zeros_like(p.data)
 
     # ! unlearning loop
     logging.info("step      base_f      base_r")
@@ -93,19 +96,25 @@ def tar_masked(
         # reuse the computation graph from previous block
         adversary.zero_grad(set_to_none=True)
         loss_fn = loss_fns[config.unlearning_loss_fn]
-        loss = loss_fn(output, f_input_ids, h.clip_at)
+        loss = loss_fn(output, f_input_ids, clip_at)
         loss.backward()
 
         # ! unlearning step with masking
         for p, adv_p in zip(interven_params, adv_interven_params):
-            p.forget_momentum *= h.forget_momentum_decay
-            p.forget_momentum += adv_p.grad * (1 - h.forget_momentum_decay)
+            update = adv_p.grad
+
+            if config.additional_param_name == "forget_momentum_decay":
+                p.forget_momentum *= h.additional_param
+                p.forget_momentum += update * (1 - h.additional_param)
+                update = p.forget_momentum
 
             if config.use_masking:
-                mask = p.retain_momentum.sign() == p.forget_momentum.sign()
-                update = mask * p.forget_momentum
-            else:
-                update = p.forget_momentum
+                mask = p.retain_momentum.sign() == update.sign()
+                update *= mask
+            
+            if config.additional_param_name == "discard_growing_weights":
+                mask2 = p.data.sign() != update.sign()
+                update[mask2] *= h.additional_param
 
             if config.use_normalization:
                 update /= update.norm()
@@ -114,7 +123,9 @@ def tar_masked(
                 update *= config.normalization_factor
 
             p.data -= h.unlearning_rate * update
-            adv_p.data -= h.unlearning_rate * update * h.adv_update
+
+            if config.additional_param_name == "adv_update":
+                adv_p.data -= h.unlearning_rate * update * h.additional_param
 
         # ! eval current loss
         _passes_done = (loop_num + 1) * passes_per_loop

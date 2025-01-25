@@ -21,8 +21,8 @@ import torch as pt
 import yaml
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from unlearning_methods.tar_masked import tar_masked
-from unlearning_methods.tar_masked_lora import tar_masked_lora
+from unlearning_methods.surgical_tar import surgical_tar
+from unlearning_methods.surgical_tar_lora import surgical_tar_lora
 from utils.data_loading import CachedBatches, dataset_loaders
 from utils.git_and_reproducibility import *
 from utils.model_operations import relearn
@@ -73,8 +73,8 @@ allowed_f_loss = eval_(
 )["retain_loss"]
 
 unlearning_func = dict(
-    tar_masked_lora=tar_masked_lora,
-    tar_masked=tar_masked,
+    tar_masked_lora=surgical_tar_lora,
+    tar_masked=surgical_tar,
 )[config.method_name]
 
 

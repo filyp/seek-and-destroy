@@ -17,8 +17,9 @@ import torch as pt
 import yaml
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from unlearning_methods.tar_masked import tar_masked
-from unlearning_methods.tar_masked_lora import tar_masked_lora
+from unlearning_methods.surgical_tar import surgical_tar
+from unlearning_methods.surgical_tar_lora import surgical_tar_lora
+from unlearning_methods.tar import tar
 from utils.data_loading import CachedBatches, dataset_loaders
 from utils.git_and_reproducibility import *
 from utils.model_operations import relearn
@@ -79,8 +80,9 @@ def run_study(storage, config_path, variant_num, if_study_exists="fail"):
     )["retain_loss"]
 
     unlearning_func = dict(
-        tar_masked_lora=tar_masked_lora,
-        tar_masked=tar_masked,
+        surgical_tar_lora=surgical_tar_lora,
+        surgical_tar=surgical_tar,
+        tar=tar,
     )[config.method_name]
 
     def objective(trial):
