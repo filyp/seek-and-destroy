@@ -37,7 +37,8 @@ logging.basicConfig(
 
 # %%
 # load YAML configuration
-config_path = repo_root() / "configs" / "pythia_ablation.yaml"
+# config_path = repo_root() / "configs" / "pythia_ablation.yaml"
+config_path = repo_root() / "configs" / "smol_target_modules.yaml"
 with open(config_path, "r") as f:
     full_config = yaml.safe_load(f)
 
@@ -73,8 +74,8 @@ allowed_f_loss = eval_(
 )["retain_loss"]
 
 unlearning_func = dict(
-    tar_masked_lora=surgical_tar_lora,
-    tar_masked=surgical_tar,
+    surgical_tar_lora=surgical_tar_lora,
+    surgical_tar=surgical_tar,
 )[config.method_name]
 
 
@@ -98,9 +99,12 @@ model = unlearning_func(
 # %%
 
 set_seeds(42)
+
 forget_losses = relearn(
-    model, relearn_config, retain_val_batches, forget_val_batches
+    # model, relearn_config, retain_val_batches, forget_val_batches, use_lora=True
+    model, relearn_config, retain_val_batches, forget_val_batches, use_lora=False
 )
+
 
 # %%
 
