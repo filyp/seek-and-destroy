@@ -32,25 +32,36 @@ hyperparams:
   unlearning_rate: [0.01, 0.2, true]
 
 variants:
-  dense_h_to_4h:
+  # dense_h_to_4h:
+  #   target_modules:
+  #     - dense_h_to_4h
+  # dense_4h_to_h:
+  #   target_modules:
+  #     - dense_4h_to_h
+  # query_key_value:
+  #   target_modules:
+  #     - query_key_value
+  # dense:
+  #   target_modules:
+  #     - dense
+  # all_linear:
+  #   target_modules:
+  #     - dense_h_to_4h
+  #     - dense_4h_to_h
+  #     - query_key_value
+  #     - dense
+  # mlp:
+  #   target_modules:
+  #     - dense_h_to_4h
+  #     - dense_4h_to_h
+  all_but_query_key_value:
     target_modules:
       - dense_h_to_4h
-  dense_4h_to_h:
-    target_modules:
       - dense_4h_to_h
-  query_key_value:
-    target_modules:
-      - query_key_value
-  dense:
-    target_modules:
       - dense
-  all_linear:
+  all_but_query_key_value_unnormalized:
     target_modules:
       - dense_h_to_4h
       - dense_4h_to_h
-      - query_key_value
       - dense
-  mlp:
-    target_modules:
-      - dense_h_to_4h
-      - dense_4h_to_h
+    use_normalization: false

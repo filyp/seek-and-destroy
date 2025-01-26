@@ -12,10 +12,13 @@ from utils.training import (
     make_sure_optimal_values_are_not_near_range_edges,
 )
 
+# %%
+
 # get the latest study
 storage = get_storage()
-# %%
-config_path = repo_root() / "configs" / "pythia_ablation.yaml"
+# config_path = repo_root() / "configs" / "pythia_ablation2.yaml"
+config_path = repo_root() / "configs" / "pythia_target_modules.yaml"
+# config_path = repo_root() / "configs" / "smol_target_modules.yaml"
 
 # study_summaries = optuna.study.get_all_study_summaries(storage)
 # sorted_studies = sorted(study_summaries, key=lambda s: s.datetime_start)
@@ -40,9 +43,14 @@ for variant_name in full_config["variants"]:
     )
     print(study_name)
     try:
-        studies.append(optuna.load_study(study_name=study_name, storage=storage))
+        study = optuna.load_study(study_name=study_name, storage=storage)
     except KeyError:
         print(f"Study {study_name} not found")
+
+    if any(t.state == optuna.trial.TrialState.COMPLETE for t in study.trials):
+        studies.append(study)
+    else:
+        print(f"Study {study_name} has no complete trials!")
 
 # %% slice plot
 plot = stacked_slice_plot(studies)

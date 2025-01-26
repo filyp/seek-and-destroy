@@ -107,7 +107,7 @@ def stacked_slice_plot(studies):
 
     figure.update_layout(
         width=300 * len(info.subplots),
-        height=400 * len(study_names),
+        height=300 * len(study_names),
     )
     return figure
 
@@ -135,7 +135,7 @@ def stacked_history_and_importance_plots(studies):
     figure.update_layout(
         title={"text": common_prefix, "xanchor": "center", "x": 0.5},
         width=1200,
-        height=400 * len(studies),
+        height=300 * len(studies),
         showlegend=False,
     )
     return figure
