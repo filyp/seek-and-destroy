@@ -7,6 +7,7 @@ import os
 os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 # os.environ['CUBLAS_WORKSPACE_CONFIG'] = ":16:8"  # less mem but slower
 
+import argparse
 import logging
 import sys
 from types import SimpleNamespace
@@ -135,21 +136,39 @@ def run_study(storage, config_path, variant_num, if_study_exists="fail"):
         pass
 
 
-
 if __name__ == "__main__":
-    storage = get_storage()
-    config_path = str(sys.argv[1])
+    parser = argparse.ArgumentParser(description="Run unlearning studies")
+    parser.add_argument(
+        "--config-path", type=str, required=True, help="Path to the config YAML file"
+    )
+    parser.add_argument(
+        "--if-study-exists",
+        type=str,
+        default="fail",
+        choices=["fail", "delete", "load"],
+        help="What to do if study exists (default: fail)",
+    )
+    parser.add_argument(
+        "--variant-num",
+        type=int,
+        default=None,
+        help="Variant number to run (default: None to run all variants)",
+    )
 
-    # if len(sys.argv) > 2:
-    #     # ! run a single variant
-    #     variant_num = int(sys.argv[2])
-    #     run_study(storage, config_path, variant_num, if_study_exists="delete")
+    args = parser.parse_args()
 
-    if_study_exists = sys.argv[2] if len(sys.argv) > 2 else "fail"
 
-    # ! run all variants one after another
-    with open(config_path, "r") as f:
+    db_url = json.load(open("secret.json"))["db_url"]
+    storage = get_storage(db_url)
+    # storage = get_storage()
+
+    with open(args.config_path, "r") as f:
         full_config = yaml.safe_load(f)
 
-    for variant_num in range(len(full_config["variants"])):
-        run_study(storage, config_path, variant_num, if_study_exists)
+    if args.variant_num is None:
+        # ! run all variants one after another
+        for variant_num in range(len(full_config["variants"])):
+            run_study(storage, args.config_path, variant_num, args.if_study_exists)
+    else:
+        # ! run single variant
+        run_study(storage, args.config_path, args.variant_num, args.if_study_exists)
