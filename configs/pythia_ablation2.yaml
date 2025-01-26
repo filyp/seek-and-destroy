@@ -12,8 +12,7 @@ general_config:
   n_trials: 200
   # method specific
   use_masking: true
-  local_normalization: true
-  global_normalization: false
+  global_normalization: true
   train_adversary: true
   additional_param_name: null
 
@@ -48,9 +47,10 @@ variants:
   no_masking:
     use_masking: false
   no_normalization:
-    local_normalization: false
+    global_normalization: false
     # set manually to keep a similar update scale across variants
-    update_scale_factor: 0.1
+    # update_scale_factor: 0.1
+    # todo figure out the scaling factor
     # unlearning_rate should actually be similar
   no_adversary:
     train_adversary: false

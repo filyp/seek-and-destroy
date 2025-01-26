@@ -19,7 +19,7 @@ def surgical_tar_lora(
     h, config, retain_batches, forget_batches, f_eval, r_eval, allowed_f_loss
 ):
     assert config.use_masking
-    assert config.local_normalization
+    assert config.global_normalization
     assert config.train_adversary
     assert not config.global_normalization
     assert h.additional_param_name is None, "TAR LoRA doesn't support additional param"
@@ -34,6 +34,7 @@ def surgical_tar_lora(
         for name, p in model.named_parameters()
         if any(f"{m}.weight" in name for m in config.target_modules)
     ]
+    total_interven_numel = sum(p.numel() for p in interven_params)
 
     lora_config = LoraConfig(r=config.lora_rank, target_modules=config.target_modules)
     peft_model = get_peft_model(model, lora_config, adapter_name="adv0")
@@ -101,11 +102,13 @@ def surgical_tar_lora(
         loss.backward()
 
         # ! unlearning step with masking
+        global_norm = sum(p.grad.norm() ** 2 for p in interven_params) ** 0.5
         for p in interven_params:
             update = p.grad
             mask = p.retain_momentum.sign() == update.sign()
             update *= mask
-            update /= update.norm()
+            # todo also times normalization factor once i add it
+            update *= total_interven_numel**0.5 / global_norm
             p.data -= h.unlearning_rate * update
 
         # ! eval current loss

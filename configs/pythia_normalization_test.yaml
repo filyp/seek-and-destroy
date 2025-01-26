@@ -11,10 +11,10 @@ general_config:
   forget_set_name: python
   unlearn_steps: 600
   batch_size: 16
-  n_trials: 300
+  n_trials: 600
   # method specific
   use_masking: true
-  local_normalization: false
+  # local_normalization: false
   global_normalization: false
   train_adversary: true
   additional_param_name: null
@@ -33,8 +33,11 @@ hyperparams:
   additional_param: [0, 0, false]  # on default don't use this
 
 variants:
-  no_normalization: {}
-  local_normalization:
-    local_normalization: true
-  global_normalization:
+  # no_normalization: {}
+  # local_normalization:
+  #   local_normalization: true
+  # global_normalization:
+  #   global_normalization: true
+  global_normalization_pre_mask:
+    # the variants above were done on 2917f6a3836efc106f9aa7b9bab4f4b8964d66b8
     global_normalization: true

@@ -208,9 +208,6 @@ for p, adv_p in zip(interven_params, adv_interven_params):
         mask2 = p.data.sign() != update.sign()
         update[mask2] *= h.additional_param
 
-    if config.local_normalization:
-        update /= update.norm()
-    
     adv_p.grad = update
     
 global_norm = sum(adv_p.grad.norm() ** 2 for adv_p in adv_interven_params) ** 0.5

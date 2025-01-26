@@ -20,9 +20,9 @@ storage = get_storage(db_url)
 # storage = get_storage()
 
 # config_path = repo_root() / "configs" / "pythia_ablation2.yaml"
-# config_path = repo_root() / "configs" / "pythia_target_modules.yaml"
 # config_path = repo_root() / "configs" / "smol_target_modules.yaml"
 config_path = repo_root() / "configs" / "pythia_normalization_test.yaml"
+# config_path = repo_root() / "configs" / "pythia_target_modules.yaml"
 
 # study_summaries = optuna.study.get_all_study_summaries(storage)
 # sorted_studies = sorted(study_summaries, key=lambda s: s.datetime_start)
@@ -76,7 +76,7 @@ markdown_table = """\
 | last 10<br>mean±sem | max   | study_name | notes |
 | ------------------- | ----- | ---------- | ----- |"""
 for study in studies:
-    markdown_line, _, _ = get_stats_from_last_n_trials(study, n=30)
+    markdown_line, _, _ = get_stats_from_last_n_trials(study, n=50)
     markdown_table += f"\n{markdown_line}"
 print(markdown_table)
 
