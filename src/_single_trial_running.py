@@ -140,8 +140,6 @@ assert config.unlearn_steps % passes_per_loop == 0
 # %%
 total_interven_numel = sum(p.numel() for p in interven_params)
 # %%
-global_norm
-# %%
 total_interven_numel ** 0.5
 # %%
 

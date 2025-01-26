@@ -1,0 +1,38 @@
+general_config:
+  method_name: surgical_tar
+  target_modules:
+    - dense_h_to_4h
+    - dense_4h_to_h
+    - dense
+  unlearning_loss_fn: correct_logit_minus_avg
+  model_id: EleutherAI/pythia-14m
+  # model_id: HuggingFaceTB/SmolLM-135M
+  retain_set_name: wikitext
+  forget_set_name: python
+  unlearn_steps: 600
+  batch_size: 16
+  n_trials: 300
+  # method specific
+  use_masking: true
+  local_normalization: false
+  global_normalization: false
+  train_adversary: true
+  additional_param_name: null
+
+relearn_config:
+  relearn_steps: 300
+  relearn_lr: 1.0e-4
+  adv_decay: [0.3, 1, false]
+  adv_lr: [0.001, 0.01, true]
+  fork_every_n_loops: [6, 42, false]
+  retain_momentum_decay: [0, 0.99, false]
+  retaining_rate: [3.e-4, 3.e-3, true]
+  unlearning_rate: [0.00001, 1, true]
+  additional_param: [0, 0, false]  # on default don't use this
+
+variants:
+  no_normalization: {}
+  local_normalization:
+    local_normalization: true
+  global_normalization:
+    global_normalization: true
