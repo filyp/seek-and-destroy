@@ -1,7 +1,5 @@
-# to run a single variant:
-# python study_runner.py PATH_TO_CONFIG VARIANT_NUM
 # to run all variants one after another:
-# python study_runner.py PATH_TO_CONFIG
+# python study_runner.py PATH_TO_CONFIG [if_study_exists=fail|delete|load]
 
 # necessary for determinism:
 import os
@@ -142,15 +140,16 @@ if __name__ == "__main__":
     storage = get_storage()
     config_path = str(sys.argv[1])
 
-    if len(sys.argv) > 2:
-        # ! run a single variant
-        variant_num = int(sys.argv[2])
-        run_study(storage, config_path, variant_num, if_study_exists="delete")
+    # if len(sys.argv) > 2:
+    #     # ! run a single variant
+    #     variant_num = int(sys.argv[2])
+    #     run_study(storage, config_path, variant_num, if_study_exists="delete")
 
-    else:
-        # ! run all variants one after another
-        with open(config_path, "r") as f:
-            full_config = yaml.safe_load(f)
+    if_study_exists = sys.argv[2] if len(sys.argv) > 2 else "fail"
 
-        for variant_num in range(len(full_config["variants"])):
-            run_study(storage, config_path, variant_num, if_study_exists="delete")
+    # ! run all variants one after another
+    with open(config_path, "r") as f:
+        full_config = yaml.safe_load(f)
+
+    for variant_num in range(len(full_config["variants"])):
+        run_study(storage, config_path, variant_num, if_study_exists)

@@ -65,3 +65,5 @@ variants:
       - dense_4h_to_h
       - dense
     use_normalization: false
+    update_scale_factor: 0.1
+
