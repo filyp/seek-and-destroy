@@ -12,15 +12,16 @@ general_config:
   n_trials: 200
   # method specific
   use_masking: true
-  use_normalization: true
+  local_normalization: true
+  global_normalization: false
   train_adversary: true
   additional_param_name: null
 
 relearn_config:
   relearn_steps: 300
   relearn_lr: 1.0e-4
-  relearn_lora_conf:
-    target_modules: all-linear
+  # relearn_lora_conf:
+  #   target_modules: all-linear
 
 hyperparams:
   adv_decay: [0.3, 1, false]
@@ -47,7 +48,7 @@ variants:
   no_masking:
     use_masking: false
   no_normalization:
-    use_normalization: false
+    local_normalization: false
     # set manually to keep a similar update scale across variants
     update_scale_factor: 0.1
     # unlearning_rate should actually be similar

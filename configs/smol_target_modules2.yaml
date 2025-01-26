@@ -20,16 +20,16 @@ relearn_config:
   relearn_steps: 120
   relearn_lr: 1.0e-4
   # for Smol I checked that no-LoRA relearns better
-  relearn_lora_conf:
-    target_modules: all-linear
+  # relearn_lora_conf:
+  #   target_modules: all-linear
 
 hyperparams:
-  adv_lr: [0.001, 0.005, true]
-  adv_decay: [0.5, 1, false]
-  retain_momentum_decay: [0, 0.99, false]
+  adv_decay: [0.4, 1, false]
+  adv_lr: [0.001, 0.006, true]
   fork_every_n_loops: [6, 42, false]
+  retain_momentum_decay: [0, 0.99, false]
   retaining_rate: [5.e-4, 5.e-3, true]
-  unlearning_rate: [3.e-3, 7.e-2, true]
+  unlearning_rate: [0.05, 5, true]
 
 variants:
   up_proj:
@@ -67,3 +67,23 @@ variants:
       - up_proj
       - down_proj
       - gate_proj
+  attn:
+    target_modules:
+      - q_proj
+      - k_proj
+      - v_proj
+      - o_proj
+  mlp_and_o_proj:
+    target_modules:
+      - up_proj
+      - down_proj
+      - gate_proj
+      - o_proj
+  mlp_and_o_proj_unnormalized:
+    target_modules:
+      - up_proj
+      - down_proj
+      - gate_proj
+      - o_proj
+    use_normalization: false
+    # update_scale_factor: 0.1

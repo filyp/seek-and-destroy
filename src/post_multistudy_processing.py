@@ -14,11 +14,14 @@ from utils.training import (
 
 # %%
 
-# get the latest study
-storage = get_storage()
+db_url = json.load(open(repo_root() / "secret.json"))["db_url"]
+storage = get_storage(db_url)
+
+# storage = get_storage()
+
 # config_path = repo_root() / "configs" / "pythia_ablation2.yaml"
-config_path = repo_root() / "configs" / "pythia_target_modules.yaml"
-# config_path = repo_root() / "configs" / "smol_target_modules.yaml"
+# config_path = repo_root() / "configs" / "pythia_target_modules.yaml"
+config_path = repo_root() / "configs" / "smol_target_modules.yaml"
 
 # study_summaries = optuna.study.get_all_study_summaries(storage)
 # sorted_studies = sorted(study_summaries, key=lambda s: s.datetime_start)

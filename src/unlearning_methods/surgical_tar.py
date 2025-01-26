@@ -16,7 +16,7 @@ def surgical_tar(
     adversary = AutoModelForCausalLM.from_pretrained(config.model_id)
     model.config.use_cache = False
     adversary.config.use_cache = False
-    
+
     clip_at = h.additional_param if config.additional_param_name == "clip_at" else 0
 
     # get params to intervene on
@@ -30,6 +30,7 @@ def surgical_tar(
         for name, p in adversary.named_parameters()
         if any(f"{m}.weight" in name for m in config.target_modules)
     ]
+    total_interven_numel = sum(p.numel() for p in interven_params)
 
     # require grads only on intervened params
     for p in model.parameters():
@@ -111,16 +112,25 @@ def surgical_tar(
             if config.use_masking:
                 mask = p.retain_momentum.sign() == update.sign()
                 update *= mask
-            
+
             if config.additional_param_name == "discard_growing_weights":
                 mask2 = p.data.sign() != update.sign()
                 update[mask2] *= h.additional_param
 
-            if config.use_normalization:
+            if config.local_normalization:
                 update /= update.norm()
-            else:
-                # neede to keep a similar update scale across variants
-                update *= config.update_scale_factor
+
+            adv_p.grad = update
+
+        global_norm = (
+            sum(adv_p.grad.norm() ** 2 for adv_p in adv_interven_params) ** 0.5
+        )
+        for p, adv_p in zip(interven_params, adv_interven_params):
+            update = adv_p.grad
+
+            # normalize
+            if config.global_noramlization:
+                update *= total_interven_numel**0.5 / global_norm
 
             p.data -= h.unlearning_rate * update
 

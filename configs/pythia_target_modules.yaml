@@ -12,7 +12,8 @@ general_config:
   n_trials: 500
   # method specific
   use_masking: true
-  use_normalization: true
+  local_normalization: true
+  global_normalization: false
   train_adversary: true
   additional_param_name: null
 
@@ -20,8 +21,8 @@ relearn_config:
   relearn_steps: 300
   relearn_lr: 1.0e-4
   # for Smol I checked that no-LoRA relearns better
-  relearn_lora_conf:
-    target_modules: all-linear
+  # relearn_lora_conf:
+  #   target_modules: all-linear
 
 hyperparams:
   adv_decay: [0.3, 1, false]
@@ -64,6 +65,6 @@ variants:
       - dense_h_to_4h
       - dense_4h_to_h
       - dense
-    use_normalization: false
+    local_normalization: false
     update_scale_factor: 0.1
 

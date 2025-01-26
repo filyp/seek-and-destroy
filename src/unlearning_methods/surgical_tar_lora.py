@@ -19,8 +19,9 @@ def surgical_tar_lora(
     h, config, retain_batches, forget_batches, f_eval, r_eval, allowed_f_loss
 ):
     assert config.use_masking
-    assert config.use_normalization
+    assert config.local_normalization
     assert config.train_adversary
+    assert not config.global_normalization
     assert h.additional_param_name is None, "TAR LoRA doesn't support additional param"
 
     h.fork_every_n_loops = (int(h.fork_every_n_loops) // 6) * 6  # round to nearest 6
