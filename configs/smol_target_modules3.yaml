@@ -33,27 +33,26 @@ hyperparams:
 
 variants:
   # ablations:
-  # down_gate_o:
-  #   target_modules:
-  #     - down_proj
-  #     - gate_proj
-  #     - o_proj
-  # up_gate_o:
-  #   target_modules:
-  #     - up_proj
-  #     - gate_proj
-  #     - o_proj
-  # up_down_o:
-  #   target_modules:
-  #     - up_proj
-  #     - down_proj
-  #     - o_proj
-  # up_down_gate:
-  #   target_modules:
-  #     - up_proj
-  #     - down_proj
-  #     - gate_proj
-  #
+  down_gate_o:
+    target_modules:
+      - down_proj
+      - gate_proj
+      - o_proj
+  up_gate_o:
+    target_modules:
+      - up_proj
+      - gate_proj
+      - o_proj
+  up_down_o:
+    target_modules:
+      - up_proj
+      - down_proj
+      - o_proj
+  up_down_gate:
+    target_modules:
+      - up_proj
+      - down_proj
+      - gate_proj
   # other
   up_proj:
     target_modules:
@@ -85,7 +84,6 @@ variants:
       - k_proj
       - v_proj
       - o_proj
-
   # best guess:
   up_down_gate_o:
     target_modules:
