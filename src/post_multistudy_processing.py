@@ -73,10 +73,10 @@ for study in studies:
 
 # %% get stats for the last 100 trials
 markdown_table = """\
-| last 10<br>mean±sem | max   | study_name | notes |
+| last n trials<br>mean±sem | max   | study_name | notes |
 | ------------------- | ----- | ---------- | ----- |"""
 for study in studies:
-    markdown_line, _, _ = get_stats_from_last_n_trials(study, n=50)
+    markdown_line, _, _ = get_stats_from_last_n_trials(study, n=30)
     markdown_table += f"\n{markdown_line}"
 print(markdown_table)
 
