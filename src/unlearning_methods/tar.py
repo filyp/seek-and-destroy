@@ -47,7 +47,7 @@ def tar(
 
     # ! unlearning loop
     passes_per_loop = 5
-    assert 60 % passes_per_loop == 0
+    _eval_counter = 0
     assert config.unlearn_steps % passes_per_loop == 0
     for loop_num in range(config.unlearn_steps // passes_per_loop):
         model.train()
@@ -96,7 +96,8 @@ def tar(
 
         # ! eval current loss
         _passes_done = (loop_num + 1) * passes_per_loop
-        if _passes_done % 60 == 0:
+        if _passes_done // 30 > _eval_counter:
+            _eval_counter += 1
             eval_(model, f_eval, r_eval, allowed_f_loss, _passes_done)
 
     return model

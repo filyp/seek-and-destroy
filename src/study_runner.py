@@ -32,7 +32,7 @@ logging.basicConfig(
 )
 
 
-def run_study(storage, config_path, variant_num, if_study_exists="fail"):
+def run_study(storage, config_path, variant_num, if_study_exists="fail", n_trials=None):
     assert if_study_exists in ["fail", "delete", "load"]
     assert is_repo_clean()
 
@@ -48,9 +48,10 @@ def run_study(storage, config_path, variant_num, if_study_exists="fail"):
     config = full_config["general_config"] | {
         k: v for k, v in custom.items() if k not in full_config["hyperparams"].keys()
     }
-
     config = SimpleNamespace(**config)
     relearn_config = SimpleNamespace(**full_config["relearn_config"])
+    if n_trials is not None:
+        config.n_trials = n_trials
 
     study_name = (
         f"{config.unlearn_steps},{relearn_config.relearn_steps},"
@@ -142,6 +143,12 @@ if __name__ == "__main__":
         "--config-path", type=str, required=True, help="Path to the config YAML file"
     )
     parser.add_argument(
+        "--variant-num",
+        type=int,
+        default=None,
+        help="Variant number to run (default: None to run all variants)",
+    )
+    parser.add_argument(
         "--if-study-exists",
         type=str,
         default="fail",
@@ -149,14 +156,13 @@ if __name__ == "__main__":
         help="What to do if study exists (default: fail)",
     )
     parser.add_argument(
-        "--variant-num",
+        "--n-trials",
         type=int,
         default=None,
-        help="Variant number to run (default: None to run all variants)",
+        help="Number of trials to run (default: None to use config value)",
     )
 
     args = parser.parse_args()
-
 
     db_url = json.load(open("secret.json"))["db_url"]
     storage = get_storage(db_url)

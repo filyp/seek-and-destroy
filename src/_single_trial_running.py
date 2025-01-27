@@ -134,7 +134,6 @@ forget_iter = iter(forget_batches)
 
 # ! unlearning loop
 passes_per_loop = 4 + int(config.train_adversary)
-assert 60 % passes_per_loop == 0
 assert config.unlearn_steps % passes_per_loop == 0
 
 # %%

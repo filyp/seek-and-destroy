@@ -20,8 +20,8 @@ storage = get_storage(db_url)
 # storage = get_storage()
 
 # config_path = repo_root() / "configs" / "pythia_ablation2.yaml"
-# config_path = repo_root() / "configs" / "smol_target_modules.yaml"
-config_path = repo_root() / "configs" / "pythia_normalization_test.yaml"
+config_path = repo_root() / "configs" / "smol_target_modules3.yaml"
+# config_path = repo_root() / "configs" / "pythia_normalization_test.yaml"
 # config_path = repo_root() / "configs" / "pythia_target_modules.yaml"
 
 # study_summaries = optuna.study.get_all_study_summaries(storage)
@@ -48,13 +48,13 @@ for variant_name in full_config["variants"]:
     print(study_name)
     try:
         study = optuna.load_study(study_name=study_name, storage=storage)
+        if any(t.state == optuna.trial.TrialState.COMPLETE for t in study.trials):
+            studies.append(study)
+        else:
+            print(f"Study {study_name} has no complete trials!")
     except KeyError:
         print(f"Study {study_name} not found")
 
-    if any(t.state == optuna.trial.TrialState.COMPLETE for t in study.trials):
-        studies.append(study)
-    else:
-        print(f"Study {study_name} has no complete trials!")
 
 # %% slice plot
 plot = stacked_slice_plot(studies)

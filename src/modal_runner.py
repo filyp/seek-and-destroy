@@ -23,7 +23,7 @@ app = modal.App("example-get-started", image=image)
 
 # no timeout
 @app.function(gpu="L4", cpu=(1, 1), timeout=24 * 3600)
-def remote_func(db_url, config_path, if_study_exists, variant_num):
+def remote_func(db_url, config_path, variant_num, if_study_exists, n_trials):
     # clone repo
     subprocess.run(["git", "clone", repo, "/root/code"], check=True)
     os.chdir("/root/code")
@@ -45,15 +45,18 @@ def remote_func(db_url, config_path, if_study_exists, variant_num):
     if variant_num is None:
         # ! run all variants one after another
         for variant_num in range(len(full_config["variants"])):
-            run_study(storage, config_path, variant_num, if_study_exists)
+            run_study(storage, config_path, variant_num, if_study_exists, n_trials)
     else:
         # ! run single variant
-        run_study(storage, config_path, variant_num, if_study_exists)
+        run_study(storage, config_path, variant_num, if_study_exists, n_trials)
 
 
 @app.local_entrypoint()
 def main(
-    config_path: str, if_study_exists: str = "fail", variant_num: int | None = None
+    config_path: str,
+    variant_num: int | None = None,
+    if_study_exists: str = "fail",
+    n_trials: int | None = None,
 ):
     db_url = json.load(open("secret.json"))["db_url"]
-    remote_func.remote(db_url, config_path, if_study_exists, variant_num)
+    remote_func.remote(db_url, config_path, variant_num, if_study_exists, n_trials)

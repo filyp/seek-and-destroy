@@ -9,7 +9,7 @@ general_config:
   forget_set_name: python
   unlearn_steps: 240
   batch_size: 16
-  n_trials: 25
+  n_trials: 50
   # method specific
   use_masking: true
   global_normalization: true
@@ -29,7 +29,7 @@ hyperparams:
   fork_every_n_loops: [6, 42, false]
   retain_momentum_decay: [0, 0.99, false]
   retaining_rate: [3.e-4, 3.e-3, true]
-  unlearning_rate: [0.00001, 0.0005, true]
+  unlearning_rate: [0.00003, 0.0003, true]
 
 variants:
   # ablations:
