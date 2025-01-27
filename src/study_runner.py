@@ -174,7 +174,19 @@ if __name__ == "__main__":
     if args.variant_num is None:
         # ! run all variants one after another
         for variant_num in range(len(full_config["variants"])):
-            run_study(storage, args.config_path, variant_num, args.if_study_exists)
+            run_study(
+                storage,
+                args.config_path,
+                variant_num,
+                args.if_study_exists,
+                args.n_trials,
+            )
     else:
         # ! run single variant
-        run_study(storage, args.config_path, args.variant_num, args.if_study_exists)
+        run_study(
+            storage,
+            args.config_path,
+            args.variant_num,
+            args.if_study_exists,
+            args.n_trials,
+        )
