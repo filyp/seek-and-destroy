@@ -53,35 +53,7 @@ variants:
   #     - up_proj
   #     - down_proj
   #     - gate_proj
-  # best guess:
-  up_down_gate_o:
-    target_modules:
-      - up_proj
-      - down_proj
-      - gate_proj
-      - o_proj
-  # additions:
-  up_down_gate_o_q:
-    target_modules:
-      - up_proj
-      - down_proj
-      - gate_proj
-      - o_proj
-      - q_proj
-  up_down_gate_o_k:
-    target_modules:
-      - up_proj
-      - down_proj
-      - gate_proj
-      - o_proj
-      - k_proj
-  up_down_gate_o_v:
-    target_modules:
-      - up_proj
-      - down_proj
-      - gate_proj
-      - o_proj
-      - v_proj
+  #
   # other
   up_proj:
     target_modules:
@@ -113,3 +85,33 @@ variants:
       - k_proj
       - v_proj
       - o_proj
+
+  # best guess:
+  up_down_gate_o:
+    target_modules:
+      - up_proj
+      - down_proj
+      - gate_proj
+      - o_proj
+  # additions:
+  up_down_gate_o_q:
+    target_modules:
+      - up_proj
+      - down_proj
+      - gate_proj
+      - o_proj
+      - q_proj
+  up_down_gate_o_k:
+    target_modules:
+      - up_proj
+      - down_proj
+      - gate_proj
+      - o_proj
+      - k_proj
+  up_down_gate_o_v:
+    target_modules:
+      - up_proj
+      - down_proj
+      - gate_proj
+      - o_proj
+      - v_proj
