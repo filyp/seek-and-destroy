@@ -34,7 +34,6 @@ logging.basicConfig(
 
 def run_study(storage, config_path, variant_num, if_study_exists="fail", n_trials=None):
     assert if_study_exists in ["fail", "delete", "load"]
-    assert is_repo_clean()
 
     # load YAML configuration
     with open(config_path, "r") as f:
@@ -77,7 +76,8 @@ def run_study(storage, config_path, variant_num, if_study_exists="fail", n_trial
 
     allowed_r_loss = eval_(
         AutoModelForCausalLM.from_pretrained(config.model_id), f_eval, r_eval
-    )["retain_loss"] + config.
+    )["retain_loss"]
+    allowed_r_loss += getattr(config, "retain_loss_budget", 0)
 
     unlearning_func = dict(
         surgical_tar_lora=surgical_tar_lora,
@@ -161,7 +161,11 @@ if __name__ == "__main__":
         default=None,
         help="Number of trials to run (default: None to use config value)",
     )
-
+    parser.add_argument(
+        "--allow-dirty-repo",
+        action="store_true",
+        help="Allow running even if the git repo has uncommitted changes (default: False)",
+    )
     args = parser.parse_args()
 
     db_url = json.load(open("secret.json"))["db_url"]
@@ -174,6 +178,8 @@ if __name__ == "__main__":
     if args.variant_num is None:
         # ! run all variants one after another
         for variant_num in range(len(full_config["variants"])):
+            if not args.allow_dirty_repo:
+                assert is_repo_clean()
             run_study(
                 storage,
                 args.config_path,
@@ -183,6 +189,8 @@ if __name__ == "__main__":
             )
     else:
         # ! run single variant
+        if not args.allow_dirty_repo:
+            assert is_repo_clean()
         run_study(
             storage,
             args.config_path,
