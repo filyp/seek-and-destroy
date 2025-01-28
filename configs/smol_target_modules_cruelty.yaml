@@ -32,16 +32,16 @@ hyperparams:
 
 variants:
 
-  # done and useful
-  up_proj:
-    target_modules:
-      - up_proj
-  down_proj:
-    target_modules:
-      - down_proj
-  gate_proj:
-    target_modules:
-      - gate_proj
+  # # done and useful
+  # up_proj:
+  #   target_modules:
+  #     - up_proj
+  # down_proj:
+  #   target_modules:
+  #     - down_proj
+  # gate_proj:
+  #   target_modules:
+  #     - gate_proj
   q_proj:
     target_modules:
       - q_proj

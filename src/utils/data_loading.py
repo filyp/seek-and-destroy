@@ -125,7 +125,7 @@ dataset_loaders = dict(
     python=load_python_dataset,
     oscar_en=lambda tokenizer: load_one_oscar_shard("en", tokenizer),
     oscar_pl=lambda tokenizer: load_one_oscar_shard("pl", tokenizer),
-    oscar_es=lambda tokenizer: load_one_oscar_shard("es", tokenizer),
+    # oscar_es=lambda tokenizer: load_one_oscar_shard("es", tokenizer),
     cruelty=load_cruelty,
     beaver_safe=load_beaver_safe,
 )
