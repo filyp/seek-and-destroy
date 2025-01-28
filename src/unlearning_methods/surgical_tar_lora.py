@@ -19,9 +19,8 @@ def surgical_tar_lora(
     h, config, retain_batches, forget_batches, f_eval, r_eval, allowed_f_loss
 ):
     assert config.use_masking
-    assert config.global_normalization
+    assert config.normalize_grads
     assert config.train_adversary
-    assert not config.global_normalization
     assert h.additional_param_name is None, "TAR LoRA doesn't support additional param"
 
     h.fork_every_n_loops = (int(h.fork_every_n_loops) // 6) * 6  # round to nearest 6
@@ -102,13 +101,13 @@ def surgical_tar_lora(
         loss.backward()
 
         # ! unlearning step with masking
-        global_norm = sum(p.grad.norm() ** 2 for p in interven_params) ** 0.5
+        grad_norm = sum(p.grad.norm() ** 2 for p in interven_params) ** 0.5
         for p in interven_params:
             update = p.grad
             mask = p.retain_momentum.sign() == update.sign()
             update *= mask
             # todo also times normalization factor once i add it
-            update *= total_interven_numel**0.5 / global_norm
+            update *= total_interven_numel**0.5 / grad_norm
             p.data -= h.unlearning_rate * update
 
         # ! eval current loss

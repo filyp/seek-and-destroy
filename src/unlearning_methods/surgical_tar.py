@@ -101,7 +101,7 @@ def surgical_tar(
         loss.backward()
 
         # ! unlearning step with masking
-        global_norm = sum(ap.grad.norm() ** 2 for ap in adv_interven_params) ** 0.5
+        grad_norm = sum(adv_p.grad.norm() ** 2 for adv_p in adv_interven_params) ** 0.5
         for p, adv_p in zip(interven_params, adv_interven_params):
             update = adv_p.grad
 
@@ -122,8 +122,8 @@ def surgical_tar(
             #     update /= update.norm()
 
             # normalize
-            if config.global_normalization:
-                update *= total_interven_numel**0.5 / global_norm
+            if config.normalize_grads:
+                update *= total_interven_numel**0.5 / grad_norm
 
             p.data -= h.unlearning_rate * update
 

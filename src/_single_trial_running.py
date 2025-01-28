@@ -209,14 +209,14 @@ for p, adv_p in zip(interven_params, adv_interven_params):
 
     adv_p.grad = update
     
-global_norm = sum(adv_p.grad.norm() ** 2 for adv_p in adv_interven_params) ** 0.5
+grad_norm = sum(adv_p.grad.norm() ** 2 for adv_p in adv_interven_params) ** 0.5
 
 for p, adv_p in zip(interven_params, adv_interven_params):
     update = adv_p.grad
 
     # normalize
-    if config.global_normalization:
-        update *= total_interven_numel ** 0.5 / global_norm
+    if config.normalize_grads:
+        update *= total_interven_numel ** 0.5 / grad_norm
 
     p.data -= h.unlearning_rate * update
 

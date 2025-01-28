@@ -15,7 +15,7 @@ general_config:
   # method specific
   use_masking: true
   # local_normalization: false
-  global_normalization: false
+  normalize_grads: false
   train_adversary: true
   additional_param_name: null
 
@@ -37,7 +37,7 @@ variants:
   local_normalization:
     local_normalization: true
   global_normalization:
-    global_normalization: true
+    normalize_grads: true
   global_normalization_pre_mask:
     # the variants above were done on 2917f6a3836efc106f9aa7b9bab4f4b8964d66b8
-    global_normalization: true
+    normalize_grads: true

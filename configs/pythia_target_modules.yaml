@@ -12,7 +12,7 @@ general_config:
   n_trials: 500
   # method specific
   use_masking: true
-  global_normalization: true
+  normalize_grads: true
   train_adversary: true
   additional_param_name: null
 
