@@ -34,6 +34,7 @@ logging.basicConfig(
 
 def run_study(storage, config_path, variant_num, if_study_exists="fail", n_trials=None):
     assert if_study_exists in ["fail", "delete", "load"]
+    print(f"{config_path=} {variant_num=} {if_study_exists=} {n_trials=}")
 
     # load YAML configuration
     with open(config_path, "r") as f:
@@ -131,8 +132,13 @@ def run_study(storage, config_path, variant_num, if_study_exists="fail", n_trial
     study.set_user_attr("is_repo_clean", is_repo_clean())
     for k, v in config.__dict__.items():
         study.set_user_attr(k, v)
+
+    n_trials = config.n_trials
+    # if if_study_exists == "load":
+    #     n_trials = config.n_trials - len(study.trials)
+
     try:
-        study.optimize(objective, n_trials=config.n_trials)
+        study.optimize(objective, n_trials=n_trials)
     except KeyboardInterrupt:
         pass
 

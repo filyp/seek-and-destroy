@@ -10,7 +10,7 @@ general_config:
   retain_loss_budget: 0.1
   unlearn_steps: 240
   batch_size: 16
-  n_trials: 150
+  n_trials: 250
   # method specific
   use_masking: true
   normalize_grads: true
@@ -42,27 +42,28 @@ variants:
   # gate_proj:
   #   target_modules:
   #     - gate_proj
-  q_proj:
-    target_modules:
-      - q_proj
-  k_proj:
-    target_modules:
-      - k_proj
-  v_proj:
-    target_modules:
-      - v_proj
-  o_proj:
-    target_modules:
-      - o_proj
-  all_linear:
-    target_modules:
-      - up_proj
-      - down_proj
-      - gate_proj
-      - q_proj
-      - k_proj
-      - v_proj
-      - o_proj
+  # q_proj:
+  #   target_modules:
+  #     - q_proj
+  # k_proj:
+  #   target_modules:
+  #     - k_proj
+  # v_proj:
+  #   target_modules:
+  #     - v_proj
+  # o_proj:
+  #   target_modules:
+  #     - o_proj
+
+  # all_linear:
+  #   target_modules:
+  #     - up_proj
+  #     - down_proj
+  #     - gate_proj
+  #     - q_proj
+  #     - k_proj
+  #     - v_proj
+  #     - o_proj
 
   # gate_v:
   #   target_modules:
@@ -73,16 +74,16 @@ variants:
   #     - gate_proj
   #     - v_proj
   #     - up_proj
-  # gate_v_up_o:
-  #   target_modules:
-  #     - gate_proj
-  #     - v_proj
-  #     - up_proj
-  #     - o_proj
-  # gate_v_up_o_q:
-  #   target_modules:
-  #     - gate_proj
-  #     - v_proj
-  #     - up_proj
-  #     - o_proj
-  #     - q_proj
+  gate_v_up_o:
+    target_modules:
+      - gate_proj
+      - v_proj
+      - up_proj
+      - o_proj
+  gate_v_up_o_q:
+    target_modules:
+      - gate_proj
+      - v_proj
+      - up_proj
+      - o_proj
+      - q_proj
