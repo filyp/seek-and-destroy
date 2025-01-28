@@ -1,7 +1,7 @@
 import gc
 import logging
 from copy import deepcopy
-
+from utils.loss_fns import circuit_breaker_forget_loss, circuit_breaker_retain_loss
 import torch as pt
 from transformers import AutoModelForCausalLM
 
@@ -12,95 +12,29 @@ def compute_loss(
     percent_done,
     model,
     frozen_model,
-    forget_inputs,
-    retain_inputs,
+    forget_input_ids,
+    retain_input_ids,
     target_layers,
     config,
     retaining_rate,
     unlearning_rate,
 ):
-    # === retain ===
-    retain_attention_mask = pt.ones_like(retain_inputs)
-    # ==== cb ====
-    forget_attention_mask = pt.ones_like(forget_inputs)
-
-    assert forget_attention_mask.shape == retain_attention_mask.shape
-
-    # ==== Forward Inputs ====
-    retain_inputs = dict(
-        input_ids=retain_inputs,
-        attention_mask=retain_attention_mask,
-        output_hidden_states=True,
-    )
-    forget_inputs = dict(
-        input_ids=forget_inputs,
-        attention_mask=forget_attention_mask,
-        output_hidden_states=True,
-    )
 
     # Those are pretty much arbitrary, the important thing is that retain_coeff increases as the training progresses and forget_coeff decreases.
     retain_coeff = retaining_rate * (percent_done / 2)
     forget_coeff = unlearning_rate * (1 - percent_done / 2)
 
-    # ===== loss components =====
-    layers_forget_attention_mask = forget_attention_mask.repeat(
-        len(target_layers), 1, 1
-    ).unsqueeze(-1)
-
-    frozen_model.eval()
-    with pt.no_grad():
-        # Retain control
-        if retain_coeff > 0:
-            orig_retain_outputs = frozen_model(**retain_inputs).hidden_states
-            orig_retain_hidden = pt.stack(orig_retain_outputs).detach()
-            layers_retain_attention_mask = retain_attention_mask.repeat(
-                len(orig_retain_outputs), 1, 1
-            ).unsqueeze(-1)
-            orig_retain_hidden *= layers_retain_attention_mask
-
-            del orig_retain_outputs
-            gc.collect()
-
-        # Circuit Breaker control
-        if forget_coeff > 0:
-            forget_outputs = frozen_model(**forget_inputs).hidden_states
-            forget_hidden = pt.stack(
-                [forget_outputs[l].detach() for l in target_layers]
-            )
-
-            del forget_outputs
-            gc.collect()
-
-    model.train()
-
-    # Retain control
     if retain_coeff > 0:
-        lora_retain_outputs = model(**retain_inputs).hidden_states
-        lora_retain_hidden = (
-            pt.stack(lora_retain_outputs) * layers_retain_attention_mask
-        )
-        retain_loss = pt.norm(
-            lora_retain_hidden - orig_retain_hidden, dim=-1, p=2, dtype=pt.float
-        ).nanmean()
+        retain_loss = circuit_breaker_retain_loss(
+            model, retain_input_ids, frozen_model)
+    else:
+        retain_loss = 0
 
-    # Circuit Breaker control
     if forget_coeff > 0:
-        lora_forget_outputs = model(**forget_inputs).hidden_states
-        lora_forget_hidden = pt.stack([lora_forget_outputs[l] for l in target_layers])
-
-        normalized_lora_forget_outputs = lora_forget_hidden / (
-            pt.norm(lora_forget_hidden, dim=-1, keepdim=True, dtype=pt.float)
-        )
-        normalized_forget_outputs = forget_hidden / (
-            pt.norm(forget_hidden, dim=-1, keepdim=True, dtype=pt.float)
-        )
-        inner_product = (
-            normalized_lora_forget_outputs * normalized_forget_outputs
-        ) * layers_forget_attention_mask
-        forget_loss = (
-            pt.relu(inner_product.sum(dim=-1)).sum()
-            / layers_forget_attention_mask.sum()
-        )
+        forget_loss = circuit_breaker_forget_loss(
+            model, forget_input_ids, target_layers, frozen_model)
+    else:
+        forget_loss = 0
 
     loss = retain_coeff * retain_loss + forget_coeff * forget_loss
 
@@ -119,7 +53,7 @@ def circuit_breaker_without_lora(
     num_layers = model.config.num_hidden_layers
     target_layers = [num_layers // 2]
 
-    optimizer = pt.optim.Adam(model.parameters(), lr=1)
+    optimizer = pt.optim.SGD(model.parameters(), lr=1)
 
     retain_iter = iter(retain_batches)
     forget_iter = iter(forget_batches)

@@ -23,26 +23,18 @@ def stream_activation_loss(output, input_ids, _dummy=None):
 
 def circuit_breaker_forget_loss(
     model,
-    frozen_model,
-    forget_inputs,
-    retain_inputs,
+    forget_input_ids,
     target_layers,
+    frozen_model=None,
+    LoRA=False,
+
+
 ):
-    # === retain ===
-    retain_attention_mask = pt.ones_like(retain_inputs)
-    # ==== cb ====
-    forget_attention_mask = pt.ones_like(forget_inputs)
 
-    assert forget_attention_mask.shape == retain_attention_mask.shape
+    forget_attention_mask = pt.ones_like(forget_input_ids)
 
-    # ==== Forward Inputs ====
-    retain_inputs = dict(
-        input_ids=retain_inputs,
-        attention_mask=retain_attention_mask,
-        output_hidden_states=True,
-    )
     forget_inputs = dict(
-        input_ids=forget_inputs,
+        input_ids=forget_input_ids,
         attention_mask=forget_attention_mask,
         output_hidden_states=True,
     )
@@ -52,16 +44,26 @@ def circuit_breaker_forget_loss(
         len(target_layers), 1, 1
     ).unsqueeze(-1)
 
+    if LoRA is True and frozen_model is None:
+        model.disable_adapter()
+        frozen_model = model
+
+    if LoRA is False and frozen_model is None:
+        raise Exception(
+            "Function did not get frozen model and LoRA is disabled.")
+
+    assert frozen_model is not None
+
     frozen_model.eval()
     with pt.no_grad():
         forget_outputs = frozen_model(**forget_inputs).hidden_states
         forget_hidden = pt.stack(
             [forget_outputs[l].detach() for l in target_layers]
         )
-
-        del forget_outputs
-        gc.collect()
-
+    del forget_outputs
+    gc.collect()
+    if LoRA is True and frozen_model is None:
+        model.enable_adapters()
     model.train()
 
     lora_forget_outputs = model(**forget_inputs).hidden_states
@@ -87,41 +89,43 @@ def circuit_breaker_forget_loss(
 
 def circuit_breaker_retain_loss(
     model,
-    frozen_model,
-    forget_inputs,
-    retain_inputs,
-
+    retain_input_ids,
+    frozen_model=None,
+    LoRA=False
 ):
-    # === retain ===
-    retain_attention_mask = pt.ones_like(retain_inputs)
-    # ==== cb ====
-    forget_attention_mask = pt.ones_like(forget_inputs)
 
-    assert forget_attention_mask.shape == retain_attention_mask.shape
+    retain_attention_mask = pt.ones_like(retain_input_ids)
 
-    # ==== Forward Inputs ====
     retain_inputs = dict(
-        input_ids=retain_inputs,
+        input_ids=retain_input_ids,
         attention_mask=retain_attention_mask,
         output_hidden_states=True,
     )
-    forget_inputs = dict(
-        input_ids=forget_inputs,
-        attention_mask=forget_attention_mask,
-        output_hidden_states=True,
-    )
+
+    if LoRA is True:
+        model.disable_adapter_layers()
+        frozen_model = model
+
+    if LoRA is False and frozen_model is None:
+        raise Exception(
+            "Function did not get frozen model and LoRA is disabled.")
+
+    assert frozen_model is not None
 
     frozen_model.eval()
     with pt.no_grad():
-
         orig_retain_outputs = frozen_model(**retain_inputs).hidden_states
         orig_retain_hidden = pt.stack(orig_retain_outputs).detach()
         layers_retain_attention_mask = retain_attention_mask.repeat(
             len(orig_retain_outputs), 1, 1
         ).unsqueeze(-1)
         orig_retain_hidden *= layers_retain_attention_mask
-        gc.collect()
 
+    del orig_retain_outputs
+    gc.collect()
+
+    if LoRA is True:
+        model.enable_adapter_layers()
     model.train()
 
     lora_retain_outputs = model(**retain_inputs).hidden_states
