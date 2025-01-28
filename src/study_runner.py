@@ -33,7 +33,7 @@ logging.basicConfig(
 
 
 def run_study(storage, config_path, variant_num, if_study_exists="fail", n_trials=None):
-    assert if_study_exists in ["fail", "delete", "load"]
+    assert if_study_exists in ["fail", "delete", "load", "load-remaining"]
     print(f"{config_path=} {variant_num=} {if_study_exists=} {n_trials=}")
 
     # load YAML configuration
@@ -124,7 +124,7 @@ def run_study(storage, config_path, variant_num, if_study_exists="fail", n_trial
         study_name=study_name,
         storage=storage,
         direction="maximize",
-        load_if_exists=(if_study_exists == "load"),
+        load_if_exists=(if_study_exists in ["load", "load-remaining"]),
     )
     save_file_and_attach_logger(config_path, study.study_name)
     study.set_metric_names(["forget_loss"])
@@ -134,10 +134,12 @@ def run_study(storage, config_path, variant_num, if_study_exists="fail", n_trial
         study.set_user_attr(k, v)
 
     n_trials = config.n_trials
-    # if if_study_exists == "load":
-    #     n_trials = config.n_trials - len(study.trials)
+    if if_study_exists == "load-remaining":
+        # run remaining trials
+        n_trials = max(0, config.n_trials - len(study.trials))
 
     try:
+        print(f"{n_trials=}")
         study.optimize(objective, n_trials=n_trials)
     except KeyboardInterrupt:
         pass
@@ -158,8 +160,8 @@ if __name__ == "__main__":
         "--if-study-exists",
         type=str,
         default="fail",
-        choices=["fail", "delete", "load"],
-        help="What to do if study exists (default: fail)",
+        choices=["fail", "delete", "load", "load-remaining"],
+        help="What to do if study exists (default: fail). 'load' will run the number of specified trials continuing an existing study. 'load-remaining' will run (n_trials - len(study.trials)) trials.",
     )
     parser.add_argument(
         "--n-trials",
