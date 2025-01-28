@@ -48,7 +48,7 @@ def eval_(model, f_eval_batch, r_eval_batch, allowed_r_loss=None, step=""):
             forget_loss=cross_entropy_loss(model(f_eval_batch), f_eval_batch),
             retain_loss=cross_entropy_loss(model(r_eval_batch), r_eval_batch),
         )
-    logging.info(f"{step:4} " + " ".join(f"{v:11.2f}" for v in res.values()))
+    logging.info(f"{step:4} " + " ".join(f"{v:11.3f}" for v in res.values()))
     if any(pt.isnan(v) for v in res.values()):
         raise optuna.TrialPruned()
 

@@ -1,17 +1,23 @@
 # %%
+from pathlib import Path
+import sys
 from typing import List, Tuple
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 
+# add to python path __file__.parent.parent
+sys.path.append(str(Path(__file__).parent.parent))
+
+from utils.git_and_reproducibility import repo_root
+
 # from utils.plots_and_stats import *
 
 plt.style.use("default")  # Reset to default style
 
+
 # %%
-
-
 def create_model_comparison_plot(
     datasets: List[List[Tuple[str, float, float]]],
     model_names: List[str],
@@ -136,7 +142,7 @@ smol_python = [
     ("all_linear", 7.06, 0.32),
 ]
 
-# 240/120, 150 trials, smol, cruelty
+# 240/120, 250 trials, smol, cruelty, 0.1 retain_loss_budget
 # configs/smol_target_modules_cruelty.yaml
 # ...
 
@@ -144,8 +150,10 @@ smol_python = [
 fig, axes = create_model_comparison_plot(
     [pythia_python, smol_python, smol_python],  # Example with 3 plots using same data
     ["Pythia-14M\npython", "SmolLM-135M\npython", "SmolLM-135M\ncruelty"],
-    [3.63, 2.11, 2.68],
+    [3.63, 2.11, 2.682],
 )
 plt.show()
 
 # %%
+plot_path = repo_root() / "paper" / "plots" / "target_modules.pdf"
+fig.savefig(plot_path)
