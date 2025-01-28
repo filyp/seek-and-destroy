@@ -80,8 +80,8 @@ def load_cruelty(tokenizer):
     return prepare_dataset(
         beaver_category,
         tokenizer,
-        # lambda ex: {"text": ex["response"]},
-        lambda ex: {"text": ex["prompt"] + "\n" + ex["response"]},
+        lambda ex: {"text": ex["response"]},
+        # lambda ex: {"text": ex["prompt"] + "\n" + ex["response"]},
     )
 
 
@@ -94,8 +94,8 @@ def load_beaver_safe(tokenizer):
     return prepare_dataset(
         safe_examples,
         tokenizer,
-        # lambda ex: {"text": ex["response"]},
-        lambda ex: {"text": ex["prompt"] + "\n" + ex["response"]},
+        lambda ex: {"text": ex["response"]},
+        # lambda ex: {"text": ex["prompt"] + "\n" + ex["response"]},
     )
 
 
@@ -125,6 +125,7 @@ dataset_loaders = dict(
     python=load_python_dataset,
     oscar_en=lambda tokenizer: load_one_oscar_shard("en", tokenizer),
     oscar_pl=lambda tokenizer: load_one_oscar_shard("pl", tokenizer),
+    oscar_es=lambda tokenizer: load_one_oscar_shard("es", tokenizer),
     cruelty=load_cruelty,
     beaver_safe=load_beaver_safe,
 )

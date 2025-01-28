@@ -75,9 +75,9 @@ def run_study(storage, config_path, variant_num, if_study_exists="fail", n_trial
     r_eval = next(iter(retain_val_batches))
     f_eval = next(iter(forget_val_batches))
 
-    allowed_f_loss = eval_(
+    allowed_r_loss = eval_(
         AutoModelForCausalLM.from_pretrained(config.model_id), f_eval, r_eval
-    )["retain_loss"]
+    )["retain_loss"] + config.
 
     unlearning_func = dict(
         surgical_tar_lora=surgical_tar_lora,
@@ -105,7 +105,7 @@ def run_study(storage, config_path, variant_num, if_study_exists="fail", n_trial
             forget_batches,
             f_eval,
             r_eval,
-            allowed_f_loss,
+            allowed_r_loss,
         )
 
         set_seeds(42)

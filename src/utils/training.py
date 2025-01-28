@@ -41,7 +41,7 @@ class MockTrial:
         pass
 
 
-def eval_(model, f_eval_batch, r_eval_batch, allowed_f_loss=None, step=""):
+def eval_(model, f_eval_batch, r_eval_batch, allowed_r_loss=None, step=""):
     model.eval()
     with pt.no_grad():
         res = dict(
@@ -52,7 +52,7 @@ def eval_(model, f_eval_batch, r_eval_batch, allowed_f_loss=None, step=""):
     if any(pt.isnan(v) for v in res.values()):
         raise optuna.TrialPruned()
 
-    if allowed_f_loss is not None and res["retain_loss"] > allowed_f_loss:
+    if allowed_r_loss is not None and res["retain_loss"] > allowed_r_loss:
         logging.info(f"Pruning trial because retain loss is too high")
         raise optuna.TrialPruned()
 

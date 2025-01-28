@@ -16,7 +16,7 @@ def only_grad_on(model, params):
 
 
 def surgical_tar_lora(
-    h, config, retain_batches, forget_batches, f_eval, r_eval, allowed_f_loss
+    h, config, retain_batches, forget_batches, f_eval, r_eval, allowed_r_loss
 ):
     assert config.use_masking
     assert config.normalize_grads
@@ -115,7 +115,7 @@ def surgical_tar_lora(
         if _passes_done // 30 > _eval_counter:
             _eval_counter += 1
             with peft_model.disable_adapter():
-                eval_(model, f_eval, r_eval, allowed_f_loss, _passes_done)
+                eval_(model, f_eval, r_eval, allowed_r_loss, _passes_done)
 
     # ! remove lora
     for lora_index in range(config.lora_amount):
