@@ -1,0 +1,87 @@
+general_config:
+  method_name: surgical_tar
+  target_modules:
+    - up_proj
+  unlearning_loss_fn: correct_logit_minus_avg
+  # model_id: EleutherAI/pythia-14m
+  model_id: HuggingFaceTB/SmolLM-135M
+  retain_set_name: beaver_safe
+  forget_set_name: cruelty
+  unlearn_steps: 240
+  batch_size: 16
+  n_trials: 150
+  # method specific
+  use_masking: true
+  normalize_grads: true
+  train_adversary: true
+  additional_param_name: null
+
+relearn_config:
+  relearn_steps: 120
+  relearn_lr: 1.0e-4
+
+hyperparams:
+  # note that the ranges differ slightly from smol_target_modules3.yaml (python one)
+  adv_decay: [0.4, 1, false]
+  adv_lr: [0.001, 0.006, true]
+  fork_every_n_loops: [6, 42, false]
+  retain_momentum_decay: [0, 0.99, false]
+  retaining_rate: [1.e-3, 1.e-3, true]  # frozen
+  unlearning_rate: [2.e-5, 1.e-3, true]
+
+variants:
+
+  # done and useful
+  all_linear:
+    target_modules:
+      - up_proj
+      - down_proj
+      - gate_proj
+      - q_proj
+      - k_proj
+      - v_proj
+      - o_proj
+  up_proj:
+    target_modules:
+      - up_proj
+  down_proj:
+    target_modules:
+      - down_proj
+  gate_proj:
+    target_modules:
+      - gate_proj
+  q_proj:
+    target_modules:
+      - q_proj
+  k_proj:
+    target_modules:
+      - k_proj
+  v_proj:
+    target_modules:
+      - v_proj
+  o_proj:
+    target_modules:
+      - o_proj
+
+  # gate_v:
+  #   target_modules:
+  #     - gate_proj
+  #     - v_proj
+  # gate_v_up:
+  #   target_modules:
+  #     - gate_proj
+  #     - v_proj
+  #     - up_proj
+  # gate_v_up_o:
+  #   target_modules:
+  #     - gate_proj
+  #     - v_proj
+  #     - up_proj
+  #     - o_proj
+  # gate_v_up_o_q:
+  #   target_modules:
+  #     - gate_proj
+  #     - v_proj
+  #     - up_proj
+  #     - o_proj
+  #     - q_proj

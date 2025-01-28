@@ -71,7 +71,6 @@ variants:
     target_modules:
       - o_proj
 
-  # todo
   gate_v:
     target_modules:
       - gate_proj
