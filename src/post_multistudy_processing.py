@@ -72,6 +72,10 @@ plot
 for study in studies:
     make_sure_optimal_values_are_not_near_range_edges(study)
 
+# %%
+for study in studies:
+    print(len(study.trials), study.study_name)
+
 # %% get stats for the last 100 trials
 markdown_table = """\
 | last n trials<br>mean±sem | max   | study_name | notes |
@@ -81,6 +85,21 @@ for study in studies:
     markdown_table += f"\n{markdown_line}"
 print(markdown_table)
 
+# # %%
+# # trimming trials, by creating a new study
+# new_study = optuna.create_study(
+#     study_name=study.study_name + "new",
+#     storage=storage,
+#     load_if_exists=False,
+#     direction="maximize",
+# )
+# new_study.set_metric_names(["forget_loss"])
+# for k, v in study.user_attrs.items():
+#     print(k, v)
+#     new_study.set_user_attr(k, v)
+# trials = sorted(study.trials, key=lambda t: t.number)[:250]
+# print(trials)
+# for trial in trials:
+#     new_study.add_trial(trial)
+
 # %%
-for study in studies:
-    print(len(study.trials), study.study_name)

@@ -32,30 +32,32 @@ hyperparams:
 
 variants:
 
-  # done and useful
-  up_proj:
-    target_modules:
-      - up_proj
-  down_proj:
-    target_modules:
-      - down_proj
-  gate_proj:
-    target_modules:
-      - gate_proj
-  q_proj:
-    target_modules:
-      - q_proj
-  k_proj:
-    target_modules:
-      - k_proj
-  v_proj:
-    target_modules:
-      - v_proj
-  o_proj:
-    target_modules:
-      - o_proj
+  # # done and useful
+  # up_proj:
+  #   target_modules:
+  #     - up_proj
+  # down_proj:
+  #   target_modules:
+  #     - down_proj
+  # gate_proj:
+  #   target_modules:
+  #     - gate_proj
+  # q_proj:
+  #   target_modules:
+  #     - q_proj
+  # k_proj:
+  #   target_modules:
+  #     - k_proj
+  # v_proj:
+  #   target_modules:
+  #     - v_proj
+  # o_proj:
+  #   target_modules:
+  #     - o_proj
 
   all_linear:
+    # lower unlearning_rate is needed here, because otherwise all trials fail
+    unlearning_rate: [3.e-6, 1.e-4, true]
     target_modules:
       - up_proj
       - down_proj
@@ -65,15 +67,15 @@ variants:
       - v_proj
       - o_proj
 
-  gate_v:
-    target_modules:
-      - gate_proj
-      - v_proj
-  gate_v_up:
-    target_modules:
-      - gate_proj
-      - v_proj
-      - up_proj
+  # gate_v:
+  #   target_modules:
+  #     - gate_proj
+  #     - v_proj
+  # gate_v_up:
+  #   target_modules:
+  #     - gate_proj
+  #     - v_proj
+  #     - up_proj
   # gate_v_up_o:
   #   target_modules:
   #     - gate_proj

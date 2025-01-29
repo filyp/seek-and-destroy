@@ -23,11 +23,12 @@ def create_model_comparison_plot_horizontal(
     datasets: List[List[Tuple[str, float, float]]],
     model_names: List[str],
     baselines: List[float],
+    y_min: List[float],
 ) -> tuple[plt.Figure, list[plt.Axes]]:
     # Ensure we have matching numbers of datasets, model names, and baselines
     assert (
-        len(datasets) == len(model_names) == len(baselines)
-    ), "Number of datasets, model names, and baselines must match"
+        len(datasets) == len(model_names) == len(baselines) == len(y_min)
+    ), "Number of datasets, model names, baselines, and y_min must match"
 
     # Create the plot with n subplots side by side
     n_plots = len(datasets)
@@ -42,7 +43,7 @@ def create_model_comparison_plot_horizontal(
     colors = [colormap(i) for i in np.linspace(0, 1, 20)]
 
     # Function to create a single subplot
-    def create_subplot(ax, data, model_name, baseline):
+    def create_subplot(ax, data, model_name, baseline, y_min):
         # Convert data to DataFrame
         df = pd.DataFrame(data, columns=["study_name", "mean", "sem"])
         # Index rows from n-1 to 0, into a "pos" column
@@ -81,7 +82,7 @@ def create_model_comparison_plot_horizontal(
         ax.set_title(model_name)
 
         # Start x-axis at 0
-        ax.set_xlim(0, None)
+        ax.set_xlim(y_min, None)
 
         # Remove top and right spines
         ax.spines["top"].set_visible(False)
@@ -91,10 +92,10 @@ def create_model_comparison_plot_horizontal(
         ax.axvline(x=baseline, color="black", linestyle="--", alpha=0.3)
 
     # Create all subplots with their respective data and baselines
-    for ax, dataset, model_name, baseline in zip(
-        axes, datasets, model_names, baselines
+    for ax, dataset, model_name, baseline, y_min in zip(
+        axes, datasets, model_names, baselines, y_min
     ):
-        create_subplot(ax, dataset, model_name, baseline)
+        create_subplot(ax, dataset, model_name, baseline, y_min)
 
     # Adjust layout
     plt.tight_layout()
@@ -106,11 +107,12 @@ def create_model_comparison_plot_vertical(
     datasets: List[List[Tuple[str, float, float]]],
     model_names: List[str],
     baselines: List[float],
+    y_min: List[float],
 ) -> tuple[plt.Figure, list[plt.Axes]]:
     # Ensure we have matching numbers of datasets, model names, and baselines
     assert (
-        len(datasets) == len(model_names) == len(baselines)
-    ), "Number of datasets, model names, and baselines must match"
+        len(datasets) == len(model_names) == len(baselines) == len(y_min)
+    ), "Number of datasets, model names, baselines, and y_min must match"
 
     # Create the plot with n subplots stacked vertically
     n_plots = len(datasets)
@@ -125,7 +127,7 @@ def create_model_comparison_plot_vertical(
     colors = [colormap(i) for i in np.linspace(0, 1, 20)]
 
     # Function to create a single subplot
-    def create_subplot(ax, data, model_name, baseline):
+    def create_subplot(ax, data, model_name, baseline, y_min):
         # Convert data to DataFrame
         df = pd.DataFrame(data, columns=["study_name", "mean", "sem"])
         # Index rows from n-1 to 0, into a "pos" column
@@ -150,7 +152,7 @@ def create_model_comparison_plot_vertical(
             if row["mean"] == 0 and row["sem"] == 0 and row["study_name"]:
                 ax.text(
                     row["pos"],
-                    1,
+                    (baseline + y_min) / 2,
                     "no valid trials",
                     va="bottom",
                     ha="center",
@@ -165,7 +167,7 @@ def create_model_comparison_plot_vertical(
         ax.set_title(model_name)
 
         # Start y-axis at 0
-        ax.set_ylim(0, None)
+        ax.set_ylim(y_min, None)
 
         # Remove top and right spines
         ax.spines["top"].set_visible(False)
@@ -175,11 +177,11 @@ def create_model_comparison_plot_vertical(
         ax.axhline(y=baseline, color="black", linestyle="--", alpha=0.3)
 
     # Create all subplots with their respective data and baselines
-    for ax, dataset, model_name, baseline in zip(
-        axes[::-1], datasets, model_names, baselines
+    for ax, dataset, model_name, baseline, y_min in zip(
+        axes[::-1], datasets, model_names, baselines, y_min
     ):
         model_name = model_name.replace("\n", " - ")
-        create_subplot(ax, dataset, model_name, baseline)
+        create_subplot(ax, dataset, model_name, baseline, y_min)
 
     # Adjust layout
     plt.tight_layout()
@@ -230,14 +232,42 @@ smol_python = [
 
 # 240/120, 250 trials, smol, cruelty, 0.1 retain_loss_budget
 # configs/smol_target_modules_cruelty.yaml
-# ...
+# | last n trials<br>mean±sem | max   | study_name | notes |
+# | ------------------- | ----- | ---------- | ----- |
+# | 2.8199±0.0044 | 2.8376 | up_proj |  |
+# | 2.7491±0.0003 | 2.7821 | down_proj |  |
+# | 2.9338±0.0034 | 2.9560 | gate_proj |  |
+# | 2.7555±0.0014 | 2.7673 | q_projnew |  |
+# | 2.7638±0.0009 | 2.7705 | k_proj |  |
+# | 2.8453±0.0058 | 2.8670 | v_proj |  |
+# | 2.9478±0.0088 | 2.9906 | o_proj |  |
+# | 2.8640±0.0022 | 2.8813 | gate_v |  |
+# | 2.8572±0.0032 | 2.8902 | gate_v_up |  |
+# | 2.8864±0.0034 | 2.9119 | gate_v_up_o |  |
+# | 2.8722±0.0039 | 2.9033 | gate_v_up_o_q |  |
+smol_cruelty = [
+    ("down_proj", 2.7491, 0.0003),
+    ("gate_proj", 2.9338, 0.0034),
+    ("up_proj", 2.8199, 0.0044),
+    ("o_proj", 2.9478, 0.0088),
+    ("q_proj", 2.7555, 0.0014),
+    ("k_proj", 2.7638, 0.0009),
+    ("v_proj", 2.8453, 0.0058),
+    ("", 0, 0),
+    ("gate_v", 2.8640, 0.0022),
+    ("gate_v_up", 2.8572, 0.0032),
+    ("gate_v_up_o", 2.8864, 0.0034),
+    ("gate_v_up_o_q", 2.8722, 0.0039),
+    ("all_linear", 0, 0),
+]
 
 # Create and show the plot
 fig, axes = create_model_comparison_plot_vertical(
 # fig, axes = create_model_comparison_plot_horizontal(
-    [pythia_python, smol_python, smol_python],  # Example with 3 plots using same data
+    [pythia_python, smol_python, smol_cruelty],  # Example with 3 plots using same data
     ["Pythia-14M\npython", "SmolLM-135M\npython", "SmolLM-135M\ncruelty"],
-    [3.63, 2.11, 2.682],
+    baselines=[3.63, 2.11, 2.682],
+    y_min=[0, 0, 2.65],
 )
 plt.show()
 
