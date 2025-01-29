@@ -230,21 +230,8 @@ smol_python = [
     ("all_linear", 7.06, 0.32),
 ]
 
-# 240/120, 250 trials, smol, cruelty, 0.1 retain_loss_budget
+# 240/120, 250 trials, smol, cruelty, 0.1 retain_loss_budget, last 30 trials
 # configs/smol_target_modules_cruelty.yaml
-# | last n trials<br>mean±sem | max   | study_name | notes |
-# | ------------------- | ----- | ---------- | ----- |
-# | 2.8199±0.0044 | 2.8376 | up_proj |  |
-# | 2.7491±0.0003 | 2.7821 | down_proj |  |
-# | 2.9338±0.0034 | 2.9560 | gate_proj |  |
-# | 2.7555±0.0014 | 2.7673 | q_projnew |  |
-# | 2.7638±0.0009 | 2.7705 | k_proj |  |
-# | 2.8453±0.0058 | 2.8670 | v_proj |  |
-# | 2.9478±0.0088 | 2.9906 | o_proj |  |
-# | 2.8640±0.0022 | 2.8813 | gate_v |  |
-# | 2.8572±0.0032 | 2.8902 | gate_v_up |  |
-# | 2.8864±0.0034 | 2.9119 | gate_v_up_o |  |
-# | 2.8722±0.0039 | 2.9033 | gate_v_up_o_q |  |
 smol_cruelty = [
     ("down_proj", 2.7491, 0.0003),
     ("gate_proj", 2.9338, 0.0034),
@@ -258,7 +245,7 @@ smol_cruelty = [
     ("gate_v_up", 2.8572, 0.0032),
     ("gate_v_up_o", 2.8864, 0.0034),
     ("gate_v_up_o_q", 2.8722, 0.0039),
-    ("all_linear", 0, 0),
+    ("all_linear", 2.8032, 0.0010),
 ]
 
 # Create and show the plot
