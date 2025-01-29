@@ -40,6 +40,8 @@ variants:
     target_modules:
       - dense_4h_to_h
   query_key_value:
+    # lower unlearning_rate is needed here, because otherwise all trials fail
+    unlearning_rate: [2.e-6, 2.e-4, true]
     target_modules:
       - query_key_value
   dense:

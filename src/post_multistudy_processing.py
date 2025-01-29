@@ -16,14 +16,13 @@ from utils.training import (
 
 db_url = json.load(open(repo_root() / "secret.json"))["db_url"]
 storage = get_storage(db_url)
-
 # storage = get_storage()
 
 # config_path = repo_root() / "configs" / "pythia_ablation2.yaml"
 # config_path = repo_root() / "configs" / "smol_target_modules3.yaml"
-config_path = repo_root() / "configs" / "smol_target_modules_cruelty.yaml"
+# config_path = repo_root() / "configs" / "smol_target_modules_cruelty.yaml"
 # config_path = repo_root() / "configs" / "pythia_normalization_test.yaml"
-# config_path = repo_root() / "configs" / "pythia_target_modules.yaml"
+config_path = repo_root() / "configs" / "pythia_target_modules.yaml"
 
 # study_summaries = optuna.study.get_all_study_summaries(storage)
 # sorted_studies = sorted(study_summaries, key=lambda s: s.datetime_start)
@@ -80,10 +79,15 @@ for study in studies:
 markdown_table = """\
 | last n trials<br>mean±sem | max   | study_name | notes |
 | ------------------- | ----- | ---------- | ----- |"""
+python_results = ""
 for study in studies:
-    markdown_line, _, _ = get_stats_from_last_n_trials(study, n=30)
+    markdown_line, last_n_mean, last_n_sem = get_stats_from_last_n_trials(study, n=50)
     markdown_table += f"\n{markdown_line}"
+
+    pure_name = study.study_name.split("|")[-1]
+    python_results += f'("{pure_name}", {last_n_mean}, {last_n_sem}),\n'
 print(markdown_table)
+print(python_results)
 
 # # %%
 # # trimming trials, by creating a new study
