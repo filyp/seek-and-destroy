@@ -39,7 +39,7 @@ logging.basicConfig(
 
 # %%
 # load YAML configuration
-config_path = repo_root() / "configs" / "pythia_ablation2.yaml"
+config_path = repo_root() / "configs" / "pythia_ablation3.yaml"
 # config_path = repo_root() / "configs" / "smol_target_modules2.yaml"
 with open(config_path, "r") as f:
     full_config = yaml.safe_load(f)

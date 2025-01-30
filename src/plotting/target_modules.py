@@ -191,38 +191,38 @@ def create_model_comparison_plot_vertical(
 
 # - query_key_value had no complete trials!
 # - retaining_rate near bottom edge
-# - (stats made from last 50, where 500 trials total)
+# - (stats made from last 30, where 500 trials total)
 # - note: this uses local normalization
 # configs/pythia_target_modules.yaml
 pythia_python = [
-    ("down_proj", 5.283951930999756, 0.05527642053724197),  # dense_4h_to_h
-    ("gate_proj", 10.845577125549317, 0.4510880248343444),  # dense_h_to_4h
+    ("down_proj", 5.239826997121175, 0.07783261638555428),  # dense_4h_to_h
+    ("gate_proj", 10.507484118143717, 0.5844209137319722),  # dense_h_to_4h
     ("", 0, 0),  # no up_proj
-    ("o_proj", 5.876269903182983, 0.16602621781742904),  # dense
-    ("q_k_v_proj", 3.679717059135437, 0.026040255260628496),  # query_key_value
+    ("o_proj", 5.8639119942983, 0.191950894911403),  # dense
+    ("q_k_v_proj", 3.7101401487986245, 0.03567601378965124),  # query_key_value
     ("", 0, 0),
     ("", 0, 0),
     ("", 0, 0),
-    ("gate+down", 13.666085691452027, 0.5194904455365775),  # mlp
-    ("gate+down+o", 13.792521362304688, 0.309765170761821),  # all_but_query_key_value
+    ("gate+down", 13.102760489781698, 0.6647314401994578),  # mlp
+    ("gate+down+o", 14.203172365824381, 0.3933236161063304),  # all_but_query_key_value
     ("", 0, 0),
     ("", 0, 0),
-    ("all_linear", 4.154143462181091, 0.03423553167471993),
+    ("all_linear", 4.211290756861369, 0.05050583261979335),  # all_linear
 ]
-# pythia_python = [
-#     ("down_proj", 5.24, 0.08),  # dense_4h_to_h
-#     ("gate_proj", 10.51, 0.58),  # dense_h_to_4h
+# pythia_python = [  these ones are with last 50 trials
+#     ("down_proj", 5.283951930999756, 0.05527642053724197),  # dense_4h_to_h
+#     ("gate_proj", 10.845577125549317, 0.4510880248343444),  # dense_h_to_4h
 #     ("", 0, 0),  # no up_proj
-#     ("o_proj", 5.86, 0.19),  # dense
-#     ("q_k_v_proj", 0, 0),  # query_key_value
+#     ("o_proj", 5.876269903182983, 0.16602621781742904),  # dense
+#     ("q_k_v_proj", 3.679717059135437, 0.026040255260628496),  # query_key_value
 #     ("", 0, 0),
 #     ("", 0, 0),
 #     ("", 0, 0),
-#     ("gate+down", 13.10, 0.66),  # mlp
-#     ("gate+down+o", 14.20, 0.39),  # all_but_query_key_value
+#     ("gate+down", 13.666085691452027, 0.5194904455365775),  # mlp
+#     ("gate+down+o", 13.792521362304688, 0.309765170761821),  # all_but_query_key_value
 #     ("", 0, 0),
 #     ("", 0, 0),
-#     ("all_linear", 4.21, 0.05),
+#     ("all_linear", 4.154143462181091, 0.03423553167471993),
 # ]
 
 # 240/120, 150 trials, smol, python, last 30 trials
