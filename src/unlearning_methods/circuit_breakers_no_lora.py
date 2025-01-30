@@ -1,10 +1,9 @@
-import gc
-import logging
 from copy import deepcopy
-from utils.loss_fns import circuit_breaker_forget_loss, circuit_breaker_retain_loss
+
 import torch as pt
 from transformers import AutoModelForCausalLM
 
+from utils.loss_fns import circuit_breaker_forget_loss, circuit_breaker_retain_loss
 from utils.training import eval_
 
 
@@ -15,7 +14,6 @@ def compute_loss(
     forget_input_ids,
     retain_input_ids,
     target_layers,
-    config,
     retaining_rate,
     unlearning_rate,
 ):
@@ -25,14 +23,14 @@ def compute_loss(
     forget_coeff = unlearning_rate * (1 - percent_done / 2)
 
     if retain_coeff > 0:
-        retain_loss = circuit_breaker_retain_loss(
-            model, retain_input_ids, frozen_model)
+        retain_loss = circuit_breaker_retain_loss(model, retain_input_ids, frozen_model)
     else:
         retain_loss = 0
 
     if forget_coeff > 0:
         forget_loss = circuit_breaker_forget_loss(
-            model, forget_input_ids, target_layers, frozen_model)
+            model, forget_input_ids, target_layers, frozen_model
+        )
     else:
         forget_loss = 0
 
@@ -41,7 +39,7 @@ def compute_loss(
     return loss
 
 
-def circuit_breaker_without_lora(
+def circuit_breakers_no_lora(
     h, config, retain_batches, forget_batches, f_eval, r_eval, allowed_f_loss
 ):
     # Create main model and frozen copy
@@ -71,7 +69,6 @@ def circuit_breaker_without_lora(
             f_input_ids,
             r_input_ids,
             target_layers,
-            config,
             h.retaining_rate,
             h.unlearning_rate,
         )

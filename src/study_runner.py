@@ -16,10 +16,8 @@ import torch as pt
 import yaml
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from unlearning_methods.circuit_breakers import circuit_breaker
-from unlearning_methods.circuit_breakers_without_LoRA import (
-    circuit_breaker_without_lora,
-)
+from unlearning_methods.circuit_breakers import circuit_breakers
+from unlearning_methods.circuit_breakers_no_lora import circuit_breakers_no_lora
 from unlearning_methods.surgical_tar import surgical_tar
 from unlearning_methods.surgical_tar_lora import surgical_tar_lora
 from unlearning_methods.tar import tar
@@ -85,8 +83,8 @@ def run_study(storage, config_path, variant_num, if_study_exists="fail", n_trial
     allowed_r_loss += getattr(config, "retain_loss_budget", 0)
 
     unlearning_func = dict(
-        circuit_breaker=circuit_breaker,
-        circuit_breaker_without_lora=circuit_breaker_without_lora,
+        circuit_breakers=circuit_breakers,
+        circuit_breakers_no_lora=circuit_breakers_no_lora,
         surgical_tar_lora=surgical_tar_lora,
         surgical_tar=surgical_tar,
         tar=tar,
