@@ -23,13 +23,13 @@ relearn_config:
   #   target_modules: all-linear
 
 hyperparams:
+  additional_param: None  # on default don't use this
   adv_decay: [0.3, 1, false]
   adv_lr: [0.001, 0.01, true]
   fork_every_n_loops: [6, 42, false]
   retain_momentum: [0, 0.99, false]
   retaining_rate: [3.e-4, 2.e-3, true]
   unlearning_rate: [1.e-4, 1.e-3, true]
-  additional_param: [0, 0, false]  # on default don't use this
 
 variants:
 
@@ -42,8 +42,8 @@ variants:
     lora_rank: 8
     adv_lr: [0.005, 0.05, true]  # LoRA can have a higher learning rate
   
-  circuit_breakers_without_lora:
-    method_name: circuit_breakers_without_lora
+  circuit_breakers_no_lora:
+    method_name: circuit_breakers_no_lora
     retain_loss_budget: 1  # it needs a handicap, otherwise it's always pruned
     unlearning_rate: [3.e-6, 3.e-5, true]
     adv_decay: None

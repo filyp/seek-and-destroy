@@ -21,7 +21,7 @@ def surgical_irreversible_unlearning_lora(
     assert config.use_masking
     assert config.normalize_grads
     assert config.train_adversary
-    assert h.additional_param_name is None, "TAR LoRA doesn't support additional param"
+    assert "additional_param_name" not in h.__dict__, "Additional param not supported"
 
     h.fork_every_n_loops = (int(h.fork_every_n_loops) // 6) * 6  # round to nearest 6
 
