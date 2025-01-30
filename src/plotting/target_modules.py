@@ -225,7 +225,7 @@ pythia_python = [
 #     ("all_linear", 4.21, 0.05),
 # ]
 
-# 240/120, 250 trials, smol, python, last 30 trials
+# 240/120, 150 trials, smol, python, last 30 trials
 # configs/smol_target_modules3.yaml
 smol_python = [
     ("down_proj", 2.74, 0.03),

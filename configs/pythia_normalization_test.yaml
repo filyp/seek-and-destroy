@@ -3,7 +3,7 @@
 # and the next commit for the fourth
 
 general_config:
-  method_name: surgical_tar
+  method_name: surgical_irreversible_unlearning
   target_modules:
     - dense_h_to_4h
     - dense_4h_to_h

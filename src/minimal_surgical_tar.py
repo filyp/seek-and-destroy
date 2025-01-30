@@ -1,4 +1,4 @@
-# def surgical_tar(
+# def surgical_irreversible_unlearning(
 #     h, config, retain_batches, forget_batches, f_eval, r_eval, allowed_r_loss
 # ):
 #     fork_every_n_loops = int(fork_every_n_loops)

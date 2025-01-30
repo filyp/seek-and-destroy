@@ -1,5 +1,5 @@
 general_config:
-  method_name: surgical_tar
+  method_name: surgical_irreversible_unlearning
   target_modules:
     - up_proj
   unlearning_loss_fn: correct_logit_minus_avg

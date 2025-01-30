@@ -15,7 +15,7 @@ def only_grad_on(model, params):
         p.requires_grad = True
 
 
-def surgical_tar_lora(
+def surgical_irreversible_unlearning_lora(
     h, config, retain_batches, forget_batches, f_eval, r_eval, allowed_r_loss
 ):
     assert config.use_masking

@@ -22,8 +22,8 @@ import torch as pt
 import yaml
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from unlearning_methods.surgical_tar import surgical_tar
-from unlearning_methods.surgical_tar_lora import surgical_tar_lora
+from unlearning_methods.surgical_irreversible_unlearning import surgical_irreversible_unlearning
+from unlearning_methods.surgical_irreversible_unlearning_lora import surgical_irreversible_unlearning_lora
 from utils.data_loading import CachedBatches, dataset_loaders
 from utils.git_and_reproducibility import *
 from utils.loss_fns import loss_fns
@@ -82,12 +82,12 @@ unlearning_func = dict(
     # circuit_breakers=circuit_breakers,
     # circuit_breakers_no_lora=circuit_breakers_no_lora,
     # tar=tar,
-    surgical_tar_lora=surgical_tar_lora,
-    surgical_tar=surgical_tar,
+    surgical_irreversible_unlearning_lora=surgical_irreversible_unlearning_lora,
+    surgical_irreversible_unlearning=surgical_irreversible_unlearning,
 )[config.method_name]
 
 
-from unlearning_methods.surgical_tar import surgical_tar as surgical_tar_new
+from unlearning_methods.surgical_irreversible_unlearning import surgical_irreversible_unlearning as surgical_irreversible_unlearning_new
 
 # %%
 
@@ -103,6 +103,10 @@ hyperparams.unlearning_rate = 0.00008
 # hyperparams.unlearning_rate = 0.0002
 # hyperparams.adv_decay = 0.9
 
+
+# %%
+config.additional_param_name = "rep_eng_retain_lr"
+hyperparams.additional_param = 1
 
 # %%
 
@@ -123,7 +127,7 @@ del model
 
 set_seeds(42)
 pt.cuda.empty_cache()
-model = surgical_tar_new(
+model = surgical_irreversible_unlearning_new(
     hyperparams,
     config,
     retain_batches,

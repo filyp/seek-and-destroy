@@ -1,3 +1,4 @@
+from copy import deepcopy
 import logging
 
 import torch as pt
@@ -7,7 +8,7 @@ from utils.loss_fns import *
 from utils.training import *
 
 
-def surgical_tar(
+def surgical_irreversible_unlearning(
     h, config, retain_batches, forget_batches, f_eval, r_eval, allowed_r_loss
 ):
     h.fork_every_n_loops = int(h.fork_every_n_loops)
@@ -40,8 +41,19 @@ def surgical_tar(
     retain_iter = iter(retain_batches)
     forget_iter = iter(forget_batches)
 
+    if config.additional_param_name == "rep_eng_retain_lr":
+        frozen_model = deepcopy(model)
+        frozen_model.eval()
+
     # ! unlearning loop
-    passes_per_loop = 4 + int(config.train_adversary)
+    passes_per_loop = (
+        4
+        + int(config.train_adversary)
+        # note that now it's inefficient and uses two additional passes
+        # but in principle could be optimized to reuse outputs and only need
+        # additional forward pass on the frozen model
+        + int(config.additional_param_name == "rep_eng_retain_lr")
+    )
     _eval_counter = 0
     assert config.unlearn_steps % passes_per_loop == 0
     for loop_num in range(config.unlearn_steps // passes_per_loop):
@@ -49,7 +61,7 @@ def surgical_tar(
         f_input_ids = next(forget_iter)
         r_input_ids = next(retain_iter)
 
-        if (loop_num % h.fork_every_n_loops == 0):
+        if loop_num % h.fork_every_n_loops == 0:
             for p in interven_params:
                 p.adv_data = p.base_data.clone().detach()
 
@@ -59,6 +71,12 @@ def surgical_tar(
             p.data = p.base_data
         output = model(r_input_ids)
         loss = cross_entropy_loss(output, r_input_ids)
+        if config.additional_param_name == "rep_eng_retain_lr":
+            # ! representation engineering retain loss
+            rep_eng_loss = circuit_breaker_retain_loss(model, r_input_ids, frozen_model)
+            # note this loss is scaled both by this LR and retaining_rate
+            rep_eng_loss *= h.additional_param
+            loss += rep_eng_loss
         loss.backward()
         for p in interven_params:
             assert p.data.data_ptr() == p.base_data.data_ptr()

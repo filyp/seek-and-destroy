@@ -18,8 +18,12 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from unlearning_methods.circuit_breakers import circuit_breakers
 from unlearning_methods.circuit_breakers_no_lora import circuit_breakers_no_lora
-from unlearning_methods.surgical_tar import surgical_tar
-from unlearning_methods.surgical_tar_lora import surgical_tar_lora
+from unlearning_methods.surgical_irreversible_unlearning import (
+    surgical_irreversible_unlearning,
+)
+from unlearning_methods.surgical_irreversible_unlearning_lora import (
+    surgical_irreversible_unlearning_lora,
+)
 from unlearning_methods.tar import tar
 from utils.data_loading import CachedBatches, dataset_loaders
 from utils.git_and_reproducibility import *
@@ -85,8 +89,8 @@ def run_study(storage, config_path, variant_num, if_study_exists="fail", n_trial
     unlearning_func = dict(
         circuit_breakers=circuit_breakers,
         circuit_breakers_no_lora=circuit_breakers_no_lora,
-        surgical_tar_lora=surgical_tar_lora,
-        surgical_tar=surgical_tar,
+        surgical_irreversible_unlearning_lora=surgical_irreversible_unlearning_lora,
+        surgical_irreversible_unlearning=surgical_irreversible_unlearning,
         tar=tar,
     )[config.method_name]
 
