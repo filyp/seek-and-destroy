@@ -83,6 +83,11 @@ variants:
     # todo needs also repE loss
   # todo TAR that can use safeguarding step?
     
+  circuit_breaker_without_lora:
+    method_name: circuit_breaker_without_lora
+    # retaining_rate: [5.e-4, 5.e-3, true]
+    # unlearning_rate: [3.e-2, 7.e-2, true]
+
   # circuit_breaker:
   #   # note: it's trained without LoRA as was the original circuit breaker paper
   #   forget_momentum_decay: [0, 0, false]

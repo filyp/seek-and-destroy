@@ -1,4 +1,5 @@
 import torch as pt
+import gc
 
 
 def cross_entropy_loss(output, input_ids, _dummy=None):
@@ -18,6 +19,124 @@ def stream_activation_loss(output, input_ids, _dummy=None):
         # last activation is huge for some reason, so ignore it
         for activation in output.hidden_states[:-1]
     )
+
+
+def circuit_breaker_forget_loss(
+    model,
+    forget_input_ids,
+    target_layers,
+    frozen_model=None,
+    LoRA=False,
+
+
+):
+
+    forget_attention_mask = pt.ones_like(forget_input_ids)
+
+    forget_inputs = dict(
+        input_ids=forget_input_ids,
+        attention_mask=forget_attention_mask,
+        output_hidden_states=True,
+    )
+
+    # ===== loss components =====
+    layers_forget_attention_mask = forget_attention_mask.repeat(
+        len(target_layers), 1, 1
+    ).unsqueeze(-1)
+
+    if LoRA is True and frozen_model is None:
+        model.disable_adapter()
+        frozen_model = model
+
+    if LoRA is False and frozen_model is None:
+        raise Exception(
+            "Function did not get frozen model and LoRA is disabled.")
+
+    assert frozen_model is not None
+
+    frozen_model.eval()
+    with pt.no_grad():
+        forget_outputs = frozen_model(**forget_inputs).hidden_states
+        forget_hidden = pt.stack(
+            [forget_outputs[l].detach() for l in target_layers]
+        )
+    del forget_outputs
+    gc.collect()
+    if LoRA is True and frozen_model is None:
+        model.enable_adapters()
+    model.train()
+
+    lora_forget_outputs = model(**forget_inputs).hidden_states
+    lora_forget_hidden = pt.stack(
+        [lora_forget_outputs[l] for l in target_layers])
+
+    normalized_lora_forget_outputs = lora_forget_hidden / (
+        pt.norm(lora_forget_hidden, dim=-1, keepdim=True, dtype=pt.float)
+    )
+    normalized_forget_outputs = forget_hidden / (
+        pt.norm(forget_hidden, dim=-1, keepdim=True, dtype=pt.float)
+    )
+    inner_product = (
+        normalized_lora_forget_outputs * normalized_forget_outputs
+    ) * layers_forget_attention_mask
+    forget_loss = (
+        pt.relu(inner_product.sum(dim=-1)).sum()
+        / layers_forget_attention_mask.sum()
+    )
+
+    return forget_loss
+
+
+def circuit_breaker_retain_loss(
+    model,
+    retain_input_ids,
+    frozen_model=None,
+    LoRA=False
+):
+
+    retain_attention_mask = pt.ones_like(retain_input_ids)
+
+    retain_inputs = dict(
+        input_ids=retain_input_ids,
+        attention_mask=retain_attention_mask,
+        output_hidden_states=True,
+    )
+
+    if LoRA is True:
+        model.disable_adapter_layers()
+        frozen_model = model
+
+    if LoRA is False and frozen_model is None:
+        raise Exception(
+            "Function did not get frozen model and LoRA is disabled.")
+
+    assert frozen_model is not None
+
+    frozen_model.eval()
+    with pt.no_grad():
+        orig_retain_outputs = frozen_model(**retain_inputs).hidden_states
+        orig_retain_hidden = pt.stack(orig_retain_outputs).detach()
+        layers_retain_attention_mask = retain_attention_mask.repeat(
+            len(orig_retain_outputs), 1, 1
+        ).unsqueeze(-1)
+        orig_retain_hidden *= layers_retain_attention_mask
+
+    del orig_retain_outputs
+    gc.collect()
+
+    if LoRA is True:
+        model.enable_adapter_layers()
+    model.train()
+
+    lora_retain_outputs = model(**retain_inputs).hidden_states
+    lora_retain_hidden = (
+        pt.stack(lora_retain_outputs) * layers_retain_attention_mask
+    )
+    retain_loss = pt.norm(
+        lora_retain_hidden - orig_retain_hidden, dim=-1, p=2, dtype=pt.float
+    ).nanmean()
+
+    return retain_loss
 
 
 # adapted from https://github.com/rishub-tamirisa/tamper-resistance/blob/41b749ca4d9bcb7608c7ead2ca48b0508714af99/modules/objectives.py#L114
