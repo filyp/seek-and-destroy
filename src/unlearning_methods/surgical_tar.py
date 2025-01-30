@@ -46,10 +46,10 @@ def surgical_tar(
     assert config.unlearn_steps % passes_per_loop == 0
     for loop_num in range(config.unlearn_steps // passes_per_loop):
         model.train()
+        f_input_ids = next(forget_iter)
+        r_input_ids = next(retain_iter)
 
-        if (loop_num % h.fork_every_n_loops == 0) or (not config.train_adversary):
-            # todo: not train_adversary is now incorrect!
-            # if "not training adversary", we just make sure it's always the same as base model
+        if (loop_num % h.fork_every_n_loops == 0):
             for p in interven_params:
                 p.adv_data = p.base_data.clone().detach()
 
@@ -57,7 +57,6 @@ def surgical_tar(
         model.zero_grad(set_to_none=True)
         for p in interven_params:  # switch to base model
             p.data = p.base_data
-        r_input_ids = next(retain_iter)
         output = model(r_input_ids)
         loss = cross_entropy_loss(output, r_input_ids)
         loss.backward()
@@ -69,11 +68,14 @@ def surgical_tar(
             # ! retain update
             p.base_data -= h.retaining_rate * p.retain_acc
 
+        if not config.train_adversary:
+            for p in interven_params:
+                p.adv_data = p.base_data
+
         # ! relearn the adversary
         model.zero_grad(set_to_none=True)
         for p in interven_params:  # switch to adversary
             p.data = p.adv_data
-        f_input_ids = next(forget_iter)
         output = model(f_input_ids)
         if config.train_adversary:
             loss = cross_entropy_loss(output, f_input_ids)
@@ -85,19 +87,14 @@ def surgical_tar(
                 # decay adversary into base model
                 p.adv_data *= h.adv_decay
                 p.adv_data += p.base_data * (1 - h.adv_decay)
-        else:
-            # todo: not train_adversary is now incorrect!
-            for p in interven_params:
-                assert (p.base_data == p.adv_data).all()
 
-        # ! get unlearning grads loss from adversary
+        # ! unlearning step with masking
+        # get unlearning grads loss from adversary
         # reuse the computation graph from previous block
         model.zero_grad(set_to_none=True)
         loss_fn = loss_fns[config.unlearning_loss_fn]
         loss = loss_fn(output, f_input_ids, clip_at)
         loss.backward()
-
-        # ! unlearning step with masking
         grad_norm = sum(p.grad.norm() ** 2 for p in interven_params) ** 0.5
         for p in interven_params:
             assert p.data.data_ptr() == p.adv_data.data_ptr()
@@ -119,9 +116,11 @@ def surgical_tar(
             if config.normalize_grads:
                 p.grad *= total_interven_numel**0.5 / grad_norm
 
+            # in Llama no optuna run, just turn off this line when retain perf broken
             p.base_data -= h.unlearning_rate * p.grad
 
             if config.additional_param_name == "adv_update":
+                assert config.train_adversary  # otherwise it may be wrong
                 p.adv_data -= h.unlearning_rate * p.grad * h.additional_param
 
         # ! eval current loss
