@@ -1,7 +1,5 @@
-# to run a single variant:
-# python study_runner.py PATH_TO_CONFIG VARIANT_NUM
 # to run all variants one after another:
-# python study_runner.py PATH_TO_CONFIG
+# python study_runner.py PATH_TO_CONFIG [if_study_exists=fail|delete|load]
 
 # necessary for determinism:
 import os
@@ -9,6 +7,7 @@ import os
 os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 # os.environ['CUBLAS_WORKSPACE_CONFIG'] = ":16:8"  # less mem but slower
 
+import argparse
 import logging
 import sys
 from types import SimpleNamespace
@@ -17,11 +16,13 @@ import torch as pt
 import yaml
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from unlearning_methods.tar_masked import tar_masked
-from unlearning_methods.tar_masked_lora import tar_masked_lora
+from unlearning_methods.circuit_breakers import circuit_breaker
 from unlearning_methods.circuit_breakers_without_LoRA import (
     circuit_breaker_without_lora,
 )
+from unlearning_methods.surgical_tar import surgical_tar
+from unlearning_methods.surgical_tar_lora import surgical_tar_lora
+from unlearning_methods.tar import tar
 from utils.data_loading import CachedBatches, dataset_loaders
 from utils.git_and_reproducibility import *
 from utils.model_operations import relearn
@@ -35,9 +36,9 @@ logging.basicConfig(
 )
 
 
-def run_study(storage, config_path, variant_num, if_study_exists="fail"):
-    assert if_study_exists in ["fail", "delete", "load"]
-    assert is_repo_clean()
+def run_study(storage, config_path, variant_num, if_study_exists="fail", n_trials=None):
+    assert if_study_exists in ["fail", "delete", "load", "load-remaining"]
+    print(f"{config_path=} {variant_num=} {if_study_exists=} {n_trials=}")
 
     # load YAML configuration
     with open(config_path, "r") as f:
@@ -51,9 +52,10 @@ def run_study(storage, config_path, variant_num, if_study_exists="fail"):
     config = full_config["general_config"] | {
         k: v for k, v in custom.items() if k not in full_config["hyperparams"].keys()
     }
-
     config = SimpleNamespace(**config)
     relearn_config = SimpleNamespace(**full_config["relearn_config"])
+    if n_trials is not None:
+        config.n_trials = n_trials
 
     study_name = (
         f"{config.unlearn_steps},{relearn_config.relearn_steps},"
@@ -77,14 +79,17 @@ def run_study(storage, config_path, variant_num, if_study_exists="fail"):
     r_eval = next(iter(retain_val_batches))
     f_eval = next(iter(forget_val_batches))
 
-    allowed_f_loss = eval_(
+    allowed_r_loss = eval_(
         AutoModelForCausalLM.from_pretrained(config.model_id), f_eval, r_eval
     )["retain_loss"]
+    allowed_r_loss += getattr(config, "retain_loss_budget", 0)
 
     unlearning_func = dict(
-        tar_masked_lora=tar_masked_lora,
-        tar_masked=tar_masked,
+        circuit_breaker=circuit_breaker,
         circuit_breaker_without_lora=circuit_breaker_without_lora,
+        surgical_tar_lora=surgical_tar_lora,
+        surgical_tar=surgical_tar,
+        tar=tar,
     )[config.method_name]
 
     def objective(trial):
@@ -107,7 +112,7 @@ def run_study(storage, config_path, variant_num, if_study_exists="fail"):
             forget_batches,
             f_eval,
             r_eval,
-            allowed_f_loss,
+            allowed_r_loss,
         )
 
         set_seeds(42)
@@ -125,7 +130,7 @@ def run_study(storage, config_path, variant_num, if_study_exists="fail"):
         study_name=study_name,
         storage=storage,
         direction="maximize",
-        load_if_exists=(if_study_exists == "load"),
+        load_if_exists=(if_study_exists in ["load", "load-remaining"]),
     )
     save_file_and_attach_logger(config_path, study.study_name)
     study.set_metric_names(["forget_loss"])
@@ -133,25 +138,77 @@ def run_study(storage, config_path, variant_num, if_study_exists="fail"):
     study.set_user_attr("is_repo_clean", is_repo_clean())
     for k, v in config.__dict__.items():
         study.set_user_attr(k, v)
+
+    n_trials = config.n_trials
+    if if_study_exists == "load-remaining":
+        # run remaining trials
+        n_trials = max(0, config.n_trials - len(study.trials))
+
     try:
-        study.optimize(objective, n_trials=config.n_trials)
+        print(f"{n_trials=}")
+        study.optimize(objective, n_trials=n_trials)
     except KeyboardInterrupt:
         pass
 
 
 if __name__ == "__main__":
-    storage = get_storage()
-    config_path = str(sys.argv[1])
+    parser = argparse.ArgumentParser(description="Run unlearning studies")
+    parser.add_argument(
+        "--config-path", type=str, required=True, help="Path to the config YAML file"
+    )
+    parser.add_argument(
+        "--variant-num",
+        type=int,
+        default=None,
+        help="Variant number to run (default: None to run all variants)",
+    )
+    parser.add_argument(
+        "--if-study-exists",
+        type=str,
+        default="fail",
+        choices=["fail", "delete", "load", "load-remaining"],
+        help="What to do if study exists (default: fail). 'load' will run the number of specified trials continuing an existing study. 'load-remaining' will run (n_trials - len(study.trials)) trials.",
+    )
+    parser.add_argument(
+        "--n-trials",
+        type=int,
+        default=None,
+        help="Number of trials to run (default: None to use config value)",
+    )
+    parser.add_argument(
+        "--allow-dirty-repo",
+        action="store_true",
+        help="Allow running even if the git repo has uncommitted changes (default: False)",
+    )
+    args = parser.parse_args()
 
-    if len(sys.argv) > 2:
-        # ! run a single variant
-        variant_num = int(sys.argv[2])
-        run_study(storage, config_path, variant_num, if_study_exists="delete")
+    db_url = json.load(open("secret.json"))["db_url"]
+    storage = get_storage(db_url)
+    # storage = get_storage()
 
-    else:
+    with open(args.config_path, "r") as f:
+        full_config = yaml.safe_load(f)
+
+    if args.variant_num is None:
         # ! run all variants one after another
-        with open(config_path, "r") as f:
-            full_config = yaml.safe_load(f)
-
         for variant_num in range(len(full_config["variants"])):
-            run_study(storage, config_path, variant_num, if_study_exists="delete")
+            if not args.allow_dirty_repo:
+                assert is_repo_clean()
+            run_study(
+                storage,
+                args.config_path,
+                variant_num,
+                args.if_study_exists,
+                args.n_trials,
+            )
+    else:
+        # ! run single variant
+        if not args.allow_dirty_repo:
+            assert is_repo_clean()
+        run_study(
+            storage,
+            args.config_path,
+            args.variant_num,
+            args.if_study_exists,
+            args.n_trials,
+        )

@@ -1,5 +1,5 @@
 general_config:
-  method_name: tar_masked
+  method_name: surgical_tar
   target_modules:
     - dense_h_to_4h
   unlearning_loss_fn: correct_logit_minus_avg
@@ -9,77 +9,85 @@ general_config:
   forget_set_name: python
   unlearn_steps: 600
   batch_size: 16
-  n_trials: 500
+  n_trials: 200
+  # method specific
   use_masking: true
-  use_normalization: true
+  normalize_grads: true
   train_adversary: true
+  additional_param_name: null
 
 relearn_config:
   relearn_steps: 300
-  relearn_lr: 3.0e-4
-  relearn_lora_conf:
-    target_modules: all-linear
+  relearn_lr: 1.0e-4
+  # relearn_lora_conf:
+  #   target_modules: all-linear
 
 hyperparams:
-  adv_decay: [0.5, 1, false]
-  adv_lr: [0.001, 0.005, true]
-  adv_update: [0, 1, false]
-  # clip_at: 0  # can just be set to number, but then it can't be tuned in varints too
-  clip_at: [-10, 10, false]
-  forget_momentum_decay: [0, 0.99, false]
+  adv_decay: [0.3, 1, false]
+  adv_lr: [0.001, 0.01, true]
   fork_every_n_loops: [6, 42, false]
   retain_momentum_decay: [0, 0.99, false]
-  retaining_rate: [5.e-4, 5.e-3, true]
-  unlearning_rate: [3.e-2, 7.e-2, true]
+  retaining_rate: [3.e-4, 3.e-3, true]
+  unlearning_rate: [0.01, 0.2, true]
+  additional_param: [0, 0, false]  # on default don't use this
+  # todo repE retaining rate
 
 variants:
-  full: {}
-  no_f_momentum:
-    forget_momentum_decay: [0, 0, false]
+  surgical_tar: {}
+
+  # ! ablations
   no_r_momentum:
     retain_momentum_decay: [0, 0, false]
   no_adv_decay:
     adv_decay: [1, 1, false]
-  no_adv_update:
-    adv_update: [0, 0, false]
   neg_entropy:
     unlearning_loss_fn: neg_entropy
   neg_cross_entropy:
     unlearning_loss_fn: neg_cross_entropy
   no_masking:
-    # note, here some other params have no effect
     use_masking: false
-    unlearning_rate: [3.e-3, 5.e-2, true]
   no_normalization:
-    use_normalization: false
+    normalize_grads: false
     # set manually to keep a similar update scale across variants
-    normalization_factor: 0.15
+    # update_scale_factor: 0.1
+    # todo figure out the scaling factor
     # unlearning_rate should actually be similar
   no_adversary:
     train_adversary: false
-  freeze_clip_at:
-    clip_at: [0, 0, false]
-  lora:
-    method_name: tar_masked_lora
+
+  # ! optional components
+  f_momentum:
+    additional_param_name: forget_momentum_decay
+    additional_param: [0, 1, false]
+  adv_update:
+    additional_param_name: adv_update
+    additional_param: [0, 1, false]
+  clip_at:
+    additional_param_name: clip_at
+    additional_param: [-10, 10, false]
+  discard_growing_weights:
+    additional_param_name: discard_growing_weights
+    additional_param: [0, 1, false]
+  # todo full + repE loss
+  
+  surgical_tar_lora:
+    method_name: surgical_tar_lora
     lora_amount: 1
     lora_rank: 8
-    adv_lr: [0.001, 0.04, true]  # LoRA can have a higher learning rate
-    adv_update: [0, 0, false]  # adv_update has no effect anyway
+    adv_lr: [0.001, 0.05, true]  # LoRA can have a higher learning rate
   tar:
-    forget_momentum_decay: [0, 0, false]
-    retain_momentum_decay: [0, 0, false]
-    adv_decay: [1, 1, false]
-    adv_update: [0, 0, false]
-    use_masking: false
-    use_normalization: false
-    normalization_factor: 0.1
+    method_name: tar
+    update_scale_factor: 0.1
+    adv_decay: [1, 1, false]  # has no effect here, so set it to 1
     unlearning_rate: [1.e-3, 5.e-2, true]
-    unlearning_loss_fn: neg_entropy
     # todo needs also repE loss
+  # todo TAR that can use safeguarding step?
+    
   circuit_breaker_without_lora:
     method_name: circuit_breaker_without_lora
     # retaining_rate: [5.e-4, 5.e-3, true]
     # unlearning_rate: [3.e-2, 7.e-2, true]
+
   # circuit_breaker:
   #   # note: it's trained without LoRA as was the original circuit breaker paper
   #   forget_momentum_decay: [0, 0, false]
@@ -88,14 +96,12 @@ variants:
   #   adv_update: [0, 0, false]
   #   use_masking: false
   #   use_normalization: false
-  #   normalization_factor: 0.1
+  #   update_scale_factor: 0.1
   #   unlearning_rate: [1.e-3, 5.e-2, true]
   #   train_adversary: false
   #   # todo needs also repE forget loss
   #   # todo needs also repE retain loss
     
-  # todo full + repE loss
-  # todo TAR that can use safeguarding step?
   
   # todo tuning unlearning_rate per module? - separate experiment with SmolLM
   # todo only decrease weights

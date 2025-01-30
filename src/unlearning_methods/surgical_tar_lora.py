@@ -15,11 +15,14 @@ def only_grad_on(model, params):
         p.requires_grad = True
 
 
-def tar_masked_lora(
-    h, config, retain_batches, forget_batches, f_eval, r_eval, allowed_f_loss
+def surgical_tar_lora(
+    h, config, retain_batches, forget_batches, f_eval, r_eval, allowed_r_loss
 ):
-    # adv_update is not used
-    assert config.train_adversary, "TAR LoRA doesn't support no adversary"
+    assert config.use_masking
+    assert config.normalize_grads
+    assert config.train_adversary
+    assert h.additional_param_name is None, "TAR LoRA doesn't support additional param"
+
     h.fork_every_n_loops = (int(h.fork_every_n_loops) // 6) * 6  # round to nearest 6
 
     model = AutoModelForCausalLM.from_pretrained(config.model_id)
@@ -30,6 +33,7 @@ def tar_masked_lora(
         for name, p in model.named_parameters()
         if any(f"{m}.weight" in name for m in config.target_modules)
     ]
+    total_interven_numel = sum(p.numel() for p in interven_params)
 
     lora_config = LoraConfig(r=config.lora_rank, target_modules=config.target_modules)
     peft_model = get_peft_model(model, lora_config, adapter_name="adv0")
@@ -38,7 +42,6 @@ def tar_masked_lora(
 
     for p in interven_params:
         p.retain_momentum = pt.zeros_like(p.data)
-        p.forget_momentum = pt.zeros_like(p.data)
 
     # ! unlearning loop
     logging.info("step      base_f      base_r")
@@ -46,8 +49,8 @@ def tar_masked_lora(
     forget_iter = iter(forget_batches)
 
     # ! unlearning loop
-    passes_per_loop = 4 + int(config.train_adversary)
-    assert 60 % passes_per_loop == 0
+    passes_per_loop = 5
+    _eval_counter = 0
     assert config.unlearn_steps % passes_per_loop == 0
     for loop_num in range(config.unlearn_steps // passes_per_loop):
         model.train()
@@ -94,32 +97,25 @@ def tar_masked_lora(
         # reuse the computation graph from previous block
         model.zero_grad(set_to_none=True)
         loss_fn = loss_fns[config.unlearning_loss_fn]
-        loss = loss_fn(output, f_input_ids, h.clip_at)
+        loss = loss_fn(output, f_input_ids, clip_at=0)
         loss.backward()
 
         # ! unlearning step with masking
+        grad_norm = sum(p.grad.norm() ** 2 for p in interven_params) ** 0.5
         for p in interven_params:
-            p.forget_momentum *= h.forget_momentum_decay
-            p.forget_momentum += p.grad * (1 - h.forget_momentum_decay)
-
-            if config.use_masking:
-                mask = p.retain_momentum.sign() == p.forget_momentum.sign()
-                update = mask * p.forget_momentum
-            else:
-                update = p.forget_momentum
-
-            if config.use_normalization:
-                update /= update.norm()
-            else:
-                update *= config.normalization_factor
-
+            update = p.grad
+            mask = p.retain_momentum.sign() == update.sign()
+            update *= mask
+            # todo also times normalization factor once i add it
+            update *= total_interven_numel**0.5 / grad_norm
             p.data -= h.unlearning_rate * update
 
         # ! eval current loss
         _passes_done = (loop_num + 1) * passes_per_loop
-        if _passes_done % 60 == 0:
+        if _passes_done // 30 > _eval_counter:
+            _eval_counter += 1
             with peft_model.disable_adapter():
-                eval_(model, f_eval, r_eval, allowed_f_loss, _passes_done)
+                eval_(model, f_eval, r_eval, allowed_r_loss, _passes_done)
 
     # ! remove lora
     for lora_index in range(config.lora_amount):

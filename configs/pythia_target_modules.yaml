@@ -1,0 +1,64 @@
+general_config:
+  method_name: surgical_tar
+  target_modules:
+    - dense_h_to_4h
+  unlearning_loss_fn: correct_logit_minus_avg
+  model_id: EleutherAI/pythia-14m
+  # model_id: HuggingFaceTB/SmolLM-135M
+  retain_set_name: wikitext
+  forget_set_name: python
+  unlearn_steps: 600
+  batch_size: 16
+  n_trials: 500
+  # method specific
+  use_masking: true
+  normalize_grads: true
+  train_adversary: true
+  additional_param_name: null
+
+relearn_config:
+  relearn_steps: 300
+  relearn_lr: 1.0e-4
+  # for Smol I checked that no-LoRA relearns better
+  # relearn_lora_conf:
+  #   target_modules: all-linear
+
+hyperparams:
+  adv_decay: [0.3, 1, false]
+  adv_lr: [0.001, 0.01, true]
+  fork_every_n_loops: [6, 42, false]
+  retain_momentum_decay: [0, 0.99, false]
+  retaining_rate: [3.e-4, 3.e-3, true]
+  # unlearning_rate: [0.01, 0.2, true]
+  unlearning_rate: [2.e-5, 2.e-4, true]
+
+variants:
+  dense_h_to_4h:
+    target_modules:
+      - dense_h_to_4h
+  dense_4h_to_h:
+    target_modules:
+      - dense_4h_to_h
+  query_key_value:
+    # lower unlearning_rate is needed here, because otherwise all trials fail
+    unlearning_rate: [2.e-6, 2.e-4, true]
+    target_modules:
+      - query_key_value
+  dense:
+    target_modules:
+      - dense
+  all_linear:
+    target_modules:
+      - dense_h_to_4h
+      - dense_4h_to_h
+      - query_key_value
+      - dense
+  mlp:
+    target_modules:
+      - dense_h_to_4h
+      - dense_4h_to_h
+  all_but_query_key_value:
+    target_modules:
+      - dense_h_to_4h
+      - dense_4h_to_h
+      - dense

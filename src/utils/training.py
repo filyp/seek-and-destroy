@@ -41,18 +41,18 @@ class MockTrial:
         pass
 
 
-def eval_(model, f_eval_batch, r_eval_batch, allowed_f_loss=None, step=""):
+def eval_(model, f_eval_batch, r_eval_batch, allowed_r_loss=None, step=""):
     model.eval()
     with pt.no_grad():
         res = dict(
             forget_loss=cross_entropy_loss(model(f_eval_batch), f_eval_batch),
             retain_loss=cross_entropy_loss(model(r_eval_batch), r_eval_batch),
         )
-    logging.info(f"{step:4} " + " ".join(f"{v:11.2f}" for v in res.values()))
+    logging.info(f"{step:4} " + " ".join(f"{v:11.3f}" for v in res.values()))
     if any(pt.isnan(v) for v in res.values()):
         raise optuna.TrialPruned()
 
-    if allowed_f_loss is not None and res["retain_loss"] > allowed_f_loss:
+    if allowed_r_loss is not None and res["retain_loss"] > allowed_r_loss:
         logging.info(f"Pruning trial because retain loss is too high")
         raise optuna.TrialPruned()
 
@@ -88,12 +88,12 @@ def get_stats_from_last_n_trials(study, n=10):
 
     max_val = study.best_trial.values[0]
     last_n_mean = np.mean(values[-n:])
-    last_n_std = np.std(values[-n:])
+    last_n_sem = np.std(values[-n:]) / np.sqrt(n)
     pure_name = study.study_name.split("|")[-1]
-    result = f"| {last_n_mean:.2f}±{last_n_std:.2f} | {max_val:.2f} | {pure_name} |  |"
-    # print("last_n_mean ± last_n_std, max_val, pure_name")
+    result = f"| {last_n_mean:.4f}±{last_n_sem:.4f} | {max_val:.4f} | {pure_name} |  |"
+    # print("last_n_mean ± last_n_sem, max_val, pure_name")
     # print(result)
-    return result, last_n_mean, last_n_std
+    return result, last_n_mean, last_n_sem
 
 
 def delete_study_if_exists(study_name, storage):
