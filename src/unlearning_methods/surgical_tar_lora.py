@@ -41,7 +41,7 @@ def surgical_tar_lora(
         peft_model.add_adapter(f"adv{lora_index}", lora_config)
 
     for p in interven_params:
-        p.retain_momentum = pt.zeros_like(p.data)
+        p.retain_acc = pt.zeros_like(p.data)
 
     # ! unlearning loop
     logging.info("step      base_f      base_r")
@@ -65,10 +65,10 @@ def surgical_tar_lora(
             loss.backward()
             for p in interven_params:
                 # ! update disruption scores
-                p.retain_momentum *= h.retain_momentum_decay
-                p.retain_momentum += p.grad * (1 - h.retain_momentum_decay)
+                p.retain_acc *= h.retain_momentum
+                p.retain_acc += p.grad * (1 - h.retain_momentum)
                 # ! retain update
-                p.data -= h.retaining_rate * p.retain_momentum
+                p.data -= h.retaining_rate * p.retain_acc
 
         if loop_num % (h.fork_every_n_loops // config.lora_amount) == 0:
             forking_count = loop_num // (h.fork_every_n_loops // config.lora_amount)
@@ -104,7 +104,7 @@ def surgical_tar_lora(
         grad_norm = sum(p.grad.norm() ** 2 for p in interven_params) ** 0.5
         for p in interven_params:
             update = p.grad
-            mask = p.retain_momentum.sign() == update.sign()
+            mask = p.retain_acc.sign() == update.sign()
             update *= mask
             # todo also times normalization factor once i add it
             update *= total_interven_numel**0.5 / grad_norm

@@ -31,8 +31,8 @@
 
 #     for p in interven_params:
 #         p.retain_acc = pt.zeros_like(p.data)
-#         if config.additional_param_name == "forget_momentum_decay":
-#             p.forget_momentum = pt.zeros_like(p.data)
+#         if config.additional_param_name == "forget_momentum":
+#             p.forget_acc = pt.zeros_like(p.data)
 
 #     # ! unlearning loop
 #     logging.info("step      base_f      base_r")

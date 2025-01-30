@@ -27,13 +27,13 @@ hyperparams:
   adv_decay: [0.4, 1, false]
   adv_lr: [0.001, 0.006, true]
   fork_every_n_loops: [6, 42, false]
-  retain_momentum_decay: [0, 0.99, false]
+  retain_momentum: [0, 0.99, false]
   retaining_rate: [3.e-4, 3.e-3, true]
   unlearning_rate: [1.e-6, 3.e-4, true]
   # adv_decay: [1, 1, false]  # frozen
   # adv_lr: [0.001, 0.006, true]
   # fork_every_n_loops: [6, 42, false]
-  # retain_momentum_decay: [0, 0.99, false]
+  # retain_momentum: [0, 0.99, false]
   # retaining_rate: [1.e-3, 1.e-3, true]  # frozen
   # unlearning_rate: [2.e-5, 1.e-3, true]
 

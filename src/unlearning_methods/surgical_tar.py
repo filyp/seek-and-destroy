@@ -39,9 +39,9 @@ def surgical_tar(
         p.requires_grad = id(p) in [id(p) for p in adv_interven_params]
 
     for p in interven_params:
-        p.retain_momentum = pt.zeros_like(p.data)
-        if config.additional_param_name == "forget_momentum_decay":
-            p.forget_momentum = pt.zeros_like(p.data)
+        p.retain_acc = pt.zeros_like(p.data)
+        if config.additional_param_name == "forget_momentum":
+            p.forget_acc = pt.zeros_like(p.data)
 
     # ! unlearning loop
     logging.info("step      base_f      base_r")
@@ -64,10 +64,10 @@ def surgical_tar(
         loss.backward()
         for p in interven_params:
             # ! update disruption scores
-            p.retain_momentum *= h.retain_momentum_decay
-            p.retain_momentum += p.grad * (1 - h.retain_momentum_decay)
+            p.retain_acc *= h.retain_momentum
+            p.retain_acc += p.grad * (1 - h.retain_momentum)
             # ! retain update
-            p.data -= h.retaining_rate * p.retain_momentum
+            p.data -= h.retaining_rate * p.retain_acc
         model.zero_grad(set_to_none=True)
 
         if (loop_num % h.fork_every_n_loops == 0) or (not config.train_adversary):
@@ -105,21 +105,18 @@ def surgical_tar(
         for p, adv_p in zip(interven_params, adv_interven_params):
             update = adv_p.grad
 
-            if config.additional_param_name == "forget_momentum_decay":
-                p.forget_momentum *= h.additional_param
-                p.forget_momentum += update * (1 - h.additional_param)
-                update = p.forget_momentum
+            if config.additional_param_name == "forget_momentum":
+                p.forget_acc *= h.additional_param
+                p.forget_acc += update * (1 - h.additional_param)
+                update = p.forget_acc
 
             if config.use_masking:
-                mask = p.retain_momentum.sign() == update.sign()
+                mask = p.retain_acc.sign() == update.sign()
                 update *= mask
 
             if config.additional_param_name == "discard_growing_weights":
                 mask2 = p.data.sign() != update.sign()
                 update[mask2] *= h.additional_param
-
-            # if config.local_normalization:
-            #     update /= update.norm()
 
             # normalize
             if config.normalize_grads:
