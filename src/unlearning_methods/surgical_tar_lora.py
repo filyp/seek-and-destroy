@@ -55,6 +55,12 @@ def surgical_tar_lora(
     for loop_num in range(config.unlearn_steps // passes_per_loop):
         model.train()
 
+        if loop_num % (h.fork_every_n_loops // config.lora_amount) == 0:
+            forking_count = loop_num // (h.fork_every_n_loops // config.lora_amount)
+            adv_to_restart = f"adv{forking_count % config.lora_amount}"
+            peft_model.delete_adapter(adv_to_restart)
+            peft_model.add_adapter(adv_to_restart, lora_config)
+
         # ! retain pass
         with peft_model.disable_adapter():
             only_grad_on(model, interven_params)
@@ -69,12 +75,6 @@ def surgical_tar_lora(
                 p.retain_acc += p.grad * (1 - h.retain_momentum)
                 # ! retain update
                 p.data -= h.retaining_rate * p.retain_acc
-
-        if loop_num % (h.fork_every_n_loops // config.lora_amount) == 0:
-            forking_count = loop_num // (h.fork_every_n_loops // config.lora_amount)
-            adv_to_restart = f"adv{forking_count % config.lora_amount}"
-            peft_model.delete_adapter(adv_to_restart)
-            peft_model.add_adapter(adv_to_restart, lora_config)
 
         # ! relearn the adversary
         adv_to_use = f"adv{loop_num % config.lora_amount}"

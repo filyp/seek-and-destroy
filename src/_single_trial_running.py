@@ -52,7 +52,9 @@ relearn_config = SimpleNamespace(**full_config["relearn_config"])
 
 # custom
 # config.train_adversary = False
-# config.target_modules = ["up_proj", "down_proj", "gate_proj", "o_proj"]
+config.target_modules = ["gate_proj"]
+config.batch_size = 1
+config.model_id = "HuggingFaceTB/SmolLM-135M"
 
 # %%
 
@@ -85,6 +87,10 @@ unlearning_func = dict(
 )[config.method_name]
 
 
+from unlearning_methods.surgical_tar import surgical_tar as surgical_tar_new
+
+# %%
+
 # construct hyperparams
 hyperparams = {
     hp_name: (low + high) / 2 for hp_name, (low, high, log) in hyperparam_ranges.items()
@@ -92,12 +98,16 @@ hyperparams = {
 hyperparams = SimpleNamespace(**hyperparams)
 
 
+config.unlearn_steps = 120
+hyperparams.unlearning_rate = 0.00008
+# hyperparams.unlearning_rate = 0.0002
+# hyperparams.adv_decay = 0.9
+
+
 # %%
 
-config.unlearn_steps = 120
-hyperparams.unlearning_rate = 0.0001
-
 set_seeds(42)
+pt.cuda.empty_cache()
 model = unlearning_func(
     hyperparams,
     config,
@@ -107,6 +117,23 @@ model = unlearning_func(
     r_eval,
     allowed_r_loss,
 )
+del model
+
+# %%
+
+set_seeds(42)
+pt.cuda.empty_cache()
+model = surgical_tar_new(
+    hyperparams,
+    config,
+    retain_batches,
+    forget_batches,
+    f_eval,
+    r_eval,
+    allowed_r_loss,
+)
+del model
+
 
 # %%
 hyperparams
@@ -126,9 +153,185 @@ forget_losses = relearn(
 )
 
 # %%
+h = hyperparams
 
+h.fork_every_n_loops = int(h.fork_every_n_loops)
+
+model = AutoModelForCausalLM.from_pretrained(config.model_id)
+adversary = AutoModelForCausalLM.from_pretrained(config.model_id)
+model.config.use_cache = False
+adversary.config.use_cache = False
+
+clip_at = h.additional_param if config.additional_param_name == "clip_at" else 0
+
+# get params to intervene on
+interven_params = [
+    p
+    for name, p in model.named_parameters()
+    if any(f"{m}.weight" in name for m in config.target_modules)
+]
+adv_interven_params = [
+    p
+    for name, p in adversary.named_parameters()
+    if any(f"{m}.weight" in name for m in config.target_modules)
+]
+total_interven_numel = sum(p.numel() for p in interven_params)
+
+# require grads only on intervened params
+for p in model.parameters():
+    p.requires_grad = id(p) in [id(p) for p in interven_params]
+for p in adversary.parameters():
+    p.requires_grad = id(p) in [id(p) for p in adv_interven_params]
+
+for p in interven_params:
+    p.retain_acc = pt.zeros_like(p.data)
+    if config.additional_param_name == "forget_momentum":
+        p.forget_acc = pt.zeros_like(p.data)
+
+# ! unlearning loop
+logging.info("step      base_f      base_r")
+retain_iter = iter(retain_batches)
+forget_iter = iter(forget_batches)
+
+# ! unlearning loop
+passes_per_loop = 4 + int(config.train_adversary)
+_eval_counter = 0
+assert config.unlearn_steps % passes_per_loop == 0
+for loop_num in range(config.unlearn_steps // passes_per_loop):
+    model.train()
+    adversary.train()
+
+    if (loop_num % h.fork_every_n_loops == 0) or (not config.train_adversary):
+        # if not training adversary, make sure it's always the same as base model
+        adversary.load_state_dict(model.state_dict())
+
+    # ! retain pass
+    model.zero_grad(set_to_none=True)
+    r_input_ids = next(retain_iter)
+    output = model(r_input_ids)
+    loss = cross_entropy_loss(output, r_input_ids)
+    loss.backward()
+    for p in interven_params:
+        # ! update disruption scores
+        p.retain_acc *= h.retain_momentum
+        p.retain_acc += p.grad * (1 - h.retain_momentum)
+        # ! retain update
+        p.data -= h.retaining_rate * p.retain_acc
+    model.zero_grad(set_to_none=True)
+
+    # for _ in range(adv_per_orig_step):
+    # ! relearn the adversary
+    # todo actually could store only the intervened params for adversary
+    adversary.zero_grad(set_to_none=True)
+    f_input_ids = next(forget_iter)
+    output = adversary(f_input_ids)
+    if config.train_adversary:
+        loss = cross_entropy_loss(output, f_input_ids)
+        loss.backward(retain_graph=True)
+        for p, adv_p in zip(interven_params, adv_interven_params):
+            # apply adversary update
+            adv_p.data -= h.adv_lr * adv_p.grad
+            # decay adversary into base model
+            adv_p.data *= h.adv_decay
+            adv_p.data += p.data * (1 - h.adv_decay)
+    else:
+        for p, adv_p in zip(interven_params, adv_interven_params):
+            assert (p.data == adv_p.data).all()
+
+    # ! get unlearning grads loss from adversary
+    # reuse the computation graph from previous block
+    adversary.zero_grad(set_to_none=True)
+    loss_fn = loss_fns[config.unlearning_loss_fn]
+    loss = loss_fn(output, f_input_ids, clip_at)
+    loss.backward()
+
+    # ! unlearning step with masking
+    grad_norm = sum(adv_p.grad.norm() ** 2 for adv_p in adv_interven_params) ** 0.5
+    for p, adv_p in zip(interven_params, adv_interven_params):
+        update = adv_p.grad
+
+        if config.additional_param_name == "forget_momentum":
+            p.forget_acc *= h.additional_param
+            p.forget_acc += update * (1 - h.additional_param)
+            update = p.forget_acc
+
+        if config.use_masking:
+            mask = p.retain_acc.sign() == update.sign()
+            update *= mask
+
+        if config.additional_param_name == "discard_growing_weights":
+            mask2 = p.data.sign() != update.sign()
+            update[mask2] *= h.additional_param
+
+        # normalize
+        if config.normalize_grads:
+            update *= total_interven_numel**0.5 / grad_norm
+
+        p.data -= h.unlearning_rate * update
+
+        if config.additional_param_name == "adv_update":
+            adv_p.data -= h.unlearning_rate * update * h.additional_param
+
+    # ! eval current loss
+    _passes_done = (loop_num + 1) * passes_per_loop
+    if _passes_done // 30 > _eval_counter:
+        _eval_counter += 1
+        eval_(model, f_eval, r_eval, allowed_r_loss, _passes_done)
+# %%
 
 # %%
 
-for n, p in model.named_parameters():
-    print(n, p.requires_grad)
+# %%
+
+# %%
+for p in interven_params:
+    p.data = p.base_data
+    # p.data = p.adv_data
+
+# %%
+p.grad
+# %%
+model.zero_grad(set_to_none=True)
+output = model(f_input_ids)
+loss = cross_entropy_loss(output, f_input_ids)
+print(loss)
+# %%
+loss.backward()
+# %%
+adversary.zero_grad(set_to_none=True)
+output = adversary(f_input_ids)
+loss = cross_entropy_loss(output, f_input_ids)
+print(loss)
+# %%
+
+for p, adv_p in zip(interven_params, adv_interven_params):
+    p.adv_data = adv_p.data.clone().detach()
+
+# %%
+d = interven_params[0].data
+bd = interven_params[0].base_data
+ad = interven_params[0].adv_data
+
+# %%
+d += 0.1
+# %%
+ad.data_ptr()
+# %%
+adv_interven_params[0].data_ptr()
+# %%
+# Test tensor memory sharing
+param = interven_params[0]
+print(f"Original data_ptr: {param.data.data_ptr()}")
+print(f"Base data_ptr:    {param.base_data.data_ptr()}")
+
+# These will have different ids (they're different view objects)
+print(f"\nView object ids:")
+print(f"id(param.data):      {id(param.data)}")
+print(f"id(param.base_data): {id(param.base_data)}")
+
+# But they share memory (same data_ptr)
+print(f"\nIs same memory?: {param.data.data_ptr() == param.base_data.data_ptr()}")
+# %%
+for p in interven_params:
+    p.base_data = p.data
+# %%
