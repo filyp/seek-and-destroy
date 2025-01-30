@@ -103,12 +103,11 @@ def surgical_irreversible_unlearning_lora(
         # ! unlearning step with masking
         grad_norm = sum(p.grad.norm() ** 2 for p in interven_params) ** 0.5
         for p in interven_params:
-            update = p.grad
-            mask = p.retain_acc.sign() == update.sign()
-            update *= mask
+            mask = p.retain_acc.sign() == p.grad.sign()
+            p.grad *= mask
             # todo also times normalization factor once i add it
-            update *= total_interven_numel**0.5 / grad_norm
-            p.data -= h.unlearning_rate * update
+            p.grad *= total_interven_numel**0.5 / grad_norm
+            p.data -= h.unlearning_rate * p.grad
 
         # ! eval current loss
         _passes_done = (loop_num + 1) * passes_per_loop
