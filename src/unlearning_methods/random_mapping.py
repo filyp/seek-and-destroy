@@ -43,8 +43,12 @@ def random_mapping(
             forget_iterator, forget_dataloader
         )
         """
-        retain_batch = next(retain_iterator)
-        forget_batch = next(forget_iterator)
+        retain_batch, retain_iterator = get_next_batch(
+                retain_iterator, retain_batches
+                )
+        forget_batch, forget_iterator = get_next_batch(
+                forget_iterator, forget_batches
+                )
 
         lm_loss, cos_loss = random_vector_cosine_obj(
             model=model,
@@ -63,6 +67,13 @@ def random_mapping(
 
     return model
 
+def get_next_batch(iterator, dataloader):
+    try:
+        batch = next(iterator)
+    except StopIteration:
+        iterator = iter(dataloader)
+        batch = next(iterator)
+    return batch, iterator
 
 def random_vector_cosine_obj(
     model: pt.nn.Module = None,
@@ -115,3 +126,56 @@ def random_vector_cosine_obj(
     cos_sim_loss.backward()
 
     return x_r_lm_loss.item(), cos_sim_loss.item()
+
+def log_p_loss(
+    logits: torch.Tensor, labels: torch.Tensor, vocab_size: int
+) -> torch.Tensor:
+    """
+    Compute the log probability loss for a language model.
+
+    This function calculates the cross-entropy loss between the predicted logits
+    and the true labels, typically used in language modeling tasks.
+
+    Args:
+        logits (torch.Tensor): The predicted logits from the model, typically of shape
+                               (batch_size, sequence_length, vocab_size).
+        labels (torch.Tensor): The true labels, typically of shape
+                               (batch_size, sequence_length).
+        vocab_size (int): The size of the vocabulary.
+
+    Returns:
+        torch.Tensor: The computed loss as a scalar tensor.
+    """
+    # Shift so that tokens < n predict n
+    shift_logits = logits[..., :-1, :].contiguous()
+    shift_labels = labels[..., 1:].contiguous()
+    # Flatten the tokens
+    loss_fct = torch.nn.CrossEntropyLoss()
+    shift_logits = shift_logits.view(-1, vocab_size)
+    shift_labels = shift_labels.view(-1)
+    # Enable model parallelism
+    shift_labels = shift_labels.to(shift_logits.device)
+    loss = loss_fct(shift_logits, shift_labels)
+    return loss
+
+def _filter_inputs(inputs: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
+    """
+    Filter the input dictionary to keep only specific keys.
+
+    This function takes a dictionary of input tensors and returns a new dictionary
+    containing only the keys 'input_ids', 'attention_mask', and 'labels' if they exist
+    in the original dictionary.
+
+    Args:
+        inputs (Dict[str, torch.Tensor]): A dictionary containing input tensors.
+
+    Returns:
+        Dict[str, torch.Tensor]: A filtered dictionary containing only the specified keys.
+    """
+    return {
+        k: v
+        for k, v in inputs.items()
+        if k in ["input_ids", "attention_mask", "labels"]
+    }
+
+
