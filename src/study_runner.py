@@ -98,7 +98,9 @@ def run_study(storage, config_path, variant_num, if_study_exists="fail", n_trial
         # construct hyperparams
         hyperparams = dict()
         for hp_name, distribution in hyperparam_ranges.items():
-            if isinstance(distribution, list):
+            if distribution is None:
+                continue
+            elif isinstance(distribution, list):
                 low, high, log = distribution
                 hyperparams[hp_name] = trial.suggest_float(hp_name, low, high, log=log)
             else:

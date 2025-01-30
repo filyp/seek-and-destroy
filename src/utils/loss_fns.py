@@ -167,9 +167,10 @@ def circuit_breaker_retain_loss(model, retain_input_ids, frozen_model=None, LoRA
 
     lora_retain_outputs = model(**retain_inputs).hidden_states
     lora_retain_hidden = pt.stack(lora_retain_outputs) * layers_retain_attention_mask
-    retain_loss = pt.norm(
-        lora_retain_hidden - orig_retain_hidden, dim=-1, p=2, dtype=pt.float
-    ).nanmean()
+    diffs = lora_retain_hidden - orig_retain_hidden
+    # the last hidden state is anomalously high (at least for pythia)
+    diffs = diffs[:-1]
+    retain_loss = pt.norm(diffs, dim=-1, p=2, dtype=pt.float).nanmean()
 
     return retain_loss
 

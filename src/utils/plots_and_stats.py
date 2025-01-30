@@ -63,6 +63,8 @@ def stacked_slice_plot(studies):
     common_prefix = os.path.commonprefix(study_names)
     figure.update_layout(layout)
     figure.update_layout(title={"text": common_prefix, "xanchor": "center", "x": 0.5})
+    
+    # todo: don't display if it does not exist (now it can not exist)
 
     showscale = True
     for i, study in enumerate(studies, start=1):

@@ -27,30 +27,46 @@ hyperparams:
   adv_lr: [0.001, 0.01, true]
   fork_every_n_loops: [6, 42, false]
   retain_momentum: [0, 0.99, false]
-  retaining_rate: [3.e-4, 3.e-3, true]
-  unlearning_rate: [1.e-5, 1.e-3, true]
+  retaining_rate: [3.e-4, 2.e-3, true]
+  unlearning_rate: [1.e-4, 1.e-3, true]
   additional_param: [0, 0, false]  # on default don't use this
-  # todo repE retaining rate
 
 variants:
   SIU: {}
+  
+  # ! alternative methods
+  circuit_breakers_without_lora:
+    method_name: circuit_breakers_without_lora
+    retain_loss_budget: 1  # it needs a handicap, otherwise it's always pruned
+    unlearning_rate: [3.e-6, 3.e-5, true]
+    adv_decay: None
+    adv_lr: None
+    fork_every_n_loops: None
+    retain_momentum: None
+    additional_param: None
+
+
+    # retaining_rate: [5.e-4, 5.e-3, true]
+
+  circuit_breakers:
+    method_name: circuit_breakers
+  #   # todo grad norm
+  #   # todo target modules?
+  
 
   # ! optional components
   SIU_repE_retain:
     additional_param_name: rep_eng_retain_lr
-    additional_param: [0, 10, false]
-  discard_growing_weights:
+    additional_param: [0, 2, false]
+  SIU_discard_growing_weights:
     additional_param_name: discard_growing_weights
     additional_param: [0, 1, false]
-  f_momentum:
+  SIU_f_momentum:
     additional_param_name: forget_momentum
     additional_param: [0, 1, false]
-  adv_update:
+  SIU_adv_update:
     additional_param_name: adv_update
     additional_param: [0, 1, false]
-  # clip_at:
-  #   additional_param_name: clip_at
-  #   additional_param: [-10, 10, false]
 
   # ! ablations
   no_r_momentum:
@@ -65,38 +81,17 @@ variants:
     use_masking: false
   no_adversary:
     train_adversary: false
-
   
-  surgical_irreversible_unlearning_lora:
-    method_name: surgical_irreversible_unlearning_lora
-    lora_amount: 1
-    lora_rank: 8
-    adv_lr: [0.001, 0.05, true]  # LoRA can have a higher learning rate
-  tar:
-    method_name: tar
-    adv_decay: [1, 1, false]  # has no effect here, so set it to 1
-    # todo needs also repE loss
-    # todo grad norm
-    # todo target modules?
-  # todo TAR that can use safeguarding step?
+  # surgical_irreversible_unlearning_lora:
+  #   method_name: surgical_irreversible_unlearning_lora
+  #   lora_amount: 1
+  #   lora_rank: 8
+  #   adv_lr: [0.001, 0.05, true]  # LoRA can have a higher learning rate
+  # tar:
+  #   method_name: tar
+  #   adv_decay: [1, 1, false]  # has no effect here, so set it to 1
+  #   # todo needs also repE loss
+  #   # todo grad norm
+  #   # todo target modules?
+  # # todo TAR that can use safeguarding step?
     
-  # circuit_breaker_without_lora:
-  #   method_name: circuit_breaker_without_lora
-  #   # todo grad norm
-  #   # todo target modules?
-
-    # retaining_rate: [5.e-4, 5.e-3, true]
-
-  # circuit_breaker:
-  #   method_name: circuit_breaker
-  #   # todo grad norm
-  #   # todo target modules?
-  #   # note: it's trained without LoRA as was the original circuit breaker paper
-  #   forget_momentum: [0, 0, false]
-  #   retain_momentum: [0, 0, false]
-  #   adv_decay: [1, 1, false]
-  #   adv_update: [0, 0, false]
-  #   use_masking: false
-  #   train_adversary: false
-  
-  # todo only decrease weights

@@ -22,8 +22,12 @@ import torch as pt
 import yaml
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from unlearning_methods.surgical_irreversible_unlearning import surgical_irreversible_unlearning
-from unlearning_methods.surgical_irreversible_unlearning_lora import surgical_irreversible_unlearning_lora
+from unlearning_methods.surgical_irreversible_unlearning import (
+    surgical_irreversible_unlearning,
+)
+from unlearning_methods.surgical_irreversible_unlearning_lora import (
+    surgical_irreversible_unlearning_lora,
+)
 from utils.data_loading import CachedBatches, dataset_loaders
 from utils.git_and_reproducibility import *
 from utils.loss_fns import loss_fns
@@ -39,7 +43,7 @@ logging.basicConfig(
 
 # %%
 # load YAML configuration
-config_path = repo_root() / "configs" / "pythia_ablation3.yaml"
+config_path = repo_root() / "configs" / "pythia_python.yaml"
 # config_path = repo_root() / "configs" / "smol_target_modules2.yaml"
 with open(config_path, "r") as f:
     full_config = yaml.safe_load(f)
@@ -52,9 +56,8 @@ relearn_config = SimpleNamespace(**full_config["relearn_config"])
 
 # custom
 # config.train_adversary = False
-config.target_modules = ["gate_proj"]
-config.batch_size = 1
-config.model_id = "HuggingFaceTB/SmolLM-135M"
+# config.target_modules = ["gate_proj"]
+# config.model_id = "HuggingFaceTB/SmolLM-135M"
 
 # %%
 
@@ -78,16 +81,7 @@ allowed_r_loss = eval_(
     AutoModelForCausalLM.from_pretrained(config.model_id), f_eval, r_eval
 )["retain_loss"]
 
-unlearning_func = dict(
-    # circuit_breakers=circuit_breakers,
-    # circuit_breakers_no_lora=circuit_breakers_no_lora,
-    # tar=tar,
-    surgical_irreversible_unlearning_lora=surgical_irreversible_unlearning_lora,
-    surgical_irreversible_unlearning=surgical_irreversible_unlearning,
-)[config.method_name]
-
-
-from unlearning_methods.surgical_irreversible_unlearning import surgical_irreversible_unlearning as surgical_irreversible_unlearning_new
+from unlearning_methods.circuit_breakers_no_lora import circuit_breakers_no_lora
 
 # %%
 
@@ -98,30 +92,25 @@ hyperparams = {
 hyperparams = SimpleNamespace(**hyperparams)
 
 
-config.unlearn_steps = 120
-hyperparams.unlearning_rate = 0.00008
-# hyperparams.unlearning_rate = 0.0002
+# config.unlearn_steps = 120
+hyperparams.unlearning_rate = 0.00001
+hyperparams.retaining_rate = 0.002
 # hyperparams.adv_decay = 0.9
-
-
-# %%
-config.additional_param_name = "rep_eng_retain_lr"
-hyperparams.additional_param = 1
-
+hyperparams
 # %%
 
 set_seeds(42)
 pt.cuda.empty_cache()
-model = unlearning_func(
+# model = unlearning_func(
+model = circuit_breakers_no_lora(
     hyperparams,
     config,
     retain_batches,
     forget_batches,
     f_eval,
     r_eval,
-    allowed_r_loss,
+    allowed_r_loss + 1,
 )
-del model
 
 # %%
 
@@ -140,14 +129,12 @@ del model
 
 
 # %%
-hyperparams
-# %%
 
 set_seeds(42)
 
 relearn_config.relearn_lr = 1e-4
 # relearn_config.relearn_lr = 0.5e-1
-relearn_config.relearn_steps = 50
+# relearn_config.relearn_steps = 50
 
 forget_losses = relearn(
     deepcopy(model),
