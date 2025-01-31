@@ -8,7 +8,7 @@ general_config:
   forget_set_name: python
   unlearn_steps: 600
   batch_size: 16
-  n_trials: 500
+  n_trials: 600
   normalize_grads: true
   # method specific
   unlearning_loss_fn: correct_logit_minus_avg
