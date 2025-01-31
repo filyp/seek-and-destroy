@@ -76,7 +76,7 @@ def circuit_breaker_forget_loss(
     forget_input_ids,
     target_layers,
     frozen_model=None,
-    LoRA=False,
+    lora_model=None,
 ):
 
     forget_attention_mask = pt.ones_like(forget_input_ids)
@@ -92,11 +92,11 @@ def circuit_breaker_forget_loss(
         len(target_layers), 1, 1
     ).unsqueeze(-1)
 
-    if LoRA is True and frozen_model is None:
-        model.disable_adapter()
+    if lora_model is not None and frozen_model is None:
+        lora_model.disable_adapter_layers()
         frozen_model = model
 
-    if LoRA is False and frozen_model is None:
+    if lora_model is None and frozen_model is None:
         raise Exception("Function did not get frozen model and LoRA is disabled.")
 
     assert frozen_model is not None
@@ -107,8 +107,9 @@ def circuit_breaker_forget_loss(
         forget_hidden = pt.stack([forget_outputs[l].detach() for l in target_layers])
     del forget_outputs
     gc.collect()
-    if LoRA is True and frozen_model is None:
-        model.enable_adapters()
+
+    if lora_model is not None:
+        lora_model.enable_adapter_layers()
     model.train()
 
     lora_forget_outputs = model(**forget_inputs).hidden_states
@@ -130,7 +131,7 @@ def circuit_breaker_forget_loss(
     return forget_loss
 
 
-def circuit_breaker_retain_loss(model, retain_input_ids, frozen_model=None, LoRA=False):
+def circuit_breaker_retain_loss(model, retain_input_ids, frozen_model=None, lora_model=None):
 
     retain_attention_mask = pt.ones_like(retain_input_ids)
 
@@ -140,11 +141,11 @@ def circuit_breaker_retain_loss(model, retain_input_ids, frozen_model=None, LoRA
         output_hidden_states=True,
     )
 
-    if LoRA is True:
-        model.disable_adapter_layers()
+    if lora_model is not None:
+        lora_model.disable_adapter_layers()
         frozen_model = model
 
-    if LoRA is False and frozen_model is None:
+    if lora_model is None and frozen_model is None:
         raise Exception("Function did not get frozen model and LoRA is disabled.")
 
     assert frozen_model is not None
@@ -161,8 +162,8 @@ def circuit_breaker_retain_loss(model, retain_input_ids, frozen_model=None, LoRA
     del orig_retain_outputs
     gc.collect()
 
-    if LoRA is True:
-        model.enable_adapter_layers()
+    if lora_model is not None:
+        lora_model.enable_adapter_layers()
     model.train()
 
     lora_retain_outputs = model(**retain_inputs).hidden_states

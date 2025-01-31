@@ -82,15 +82,17 @@ allowed_r_loss = eval_(
 )["retain_loss"]
 
 from unlearning_methods.circuit_breakers_no_lora import circuit_breakers_no_lora
+from unlearning_methods.circuit_breakers import circuit_breakers
 
 # %%
 
 # construct hyperparams
 hyperparams = {
-    hp_name: (low + high) / 2 for hp_name, (low, high, log) in hyperparam_ranges.items()
+    hp_name: (dist[0] + dist[1]) / 2
+    for hp_name, dist in hyperparam_ranges.items()
+    if isinstance(dist, tuple) or isinstance(dist, list)
 }
 hyperparams = SimpleNamespace(**hyperparams)
-
 
 # config.unlearn_steps = 120
 hyperparams.unlearning_rate = 0.00001
@@ -102,7 +104,8 @@ hyperparams
 set_seeds(42)
 pt.cuda.empty_cache()
 # model = unlearning_func(
-model = circuit_breakers_no_lora(
+# model = circuit_breakers_no_lora(
+model = circuit_breakers(
     hyperparams,
     config,
     retain_batches,

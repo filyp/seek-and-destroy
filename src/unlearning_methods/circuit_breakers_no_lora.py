@@ -45,7 +45,6 @@ def circuit_breakers_no_lora(
         # if retain_coeff > 0:
         model.zero_grad(set_to_none=True)
         retain_loss = circuit_breaker_retain_loss(model, r_input_ids, frozen_model)
-        retain_loss *= h.retaining_rate
         retain_loss.backward()
         # retain update
         for p in interven_params:
