@@ -42,10 +42,22 @@ variants:
     lora_rank: 8
     adv_lr: [0.005, 0.05, true]  # LoRA can have a higher learning rate
   
-  circuit_breakers_no_lora:
+  circuit_breakers_no_lora2:
     method_name: circuit_breakers_no_lora
-    retain_loss_budget: 1  # it needs a handicap, otherwise it's always pruned
-    unlearning_rate: [3.e-6, 3.e-5, true]
+    # retain_loss_budget: 1  # it needs a handicap, otherwise it's always pruned
+    # unlearning_rate: [3.e-6, 3.e-5, true]
+    adv_decay: None
+    adv_lr: None
+    fork_every_n_loops: None
+    retain_momentum: None
+    additional_param: None
+    # it also has added grad norm and target modules compared to original
+    # original didn't work better, I felt it was actually harder to balance probably
+
+  circuit_breakers:
+    method_name: circuit_breakers
+    # retain_loss_budget: 1  # it needs a handicap, otherwise it's always pruned
+    # unlearning_rate: [3.e-6, 3.e-5, true]
     adv_decay: None
     adv_lr: None
     fork_every_n_loops: None

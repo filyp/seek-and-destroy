@@ -1,4 +1,3 @@
-# note: there are some problems with running this
 import logging
 
 import torch as pt
@@ -7,36 +6,6 @@ from transformers import AutoModelForCausalLM
 
 from utils.loss_fns import circuit_breaker_forget_loss, circuit_breaker_retain_loss
 from utils.training import eval_
-
-# def compute_loss(
-#     percent_done,
-#     model,
-#     forget_input_ids,
-#     retain_input_ids,
-#     target_layers,
-#     retaining_rate,
-#     unlearning_rate,
-# ):
-
-#     # Those are pretty much arbitrary, the important thing is that retain_coeff increases as the training progresses and forget_coeff decreases.
-#     retain_coeff = retaining_rate * (percent_done / 2)
-#     forget_coeff = unlearning_rate * (1 - percent_done / 2)
-
-# if retain_coeff > 0:
-#     retain_loss = circuit_breaker_retain_loss(model, retain_input_ids, LoRA=True)
-# else:
-#     retain_loss = 0
-
-# if forget_coeff > 0:
-#     forget_loss = circuit_breaker_forget_loss(
-#         model, forget_input_ids, target_layers, LoRA=True
-#     )
-# else:
-#     forget_loss = 0
-
-# loss = retain_coeff * retain_loss + forget_coeff * forget_loss
-
-# return loss
 
 
 def circuit_breakers(
