@@ -51,6 +51,8 @@ variants:
     fork_every_n_loops: None
     retain_momentum: None
     additional_param: None
+    # it also has added grad norm and target modules compared to original
+    # original didn't work better, I felt it was actually harder to balance probably
 
   # circuit_breakers:
   #   method_name: circuit_breakers

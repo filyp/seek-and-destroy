@@ -47,6 +47,15 @@ def save_img(fig, file_name):
 def stacked_slice_plot(studies):
     study_names = [s.study_name for s in studies]
 
+    param_set = set()
+    for study in studies:
+        param_set.update(study.best_params.keys())
+    param_list = sorted(param_set)
+    # move unlearning_rate to the beginning
+    param_list.remove("unlearning_rate")
+    param_list.insert(0, "unlearning_rate")
+
+
     # Calculate overall y-axis range across all studies
     _values = [t.values[0] for s in studies for t in s.trials if t.values is not None]
     y_min = min(_values)
@@ -55,7 +64,7 @@ def stacked_slice_plot(studies):
     layout = go.Layout(common_layout)
     figure = make_subplots(
         rows=len(study_names),
-        cols=len(studies[0].best_params),
+        cols=len(param_list),
         shared_yaxes=True,
         # shared_xaxes="all",
         vertical_spacing=0.4 / len(studies),
@@ -64,15 +73,15 @@ def stacked_slice_plot(studies):
     figure.update_layout(layout)
     figure.update_layout(title={"text": common_prefix, "xanchor": "center", "x": 0.5})
     
-    # todo: don't display if it does not exist (now it can not exist)
-
     showscale = True
     for i, study in enumerate(studies, start=1):
         info = _get_slice_plot_info(study, None, None, "Final forget loss")
-        for j, subplot_info in enumerate(info.subplots, start=1):
+        for subplot_info in info.subplots:
             trace = _generate_slice_subplot(subplot_info)
             trace[0].update(marker={"showscale": showscale})
             showscale = False  # only needs to be set once
+
+            j = param_list.index(subplot_info.param_name) + 1
             for t in trace:
                 figure.add_trace(t, row=i, col=j)
 
