@@ -45,7 +45,7 @@ variants:
   circuit_breakers_no_lora2:
     method_name: circuit_breakers_no_lora
     # retain_loss_budget: 1  # it needs a handicap, otherwise it's always pruned
-    # unlearning_rate: [3.e-6, 3.e-5, true]
+    unlearning_rate: [3.e-6, 3.e-5, true]
     adv_decay: None
     adv_lr: None
     fork_every_n_loops: None
@@ -57,7 +57,7 @@ variants:
   circuit_breakers:
     method_name: circuit_breakers
     # retain_loss_budget: 1  # it needs a handicap, otherwise it's always pruned
-    # unlearning_rate: [3.e-6, 3.e-5, true]
+    unlearning_rate: [3.e-6, 3.e-5, true]
     adv_decay: None
     adv_lr: None
     fork_every_n_loops: None
