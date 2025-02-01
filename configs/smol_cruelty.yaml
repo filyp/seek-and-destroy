@@ -1,13 +1,14 @@
 general_config:
   method_name: surgical_irreversible_unlearning
   target_modules:
-    - dense_h_to_4h  # equivalent of gate_proj
-  model_id: EleutherAI/pythia-14m
-  retain_set_name: wikitext
-  forget_set_name: python
-  unlearn_steps: 600
+    - gate_proj
+  model_id: HuggingFaceTB/SmolLM-135M
+  retain_set_name: beaver_safe
+  forget_set_name: cruelty
+  retain_loss_budget: 0.1
+  unlearn_steps: 240
   batch_size: 16
-  n_trials: 600
+  n_trials: 100
   normalize_grads: true
   # method specific
   unlearning_loss_fn: correct_logit_minus_avg
@@ -16,7 +17,7 @@ general_config:
   additional_param_name: null
 
 relearn_config:
-  relearn_steps: 300
+  relearn_steps: 120
   relearn_lr: 1.0e-4
   # relearn_lora_conf:
   #   target_modules: all-linear
@@ -27,8 +28,8 @@ hyperparams:
   adv_lr: [0.001, 0.01, true]
   fork_every_n_loops: [6, 42, false]
   retain_momentum: [0, 0.99, false]
-  retaining_rate: [3.e-4, 2.e-3, true]
-  unlearning_rate: [1.e-4, 1.e-3, true]
+  retaining_rate: [2.e-4, 2.e-3, true]
+  unlearning_rate: [5.e-5, 5.e-4, true]
 
 variants:
 

@@ -117,7 +117,7 @@ def stacked_slice_plot(studies):
                 figure.update_xaxes(type="log", row=i, col=j)
 
     figure.update_layout(
-        width=300 * len(info.subplots),
+        width=300 * len(param_list),
         height=300 * len(study_names),
     )
     return figure

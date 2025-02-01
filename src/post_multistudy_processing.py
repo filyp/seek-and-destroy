@@ -81,11 +81,11 @@ markdown_table = """\
 | ------------------- | ----- | ---------- | ----- |"""
 python_results = ""
 for study in studies:
-    markdown_line, last_n_mean, last_n_sem = get_stats_from_last_n_trials(study, n=30)
+    markdown_line, last_n_mean, last_n_sem = get_stats_from_last_n_trials(study, n=50)
     markdown_table += f"\n{markdown_line}"
 
     pure_name = study.study_name.split("|")[-1]
-    python_results += f'("{pure_name}", {last_n_mean}, {last_n_sem}),\n'
+    python_results += f'\t("{pure_name}", {last_n_mean}, {last_n_sem}),\n'
 print(markdown_table)
 print(python_results)
 

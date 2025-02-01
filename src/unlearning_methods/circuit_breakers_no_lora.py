@@ -33,6 +33,8 @@ def circuit_breakers_no_lora(
     retain_iter = iter(retain_batches)
     forget_iter = iter(forget_batches)
 
+    # maybe actually it should be 6, because the backward pass is twice bigger?
+    # anyway, we can afford to give CB a handicap here
     passes_per_loop = 5
     for loop_num in range(config.unlearn_steps // passes_per_loop):
         r_input_ids = next(retain_iter)
