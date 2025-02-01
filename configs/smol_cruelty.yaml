@@ -57,9 +57,6 @@ variants:
   SIU_f_momentum:
     additional_param_name: forget_momentum
     additional_param: [0, 1, false]
-    # lower unlearning rate, otherwise it is always pruned
-    # it puzzles me why
-    unlearning_rate: [2.e-6, 1.e-4, true]
   SIU_adv_update:
     additional_param_name: adv_update
     additional_param: [0, 1, false]

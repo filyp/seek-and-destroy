@@ -120,7 +120,7 @@ def surgical_irreversible_unlearning(
             if config.additional_param_name == "forget_momentum":
                 p.forget_acc *= h.additional_param
                 p.forget_acc += p.grad * (1 - h.additional_param)
-                p.grad = p.forget_acc
+                p.grad = p.forget_acc.clone().detach()
 
             if config.use_masking:
                 mask = p.retain_acc.sign() == p.grad.sign()

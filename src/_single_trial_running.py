@@ -43,8 +43,9 @@ logging.basicConfig(
 
 # %%
 # load YAML configuration
-config_path = repo_root() / "configs" / "pythia_python.yaml"
+# config_path = repo_root() / "configs" / "pythia_python.yaml"
 # config_path = repo_root() / "configs" / "smol_target_modules2.yaml"
+config_path = repo_root() / "configs" / "smol_cruelty.yaml"
 with open(config_path, "r") as f:
     full_config = yaml.safe_load(f)
 
@@ -59,6 +60,10 @@ relearn_config = SimpleNamespace(**full_config["relearn_config"])
 # config.target_modules = ["gate_proj"]
 # config.model_id = "HuggingFaceTB/SmolLM-135M"
 
+# %%
+hyperparam_ranges["additional_param"] = [0, 1, False]
+    # additional_param_name: forget_momentum
+    # additional_param: [0, 1, false]
 # %%
 
 print(f"{hyperparam_ranges=}")
@@ -94,41 +99,26 @@ hyperparams = {
 }
 hyperparams = SimpleNamespace(**hyperparams)
 
-# config.unlearn_steps = 120
+config.unlearn_steps = 120
 hyperparams.unlearning_rate = 0.00001
 hyperparams.retaining_rate = 0.002
 # hyperparams.adv_decay = 0.9
-hyperparams
-# %%
+
+hyperparams.additional_param = 0.1
+# config.additional_param_name = None
+config.additional_param_name = "forget_momentum"
 
 set_seeds(42)
 pt.cuda.empty_cache()
-# model = unlearning_func(
-# model = circuit_breakers_no_lora(
-model = circuit_breakers(
+model = surgical_irreversible_unlearning(
     hyperparams,
     config,
     retain_batches,
     forget_batches,
     f_eval,
     r_eval,
-    allowed_r_loss + 1,
+    allowed_r_loss + 0.1,
 )
-
-# %%
-
-set_seeds(42)
-pt.cuda.empty_cache()
-model = surgical_irreversible_unlearning_new(
-    hyperparams,
-    config,
-    retain_batches,
-    forget_batches,
-    f_eval,
-    r_eval,
-    allowed_r_loss,
-)
-del model
 
 
 # %%
