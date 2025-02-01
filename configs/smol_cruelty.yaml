@@ -29,7 +29,7 @@ hyperparams:
   fork_every_n_loops: [6, 42, false]
   retain_momentum: [0, 0.99, false]
   retaining_rate: [2.e-4, 2.e-3, true]
-  unlearning_rate: [5.e-5, 5.e-4, true]
+  unlearning_rate: [1.e-5, 4.e-4, true]
 
 variants:
 

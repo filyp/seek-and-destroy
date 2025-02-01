@@ -174,7 +174,7 @@ fig, axes = create_model_comparison_plot_horizontal(
         pythia_python,
     ],  # Example with 3 plots using same data
     ["Pythia-14M\npython", "SmolLM-135M\ncruelty", "todo"],
-    baselines=[3.626, 0, 0],  # 2.682 in the second?
+    baselines=[3.626, 2.682, 0],
     y_min=[0, 0, 0],
 )
 plt.show()
