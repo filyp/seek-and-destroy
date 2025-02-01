@@ -1,0 +1,115 @@
+general_config:
+  method_name: surgical_irreversible_unlearning
+  target_modules:
+    - gate_proj
+  model_id: HuggingFaceTB/SmolLM-135M
+  retain_set_name: beaver_safe
+  forget_set_name: cruelty
+  retain_loss_budget: 0.1
+  unlearn_steps: 240
+  batch_size: 16
+  n_trials: 100
+  normalize_grads: true
+  # method specific
+  unlearning_loss_fn: correct_logit_minus_avg
+  use_masking: true
+  train_adversary: true
+  additional_param_name: null
+
+relearn_config:
+  relearn_steps: 240
+  # 0.015 does not diverge in small tests, but let's leave some safety margin
+  # LoRA does not do much better
+  relearn_lr: 0.005
+  # relearn_lora_conf:
+  #   target_modules: all-linear
+
+hyperparams:
+  additional_param: None  # on default don't use this
+  adv_decay: [0.3, 1, false]
+  adv_lr: [0.001, 0.03, true]
+  fork_every_n_loops: [6, 42, false]
+  retain_momentum: [0, 0.99, false]
+  retaining_rate: [2.e-4, 2.e-3, true]
+  unlearning_rate: [1.e-5, 6.e-4, true]
+
+variants:
+
+  SIU: {}
+
+  # ! ablations
+  no_r_momentum:
+    retain_momentum: [0, 0, false]
+  no_adv_decay:
+    adv_decay: [1, 1, false]
+  no_masking:
+    use_masking: false
+    # lower unlearning rate, otherwise it is always pruned
+    unlearning_rate: [2.e-6, 1.e-4, true]
+  no_adversary:
+    train_adversary: false
+  
+  # ! optional components
+  SIU_repE_retain:
+    additional_param_name: rep_eng_retain_lr
+    additional_param: [0, 2, false]
+  SIU_discard_growing_weights:
+    additional_param_name: discard_growing_weights
+    additional_param: [0, 1, false]
+  SIU_f_momentum:
+    additional_param_name: forget_momentum
+    additional_param: [0, 1, false]
+  SIU_adv_update:
+    additional_param_name: adv_update
+    additional_param: [0, 1, false]
+  # SIU_stream_deactivation:
+  #   # todo 
+  SIU_lora:
+    method_name: surgical_irreversible_unlearning_lora
+    lora_amount: 1
+    lora_rank: 8
+    adv_lr: [0.005, 0.1, true]  # LoRA can have a higher learning rate
+
+  # ! alternative loss functions
+  neg_entropy:
+    unlearning_loss_fn: neg_entropy
+  neg_cross_entropy:
+    unlearning_loss_fn: neg_cross_entropy
+  # representation_noising:
+  #   unlearning_loss_fn: representation_noising
+  #   # todo
+
+  # ! alternative methods and baselines
+  
+  circuit_breakers_no_lora2:
+    method_name: circuit_breakers_no_lora
+    # retain_loss_budget: 1  # it needs a handicap, otherwise it's always pruned
+    unlearning_rate: [3.e-6, 3.e-5, true]
+    adv_decay: None
+    adv_lr: None
+    fork_every_n_loops: None
+    retain_momentum: None
+    additional_param: None
+    # it also has added grad norm and target modules compared to original
+    # original didn't work better, I felt it was actually harder to balance probably
+
+  circuit_breakers:
+    method_name: circuit_breakers
+    # retain_loss_budget: 1  # it needs a handicap, otherwise it's always pruned
+    unlearning_rate: [5.e-7, 5.e-6, true]
+    adv_decay: None
+    adv_lr: None
+    fork_every_n_loops: None
+    retain_momentum: None
+    additional_param: None
+    # it also has added grad norm and target modules compared to original
+    # original didn't work better, I felt it was actually harder to balance probably
+
+  # tar:
+  #   method_name: tar
+  #   adv_decay: [1, 1, false]  # has no effect here, so set it to 1
+  #   # todo needs also repE loss
+  #   # todo grad norm
+  #   # todo target modules?
+  # # todo TAR that can use safeguarding step?
+    

@@ -18,6 +18,7 @@ import logging
 from copy import deepcopy
 from types import SimpleNamespace
 
+import matplotlib.pyplot as plt
 import torch as pt
 import yaml
 from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -41,11 +42,14 @@ logging.basicConfig(
     handlers=[logging.StreamHandler()],
 )
 
+# style default
+plt.style.use("default")
+
 # %%
 # load YAML configuration
 # config_path = repo_root() / "configs" / "pythia_python.yaml"
 # config_path = repo_root() / "configs" / "smol_target_modules2.yaml"
-config_path = repo_root() / "configs" / "smol_cruelty.yaml"
+config_path = repo_root() / "configs" / "smol_cruelty3.yaml"
 with open(config_path, "r") as f:
     full_config = yaml.safe_load(f)
 
@@ -74,8 +78,8 @@ allowed_r_loss = eval_(
     AutoModelForCausalLM.from_pretrained(config.model_id), f_eval, r_eval
 )["retain_loss"]
 
-from unlearning_methods.circuit_breakers_no_lora import circuit_breakers_no_lora
 from unlearning_methods.circuit_breakers import circuit_breakers
+from unlearning_methods.circuit_breakers_no_lora import circuit_breakers_no_lora
 
 # %%
 
@@ -86,12 +90,15 @@ hyperparams = SimpleNamespace(
     fork_every_n_loops=36,
     retain_momentum=0.5,
     retaining_rate=0.001,
-    unlearning_rate=0.0001,
+    # unlearning_rate=0.0001,
+    unlearning_rate=0.00001,
 )
-# config.unlearning_loss_fn = "correct_logit_minus_avg"
 config.unlearning_loss_fn = "neg_cross_entropy"
+# config.unlearning_loss_fn = "correct_logit_minus_avg"
+config.train_adversary = False
+# note, not training adverary results in higher base_r loss
 
-config.unlearn_steps = 120
+config.unlearn_steps = 600
 
 set_seeds(42)
 pt.cuda.empty_cache()
@@ -102,9 +109,31 @@ model = surgical_irreversible_unlearning(
     forget_batches,
     f_eval,
     r_eval,
-    allowed_r_loss + 0.1,
+    allowed_r_loss + 0.13,
 )
 
+
+# %%
+set_seeds(42)
+relearn_config.relearn_steps = 300
+# _losses = relearn(
+# _losses2 = relearn(
+_losses3 = relearn(
+    deepcopy(model),
+    relearn_config,
+    retain_val_batches,
+    forget_val_batches,
+)
+
+# %%
+# plot losses
+plt.plot([l.item() for l in _losses], label="CE")
+plt.plot([l.item() for l in _losses2], label="CLMA")
+plt.plot([l.item() for l in _losses3], label="CE+adv")
+plt.legend()
+# title
+plt.title("SmolLM-135M\nrelearning dynamics")
+plt.show()
 
 # %% search for relearn lr
 lrs_no_lora = pt.logspace(-2.5, -1.5, 7)
@@ -144,10 +173,6 @@ for lr in lrs_lora:
     forget_losses_lora.append(min(_losses))
 
 # %%
-import matplotlib.pyplot as plt
-
-# style default
-plt.style.use("default")
 
 _lrs_lora = [l.item() for l in lrs_lora]
 _lrs_no_lora = [l.item() for l in lrs_no_lora]

@@ -32,6 +32,7 @@ name_mapping = dict(
     neg_cross_entropy="neg cross entropy loss",
     SIU_lora="+ adversary is LoRA",
     circuit_breakers_no_lora2="circuit breakers",
+    circuit_breakers="circuit breakers w/ LoRA",
 )
 
 
@@ -78,6 +79,19 @@ def create_model_comparison_plot_horizontal(
             capsize=3,
             color=df["color"],
         )
+
+        # Add "no valid trials" text for zero-value entries with non-empty study names
+        for idx, row in df.iterrows():
+            if row["mean"] == 0 and row["sem"] == 0 and row["study_name"]:
+                ax.text(
+                    1,
+                    row["pos"],
+                    "no valid trials",
+                    va="center",
+                    ha="left",
+                    color="black",
+                )
+
 
         # Update yticks for reversed order
         ax.set_yticks(df["pos"])
@@ -140,9 +154,10 @@ pythia_python = [
     ("neg_entropy", 5.755290613174439, 0.10519114993798162),
     ("neg_cross_entropy", 6.324386205673218, 0.054910998016978824),
     ("", 0, 0),
-    ("circuit_breakers_no_lora2", 3.3626023578643798, 0.001576164304744805),
     # note that circuit breakers has no LoRA here, the one with lora has no complete trials
     # also note that CB is below initial loss line, because of relearning
+    ("circuit_breakers_no_lora2", 3.3626023578643798, 0.001576164304744805),
+    ("circuit_breakers", 0, 0),
 ]
 
 # 240/120, 100 trials, smol, cruelty, last 50 trials
@@ -165,9 +180,7 @@ smol_cruelty = [
 	("neg_cross_entropy", 3.256914553642273, 0.04405572860637923),
     ("", 0, 0),
 	("circuit_breakers_no_lora2", 2.730552062988282, 0.004185927219279357),
-    ("", 0, 0),
-    # unknown yet
-	# ("circuit_breakers", 2.665551424026489, 0.00012839538391034642),
+	("circuit_breakers", 2.6655803442001345, 5.203522854654165e-05),
 ]
 #     ("down_proj", 2.74, 0.03),
 #     ("gate_proj", 8.93, 0.26),
@@ -213,7 +226,7 @@ fig, axes = create_model_comparison_plot_horizontal(
     ],  # Example with 3 plots using same data
     ["Pythia-14M\npython", "SmolLM-135M\ncruelty", "todo"],
     baselines=[3.626, 2.682, 0],
-    y_min=[0, 2.65, 0],
+    y_min=[0, 2.6, 0],
 )
 plt.show()
 

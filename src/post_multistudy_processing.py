@@ -19,7 +19,7 @@ storage = get_storage(db_url)
 # storage = get_storage()
 
 # config_path = repo_root() / "configs" / "pythia_python.yaml"
-config_path = repo_root() / "configs" / "smol_cruelty.yaml"
+config_path = repo_root() / "configs" / "smol_cruelty2.yaml"
 # config_path = repo_root() / "configs" / "smol_target_modules3.yaml"
 # config_path = repo_root() / "configs" / "smol_target_modules_cruelty.yaml"
 # config_path = repo_root() / "configs" / "pythia_normalization_test.yaml"
