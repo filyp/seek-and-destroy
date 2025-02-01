@@ -49,7 +49,6 @@ config_path = repo_root() / "configs" / "smol_cruelty.yaml"
 with open(config_path, "r") as f:
     full_config = yaml.safe_load(f)
 
-hyperparam_ranges = full_config["hyperparams"]
 config = full_config["general_config"]
 
 config = SimpleNamespace(**config)
@@ -61,12 +60,6 @@ relearn_config = SimpleNamespace(**full_config["relearn_config"])
 # config.model_id = "HuggingFaceTB/SmolLM-135M"
 
 # %%
-hyperparam_ranges["additional_param"] = [0, 1, False]
-    # additional_param_name: forget_momentum
-    # additional_param: [0, 1, false]
-# %%
-
-print(f"{hyperparam_ranges=}")
 
 pt.set_default_device("cuda")
 
@@ -91,22 +84,25 @@ from unlearning_methods.circuit_breakers import circuit_breakers
 
 # %%
 
-# construct hyperparams
-hyperparams = {
-    hp_name: (dist[0] + dist[1]) / 2
-    for hp_name, dist in hyperparam_ranges.items()
-    if isinstance(dist, tuple) or isinstance(dist, list)
-}
-hyperparams = SimpleNamespace(**hyperparams)
+  # adv_decay: [0.3, 1, false]
+  # adv_lr: [0.001, 0.01, true]
+  # fork_every_n_loops: [6, 42, false]
+  # retain_momentum: [0, 0.99, false]
+  # retaining_rate: [2.e-4, 2.e-3, true]
+  # unlearning_rate: [1.e-5, 4.e-4, true]
+hyperparams = SimpleNamespace(
+    additional_param=None,
+    adv_decay=1,
+    adv_lr=0.01,
+    fork_every_n_loops=36,
+    retain_momentum=0.5,
+    retaining_rate=0.001,
+    unlearning_rate=0.0001,
+)
+config.unlearning_loss_fn = "correct_logit_minus_avg"
+# config.unlearning_loss_fn = "neg_cross_entropy"
 
 config.unlearn_steps = 120
-hyperparams.unlearning_rate = 0.00001
-hyperparams.retaining_rate = 0.002
-# hyperparams.adv_decay = 0.9
-
-hyperparams.additional_param = 0.1
-# config.additional_param_name = None
-config.additional_param_name = "forget_momentum"
 
 set_seeds(42)
 pt.cuda.empty_cache()

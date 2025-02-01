@@ -61,6 +61,11 @@ variants:
     additional_param: [0, 1, false]
   # SIU_stream_deactivation:
   #   # todo 
+  SIU_lora:
+    method_name: surgical_irreversible_unlearning_lora
+    lora_amount: 1
+    lora_rank: 8
+    adv_lr: [0.005, 0.05, true]  # LoRA can have a higher learning rate
 
   # ! alternative loss functions
   neg_entropy:
@@ -72,11 +77,6 @@ variants:
   #   # todo
 
   # ! alternative methods and baselines
-  SIU_lora:
-    method_name: surgical_irreversible_unlearning_lora
-    lora_amount: 1
-    lora_rank: 8
-    adv_lr: [0.005, 0.05, true]  # LoRA can have a higher learning rate
   
   circuit_breakers_no_lora2:
     method_name: circuit_breakers_no_lora

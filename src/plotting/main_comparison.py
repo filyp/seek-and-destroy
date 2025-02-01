@@ -17,8 +17,24 @@ from utils.git_and_reproducibility import repo_root
 
 plt.style.use("default")  # Reset to default style
 
-
 # %%
+name_mapping = dict(
+    SIU="SIU",
+    no_r_momentum="- retain momentum",
+    no_adv_decay="- adversary decay",
+    no_masking="- masking",
+    no_adversary="- adversary",
+    SIU_repE_retain="+ repr. eng. retain loss",
+    SIU_discard_growing_weights="+ only shrink weights",
+    SIU_f_momentum="+ forget momentum",
+    SIU_adv_update="+ adversary update",
+    neg_entropy="neg entropy loss",
+    neg_cross_entropy="neg cross entropy loss",
+    SIU_lora="+ adversary is LoRA",
+    circuit_breakers_no_lora2="circuit breakers",
+)
+
+
 def create_model_comparison_plot_horizontal(
     datasets: List[List[Tuple[str, float, float]]],
     model_names: List[str],
@@ -66,7 +82,8 @@ def create_model_comparison_plot_horizontal(
         # Update yticks for reversed order
         ax.set_yticks(df["pos"])
         if show_labels:
-            ax.set_yticklabels(df["study_name"])
+            study_names = [name_mapping[name] for name in df["study_name"]]
+            ax.set_yticklabels(study_names)
         else:
             ax.set_yticklabels([])
             # Verify that study names match the first plot
@@ -109,28 +126,49 @@ def create_model_comparison_plot_horizontal(
 pythia_python = [
     ("SIU", 12.029057579040527, 0.5307093972856548),
     ("", 0, 0),
-    ("- retain momentum", 8.196117925643923, 0.38244385056030655),
-    ("- adversary decay", 6.106322660446167, 0.05145514631107573),
-    ("- masking", 4.665606794357299, 0.08999768020566257),
-    ("- adversary", 4.820731468200684, 0.0900553940410563),
+    ("no_r_momentum", 8.196117925643923, 0.38244385056030655),
+    ("no_adv_decay", 6.106322660446167, 0.05145514631107573),
+    ("no_masking", 4.665606794357299, 0.08999768020566257),
+    ("no_adversary", 4.820731468200684, 0.0900553940410563),
     ("", 0, 0),
-    ("+ repr. eng. retain loss", 9.868167924880984, 0.5643592509286416),
-    ("+ only shrink weights", 10.06520764350891, 0.45754967130730717),
-    ("+ forget momentum", 5.802326269149781, 0.18534438288614874),
-    ("+ adversary update", 7.876785879135134, 0.35882352873382145),
-    ("+ adversary is LoRA", 5.621265392303467, 0.031518234566582884),
+    ("SIU_repE_retain", 9.868167924880984, 0.5643592509286416),
+    ("SIU_discard_growing_weights", 10.06520764350891, 0.45754967130730717),
+    ("SIU_f_momentum", 7.507715721130369, 0.3535885110755663),
+    ("SIU_adv_update", 7.876785879135134, 0.35882352873382145),
+    ("SIU_lora", 5.621265392303467, 0.031518234566582884),
     ("", 0, 0),
-    ("neg entropy loss", 5.755290613174439, 0.10519114993798162),
-    ("neg cross entropy loss", 6.324386205673218, 0.054910998016978824),
+    ("neg_entropy", 5.755290613174439, 0.10519114993798162),
+    ("neg_cross_entropy", 6.324386205673218, 0.054910998016978824),
     ("", 0, 0),
-    ("circuit breakers", 3.3626023578643798, 0.001576164304744805),
+    ("circuit_breakers_no_lora2", 3.3626023578643798, 0.001576164304744805),
     # note that circuit breakers has no LoRA here, the one with lora has no complete trials
     # also note that CB is below initial loss line, because of relearning
 ]
 
-# # 240/120, 150 trials, smol, python, last 30 trials
-# # configs/smol_target_modules3.yaml
-# smol_python = [
+# 240/120, 100 trials, smol, cruelty, last 50 trials
+# configs/smol_cruelty.yaml
+smol_cruelty = [
+	("SIU", 2.8428026723861692, 0.010094514555167924),
+    ("", 0, 0),
+	("no_r_momentum", 2.7638086271286006, 0.003586928917786989),
+	("no_adv_decay", 2.8605710840225225, 0.013383969747182952),
+	("no_masking", 2.722558611317686, 0.0009049595295712889),
+	("no_adversary", 2.8703684759140016, 0.013305645010619538),
+    ("", 0, 0),
+	("SIU_repE_retain", 2.8191870498657225, 0.010730855649932541),
+	("SIU_discard_growing_weights", 2.842701416015625, 0.010646700957507917),
+	("SIU_f_momentum", 2.8377113485336305, 0.010506982889495368),
+	("SIU_adv_update", 2.8458503675460816, 0.010035388469802372),
+	("SIU_lora", 2.8540265417099, 0.009953808890713182),
+    ("", 0, 0),
+	("neg_entropy", 2.845289521217347, 0.010058451789250644),
+	("neg_cross_entropy", 3.256914553642273, 0.04405572860637923),
+    ("", 0, 0),
+	("circuit_breakers_no_lora2", 2.730552062988282, 0.004185927219279357),
+    ("", 0, 0),
+    # unknown yet
+	# ("circuit_breakers", 2.665551424026489, 0.00012839538391034642),
+]
 #     ("down_proj", 2.74, 0.03),
 #     ("gate_proj", 8.93, 0.26),
 #     ("up_proj", 4.83, 0.16),
@@ -170,12 +208,12 @@ fig, axes = create_model_comparison_plot_horizontal(
     # fig, axes = create_model_comparison_plot_horizontal(
     [
         pythia_python,
-        pythia_python,
+        smol_cruelty,
         pythia_python,
     ],  # Example with 3 plots using same data
     ["Pythia-14M\npython", "SmolLM-135M\ncruelty", "todo"],
     baselines=[3.626, 2.682, 0],
-    y_min=[0, 0, 0],
+    y_min=[0, 2.65, 0],
 )
 plt.show()
 
