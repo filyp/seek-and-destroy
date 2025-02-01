@@ -43,7 +43,7 @@ variants:
   no_masking:
     use_masking: false
     # lower unlearning rate, otherwise it is always pruned
-    unlearning_rate: [2.e-5, 2.e-4, true]
+    unlearning_rate: [2.e-6, 1.e-4, true]
   no_adversary:
     train_adversary: false
   
