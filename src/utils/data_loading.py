@@ -120,6 +120,22 @@ def load_python_dataset(tokenizer):
     )
 
 
+def load_pile_bio_forget(tokenizer):
+    pile_bio = load_dataset("lapisrocks/pile-bio", split="train")
+    pile_bio_forget = pile_bio.filter(lambda ex: ex["label"])
+    return prepare_dataset(
+        pile_bio_forget, tokenizer, lambda ex: {"text": ex["txt_chunk"]}
+    )
+
+
+def load_pile_bio_retain(tokenizer):
+    pile_bio = load_dataset("lapisrocks/pile-bio", split="train")
+    pile_bio_retain = pile_bio.filter(lambda ex: not ex["label"])
+    return prepare_dataset(
+        pile_bio_retain, tokenizer, lambda ex: {"text": ex["txt_chunk"]}
+    )
+
+
 dataset_loaders = dict(
     wikitext=load_wikitext,
     python=load_python_dataset,
@@ -128,6 +144,8 @@ dataset_loaders = dict(
     # oscar_es=lambda tokenizer: load_one_oscar_shard("es", tokenizer),
     cruelty=load_cruelty,
     beaver_safe=load_beaver_safe,
+    pile_bio_forget=load_pile_bio_forget,
+    pile_bio_retain=load_pile_bio_retain,
 )
 
 

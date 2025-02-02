@@ -102,6 +102,7 @@ variants:
 
   TAR:
     # it also has grad normalization, and target modules
+    unlearning_rate: [3.e-6, 3.e-5, true]
     unlearning_loss_fn: neg_entropy
     use_masking: false
     retain_momentum: [0, 0, false]
