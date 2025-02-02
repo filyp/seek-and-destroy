@@ -23,11 +23,14 @@ app = modal.App("example-get-started", image=image)
 
 # no timeout
 @app.function(gpu="L4", cpu=(1, 1), timeout=24 * 3600)
-def remote_func(db_url, config_path, variant_num, if_study_exists, n_trials, allow_dirty_repo):
+def remote_func(db_url, config_path, variant_num, if_study_exists, n_trials, allow_dirty_repo, hf_token):
     # clone repo
     subprocess.run(["git", "clone", repo, "/root/code"], check=True)
     os.chdir("/root/code")
     subprocess.run(["git", "checkout", branch], check=True)
+    
+    # set hf token
+    os.environ["HF_TOKEN"] = hf_token
 
     import torch as pt
     from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -64,5 +67,9 @@ def main(
     n_trials: int | None = None,
     allow_dirty_repo: bool = False,
 ):
-    db_url = json.load(open("secret.json"))["db_url"]
-    remote_func.remote(db_url, config_path, variant_num, if_study_exists, n_trials, allow_dirty_repo)
+    # Load both DB URL and HF token from secret.json
+    secrets = json.load(open("secret.json"))
+    db_url = secrets["db_url"]
+    hf_token = secrets["hf_token"]
+    
+    remote_func.remote(db_url, config_path, variant_num, if_study_exists, n_trials, allow_dirty_repo, hf_token)
