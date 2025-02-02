@@ -3,8 +3,8 @@ general_config:
   target_modules:
     - gate_proj
   model_id: meta-llama/Llama-3.2-1B
-  retain_set_name: wikitext
-  forget_set_name: python
+  retain_set_name: pile_bio_retain
+  forget_set_name: pile_bio_forget
   unlearn_steps: 120
   batch_size: 16
   n_trials: 50
@@ -17,8 +17,7 @@ general_config:
 
 relearn_config:
   relearn_steps: 120
-  # todo validate this
-  relearn_lr: 3.0e-3
+  relearn_lr: 1.0e-3
 
 hyperparams:
   additional_param: None  # on default don't use this
@@ -27,8 +26,7 @@ hyperparams:
   fork_every_n_loops: [6, 42, false]
   retain_momentum: [0, 0.99, false]
   retaining_rate: [2.e-4, 2.e-3, true]
-  # todo validate this
-  unlearning_rate: [1.e-5, 1.e-3, true]
+  unlearning_rate: [3.e-7, 3.e-5, true]
 
 variants:
 

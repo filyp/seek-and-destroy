@@ -50,7 +50,7 @@ plt.style.use("default")
 # config_path = repo_root() / "configs" / "pythia_python.yaml"
 # config_path = repo_root() / "configs" / "smol_target_modules2.yaml"
 # config_path = repo_root() / "configs" / "smol_cruelty3.yaml"
-config_path = repo_root() / "configs" / "ablations_and_loss,llama32,python.yaml"
+config_path = repo_root() / "configs" / "ablations_and_loss,llama32,pile-bio.yaml"
 with open(config_path, "r") as f:
     full_config = yaml.safe_load(f)
 
@@ -97,15 +97,16 @@ hyperparams = SimpleNamespace(
     fork_every_n_loops=36,
     retain_momentum=0.5,
     retaining_rate=0.001,
-    unlearning_rate=0.0001,
-    # unlearning_rate=0.00001,
+    unlearning_rate=3e-5,
 )
-# config.unlearning_loss_fn = "neg_cross_entropy"
-config.unlearning_loss_fn = "correct_logit_minus_avg"
-config.train_adversary = False
+config.unlearning_loss_fn = "neg_cross_entropy"
+# config.unlearning_loss_fn = "correct_logit_minus_avg"
+config.train_adversary = True
 # note, not training adverary results in higher base_r loss
 
-config.unlearn_steps = 600
+config.unlearn_steps = 30
+# del model
+pt.cuda.empty_cache()
 
 set_seeds(42)
 pt.cuda.empty_cache()
@@ -116,17 +117,18 @@ model = surgical_irreversible_unlearning(
     forget_batches,
     f_eval,
     r_eval,
-    allowed_r_loss + 0.13,
+    allowed_r_loss,
 )
 
 
 # %%
 set_seeds(42)
-relearn_config.relearn_steps = 300
-# _losses1 = relearn(
+relearn_config.relearn_steps = 30
+relearn_config.relearn_lr = 1e-3
+_losses1 = relearn(
 # _losses2 = relearn(
 # _losses3 = relearn(
-_losses4 = relearn(
+# _losses4 = relearn(
     deepcopy(model),
     relearn_config,
     retain_val_batches,
