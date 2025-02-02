@@ -29,8 +29,8 @@ def remote_func(db_url, config_path, variant_num, if_study_exists, n_trials, all
     os.chdir("/root/code")
     subprocess.run(["git", "checkout", branch], check=True)
     
-    # set hf token
-    os.environ["HF_TOKEN"] = hf_token
+    # set hf token with proper environment variable name
+    os.environ["HUGGING_FACE_HUB_TOKEN"] = hf_token
 
     import torch as pt
     from transformers import AutoModelForCausalLM, AutoTokenizer
