@@ -1,0 +1,51 @@
+general_config:
+  method_name: surgical_irreversible_unlearning
+  target_modules:
+    - gate_proj
+  model_id: HuggingFaceTB/SmolLM-135M
+  retain_set_name: wikitext
+  forget_set_name: python
+  unlearn_steps: 300
+  batch_size: 16
+  n_trials: 50
+  normalize_grads: true
+  # method specific
+  unlearning_loss_fn: neg_cross_entropy
+  use_masking: true
+  train_adversary: true
+  additional_param_name: null
+
+relearn_config:
+  relearn_steps: 300
+  relearn_lr: 3.0e-3
+
+hyperparams:
+  additional_param: None  # on default don't use this
+  adv_decay: [0.3, 1, false]
+  adv_lr: [0.001, 0.03, true]
+  fork_every_n_loops: [6, 42, false]
+  retain_momentum: [0, 0.99, false]
+  retaining_rate: [2.e-4, 2.e-3, true]
+  unlearning_rate: [1.e-5, 1.e-3, true]
+
+variants:
+
+  # ! loss functions
+  neg_cross_entropy_loss:
+    unlearning_loss_fn: neg_cross_entropy
+  neg_entropy_loss:
+    unlearning_loss_fn: neg_entropy
+  logit_loss:
+    unlearning_loss_fn: correct_logit_minus_avg
+
+  # ! ablations
+  no_masking:
+    use_masking: false
+  no_r_momentum:
+    retain_momentum: [0, 0, false]
+  no_adversary:
+    train_adversary: false
+    adv_decay: [1, 1, false]  # it has no effect anyway
+  no_adv_decay:
+    adv_decay: [1, 1, false]
+  

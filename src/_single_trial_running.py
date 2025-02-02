@@ -49,7 +49,8 @@ plt.style.use("default")
 # load YAML configuration
 # config_path = repo_root() / "configs" / "pythia_python.yaml"
 # config_path = repo_root() / "configs" / "smol_target_modules2.yaml"
-config_path = repo_root() / "configs" / "smol_cruelty3.yaml"
+# config_path = repo_root() / "configs" / "smol_cruelty3.yaml"
+config_path = repo_root() / "configs" / "ablations_and_loss,llama32,python.yaml"
 with open(config_path, "r") as f:
     full_config = yaml.safe_load(f)
 
@@ -57,6 +58,12 @@ config = full_config["general_config"]
 
 config = SimpleNamespace(**config)
 relearn_config = SimpleNamespace(**full_config["relearn_config"])
+
+# %%
+# config.retain_set_name = "pile_bio_retain"
+# config.forget_set_name = "pile_bio_forget"
+# config.retain_set_name = "wikitext"
+# config.forget_set_name = "python"
 
 # %%
 
@@ -90,11 +97,11 @@ hyperparams = SimpleNamespace(
     fork_every_n_loops=36,
     retain_momentum=0.5,
     retaining_rate=0.001,
-    # unlearning_rate=0.0001,
-    unlearning_rate=0.00001,
+    unlearning_rate=0.0001,
+    # unlearning_rate=0.00001,
 )
-config.unlearning_loss_fn = "neg_cross_entropy"
-# config.unlearning_loss_fn = "correct_logit_minus_avg"
+# config.unlearning_loss_fn = "neg_cross_entropy"
+config.unlearning_loss_fn = "correct_logit_minus_avg"
 config.train_adversary = False
 # note, not training adverary results in higher base_r loss
 
@@ -116,9 +123,10 @@ model = surgical_irreversible_unlearning(
 # %%
 set_seeds(42)
 relearn_config.relearn_steps = 300
-# _losses = relearn(
+# _losses1 = relearn(
 # _losses2 = relearn(
-_losses3 = relearn(
+# _losses3 = relearn(
+_losses4 = relearn(
     deepcopy(model),
     relearn_config,
     retain_val_batches,
@@ -126,14 +134,17 @@ _losses3 = relearn(
 )
 
 # %%
+
 # plot losses
-plt.plot([l.item() for l in _losses], label="CE")
-plt.plot([l.item() for l in _losses2], label="CLMA")
-plt.plot([l.item() for l in _losses3], label="CE+adv")
+plt.plot([l.item() for l in _losses1], label="CE adv")
+plt.plot([l.item() for l in _losses2], label="CLMA adv")
+plt.plot([l.item() for l in _losses3], label="CE no adv")
+plt.plot([l.item() for l in _losses4], label="CLMA no adv")
 plt.legend()
 # title
-plt.title("SmolLM-135M\nrelearning dynamics")
+plt.title("SmolLM-135M\nrelearning dynamics\Python")
 plt.show()
+# %%
 
 # %% search for relearn lr
 lrs_no_lora = pt.logspace(-2.5, -1.5, 7)
@@ -154,33 +165,12 @@ for lr in lrs_no_lora:
     forget_losses_no_lora.append(min(_losses))
 
 
-# %% search for relearn lr
-lrs_lora = pt.logspace(-2, 1, 7)
-forget_losses_lora = []
-for lr in lrs_lora:
-    relearn_config.relearn_lr = lr
-    relearn_config.relearn_steps = 60
-    relearn_config.relearn_lora_conf = dict(target_modules="all-linear")
-
-    set_seeds(42)
-    _losses = relearn(
-        deepcopy(model),
-        relearn_config,
-        retain_val_batches,
-        forget_val_batches,
-        use_lora=True,
-    )
-    forget_losses_lora.append(min(_losses))
-
 # %%
 
-_lrs_lora = [l.item() for l in lrs_lora]
 _lrs_no_lora = [l.item() for l in lrs_no_lora]
-_forget_losses_lora = [f.cpu().numpy() for f in forget_losses_lora]
 _forget_losses_no_lora = [f.cpu().numpy() for f in forget_losses_no_lora]
 
 plt.plot(_lrs_no_lora, _forget_losses_no_lora, label="no LoRA", marker="o")
-plt.plot(_lrs_lora, _forget_losses_lora, label="LoRA", marker="o")
 plt.xscale("log")
 # plt.yscale("log")
 # y lim at 5
@@ -191,12 +181,3 @@ plt.ylabel("forget loss")
 plt.title("SmolLM-135M\nrelearn lr vs forget loss (LoRA)")
 plt.legend()
 plt.show()
-
-# %%
-_lrs_no_lora
-# %%
-_forget_losses_lora
-# %%
-for lr, loss in zip(_lrs_no_lora, _forget_losses_no_lora):
-    print(f"lr: {lr:.2e}, loss: {loss:.2f}")
-# %%
