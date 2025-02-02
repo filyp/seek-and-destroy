@@ -107,6 +107,6 @@ variants:
     retain_momentum: [0, 0, false]
     additional_param_name: rep_eng_retain_lr
     additional_param: [0, 2, false]
-    adv_decay: None
+    adv_decay: [1, 1, false]
   # maybe todo: TAR that can use safeguarding step?
     
