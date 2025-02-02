@@ -24,7 +24,6 @@ from unlearning_methods.surgical_irreversible_unlearning import (
 from unlearning_methods.surgical_irreversible_unlearning_lora import (
     surgical_irreversible_unlearning_lora,
 )
-from unlearning_methods.tar import tar
 from utils.data_loading import CachedBatches, dataset_loaders
 from utils.git_and_reproducibility import *
 from utils.model_operations import relearn
@@ -91,7 +90,6 @@ def run_study(storage, config_path, variant_num, if_study_exists="fail", n_trial
         circuit_breakers_no_lora=circuit_breakers_no_lora,
         surgical_irreversible_unlearning_lora=surgical_irreversible_unlearning_lora,
         surgical_irreversible_unlearning=surgical_irreversible_unlearning,
-        tar=tar,
     )[config.method_name]
 
     def objective(trial):
