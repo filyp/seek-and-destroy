@@ -17,3 +17,4 @@ adversarial_adapters.py.lprof
 src/tmp.py
 src/grad_misalignment.py
 src/debug.txt
+src/tofu.py
