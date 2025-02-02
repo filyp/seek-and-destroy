@@ -18,8 +18,8 @@ db_url = json.load(open(repo_root() / "secret.json"))["db_url"]
 storage = get_storage(db_url)
 # storage = get_storage()
 
-config_path = repo_root() / "configs" / "pythia_python.yaml"
-# config_path = repo_root() / "configs" / "smol_cruelty2.yaml"
+# config_path = repo_root() / "configs" / "pythia_python.yaml"
+config_path = repo_root() / "configs" / "smol_cruelty3.yaml"
 # config_path = repo_root() / "configs" / "smol_target_modules3.yaml"
 # config_path = repo_root() / "configs" / "smol_target_modules_cruelty.yaml"
 # config_path = repo_root() / "configs" / "pythia_normalization_test.yaml"
@@ -82,7 +82,7 @@ markdown_table = """\
 | ------------------- | ----- | ---------- | ----- |"""
 python_results = ""
 for study in studies:
-    markdown_line, last_n_mean, last_n_sem = get_stats_from_last_n_trials(study, n=50)
+    markdown_line, last_n_mean, last_n_sem = get_stats_from_last_n_trials(study, n=20)
     markdown_table += f"\n{markdown_line}"
 
     pure_name = study.study_name.split("|")[-1]

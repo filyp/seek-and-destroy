@@ -105,11 +105,12 @@ variants:
     # it also has added grad norm and target modules compared to original
     # original didn't work better, I felt it was actually harder to balance probably
 
-  # tar:
-  #   method_name: tar
-  #   adv_decay: [1, 1, false]  # has no effect here, so set it to 1
-  #   # todo needs also repE loss
-  #   # todo grad norm
-  #   # todo target modules?
-  # # todo TAR that can use safeguarding step?
-    
+  TAR:
+    # it also has grad normalization, and target modules
+    unlearning_loss_fn: neg_entropy
+    use_masking: false
+    retain_momentum: None
+    additional_param_name: rep_eng_retain_lr
+    additional_param: [0, 2, false]
+    adv_decay: None
+  # maybe todo: TAR that can use safeguarding step?

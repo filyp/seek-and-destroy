@@ -59,8 +59,7 @@ variants:
   SIU_adv_update:
     additional_param_name: adv_update
     additional_param: [0, 1, false]
-  # SIU_stream_deactivation:
-  #   # todo 
+  # maybe todo: SIU_stream_deactivation:
   SIU_lora:
     method_name: surgical_irreversible_unlearning_lora
     lora_amount: 1
@@ -72,9 +71,8 @@ variants:
     unlearning_loss_fn: neg_entropy
   neg_cross_entropy:
     unlearning_loss_fn: neg_cross_entropy
-  # representation_noising:
+  # maybe todo: representation_noising:
   #   unlearning_loss_fn: representation_noising
-  #   # todo
 
   # ! alternative methods and baselines
   
@@ -102,11 +100,13 @@ variants:
     # it also has added grad norm and target modules compared to original
     # original didn't work better, I felt it was actually harder to balance probably
 
-  # tar:
-  #   method_name: tar
-  #   adv_decay: [1, 1, false]  # has no effect here, so set it to 1
-  #   # todo needs also repE loss
-  #   # todo grad norm
-  #   # todo target modules?
-  # # todo TAR that can use safeguarding step?
+  TAR:
+    # it also has grad normalization, and target modules
+    unlearning_loss_fn: neg_entropy
+    use_masking: false
+    retain_momentum: None
+    additional_param_name: rep_eng_retain_lr
+    additional_param: [0, 2, false]
+    adv_decay: None
+  # maybe todo: TAR that can use safeguarding step?
     
