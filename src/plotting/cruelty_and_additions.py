@@ -33,6 +33,7 @@ name_mapping = dict(
     SIU_lora="+ adversary is LoRA",
     circuit_breakers_no_lora2="circuit breakers",
     circuit_breakers="circuit breakers w/ LoRA",
+    TAR="TAR",
 )
 
 
@@ -139,98 +140,65 @@ def create_model_comparison_plot_horizontal(
 # - circuit_breakers (with lora) had no complete trials!
 # - retaining_rate near bottom edge for SIU and neg_entropy
 # - adv_lr sometimes wants to be higher but it's already crazy high
-# - (stats made from last 50, where 600 trials total)
+# - (stats made from last 20, where 600 trials total)
 # configs/pythia_python.yaml
 pythia_python = [
-    ("SIU", 12.029057579040527, 0.5307093972856548),
+	("SIU", 11.302746677398682, 0.9497092536865647),
     ("", 0, 0),
-    ("no_r_momentum", 8.196117925643923, 0.38244385056030655),
-    ("no_adv_decay", 6.106322660446167, 0.05145514631107573),
-    ("no_masking", 4.665606794357299, 0.08999768020566257),
-    ("no_adversary", 4.820731468200684, 0.0900553940410563),
+	("no_masking", 4.568444263935089, 0.13803239785316707),
+	("no_r_momentum", 9.303237581253063, 0.5641017899212439),
+	("no_adversary", 4.960049247741699, 0.1585683651618381),
+	("no_adv_decay", 6.130108523368835, 0.0807836960087648),
     ("", 0, 0),
-    ("SIU_repE_retain", 9.868167924880984, 0.5643592509286416),
-    ("SIU_discard_growing_weights", 10.06520764350891, 0.45754967130730717),
-	("SIU_f_momentum", 12.334067068099976, 0.5176935551249204),
-    ("SIU_adv_update", 7.876785879135134, 0.35882352873382145),
-    ("SIU_lora", 5.621265392303467, 0.031518234566582884),
+	("SIU_repE_retain", 10.48015248775482, 0.8821893503325897),
+	("SIU_discard_growing_weights", 9.624690055847173, 0.805131975150987),
+	("SIU_f_momentum", 12.176710772514344, 0.966813458061461),
+	("SIU_adv_update", 8.651150655746466, 0.5897299821533768),
+	("SIU_lora", 5.689364814758301, 0.03925986673657358),
     ("", 0, 0),
-    ("neg_entropy", 5.755290613174439, 0.10519114993798162),
-    ("neg_cross_entropy", 6.324386205673218, 0.054910998016978824),
+	("neg_entropy", 5.7411521673202515, 0.16596601964204197),
+	("neg_cross_entropy", 6.559857630729676, 0.039417393403911184),
     ("", 0, 0),
-    # note that circuit breakers has no LoRA here, the one with lora has no complete trials
-    # also note that CB is below initial loss line, because of relearning
-    ("circuit_breakers_no_lora2", 3.3626023578643798, 0.001576164304744805),
+	("circuit_breakers_no_lora2", 3.362711751461029, 0.0024293986434816813),
     ("circuit_breakers", 0, 0),
+	("TAR", 4.0887900471687315, 0.05728236559810787),
 ]
 
-# 240/120, 100 trials, smol, cruelty, last 50 trials
+# 240/120, 100 trials, smol, cruelty, last 20 trials
 # configs/smol_cruelty.yaml
 smol_cruelty = [
-	("SIU", 2.8428026723861692, 0.010094514555167924),
+	("SIU", 2.882917904853822, 0.014464900941069923),
     ("", 0, 0),
-	("no_r_momentum", 2.7638086271286006, 0.003586928917786989),
-	("no_adv_decay", 2.8605710840225225, 0.013383969747182952),
-	("no_masking", 2.722558611317686, 0.0009049595295712889),
-	("no_adversary", 2.8703684759140016, 0.013305645010619538),
+	("no_masking", 2.722558611317686, 0.0014308666518598864),
+	("no_r_momentum", 2.7780295968055713, 0.003445853332054254),
+	("no_adversary", 2.930646777153016, 0.015212119188045192),
+	("no_adv_decay", 2.876294970512391, 0.017921953530745247),
     ("", 0, 0),
-	("SIU_repE_retain", 2.8191870498657225, 0.010730855649932541),
-	("SIU_discard_growing_weights", 2.842701416015625, 0.010646700957507917),
-	("SIU_f_momentum", 2.8377113485336305, 0.010506982889495368),
-	("SIU_adv_update", 2.8458503675460816, 0.010035388469802372),
-	("SIU_lora", 2.8540265417099, 0.009953808890713182),
+	("SIU_repE_retain", 2.8485352873802183, 0.01692174053410757),
+	("SIU_discard_growing_weights", 2.839431333541869, 0.016896582883511726),
+	("SIU_f_momentum", 2.8836338758468614, 0.01338708066582641),
+	("SIU_adv_update", 2.873016190528869, 0.014488199160083039),
+	("SIU_lora", 2.8853751540184027, 0.012510010430689557),
     ("", 0, 0),
-	("neg_entropy", 2.845289521217347, 0.010058451789250644),
-	("neg_cross_entropy", 3.256914553642273, 0.04405572860637923),
+	("neg_entropy", 2.8860881447792064, 0.013295418607136959),
+	("neg_cross_entropy", 3.3219134926795943, 0.06611723283540369),
     ("", 0, 0),
-	("circuit_breakers_no_lora2", 2.730552062988282, 0.004185927219279357),
-	("circuit_breakers", 2.6655803442001345, 5.203522854654165e-05),
+	("circuit_breakers_no_lora2", 2.747757804393768, 0.003496623197401452),
+	("circuit_breakers", 2.665582692623138, 7.621886663560849e-05),
+	("TAR", 2.726053619384765, 0.002887879791405018),
+
 ]
-#     ("down_proj", 2.74, 0.03),
-#     ("gate_proj", 8.93, 0.26),
-#     ("up_proj", 4.83, 0.16),
-#     ("o_proj", 3.97, 0.20),
-#     ("q_proj", 2.71, 0.05),
-#     ("k_proj", 2.23, 0.01),
-#     ("v_proj", 7.93, 0.34),
-#     ("", 0, 0),
-#     ("gate+v", 10.07, 0.46),
-#     ("gate+v+up", 9.58, 0.37),
-#     ("gate+v+up+o", 9.30, 0.36),
-#     ("gate+v+up+o+q", 9.20, 0.34),
-#     # ("", 0, 0),
-#     ("all_linear", 7.06, 0.32),
-# ]
 
 # 240/240, 100 trials, smol, cruelty, last 20 trials
 # configs/smol_cruelty3.yaml
 # it has a much more aggressive relearning than smol_cruelty
 smol_cruelty3 = [
-	# ("SIU", 2.452436771392822, 0.0019711834658039285),
-    # ("", 0, 0),
-	# ("no_r_momentum", 2.427477779388427, 0.0004189843482524389),
-	# ("no_adv_decay", 2.4630291032791134, 0.003483637028215811),
-	# ("no_masking", 2.4217770099639893, 7.996996279996384e-05),
-	# ("no_adversary", 2.452438778877258, 0.0021593074528723577),
-    # ("", 0, 0),
-	# ("SIU_repE_retain", 2.452640852928162, 0.002567258155855306),
-	# ("SIU_discard_growing_weights", 2.448860177993775, 0.0025056122043241066),
-	# ("SIU_f_momentum", 2.4506344747543336, 0.0020490379915825184),
-	# ("SIU_adv_update", 2.448111257553101, 0.002227616246905936),
-	# ("SIU_lora", 2.432250038782757, 0.00173055540308478),
-    # ("", 0, 0),
-    # ("neg_entropy", 0, 0),
-    # ("neg_cross_entropy", 0, 0),
-    # ("", 0, 0),
-    # ("circuit_breakers_no_lora2", 0, 0),
-    # ("circuit_breakers", 0, 0),
-
 	("SIU", 2.460569596290587, 0.002824004527368837),
     ("", 0, 0),
-	("no_r_momentum", 2.4281624913215625, 0.0005217204324291974),
-	("no_adv_decay", 2.4825207471847532, 0.0037945551420759797),
 	("no_masking", 2.4219161152839654, 0.00012044505171894194),
+	("no_r_momentum", 2.4281624913215625, 0.0005217204324291974),
 	("no_adversary", 2.4600162625312807, 0.002734088986453469),
+	("no_adv_decay", 2.4825207471847532, 0.0037945551420759797),
     ("", 0, 0),
 	("SIU_repE_retain", 2.4557696938514715, 0.003714679692389006),
 	("SIU_discard_growing_weights", 2.4590118646621706, 0.003190898526513529),
@@ -239,29 +207,12 @@ smol_cruelty3 = [
 	("SIU_lora", 2.4467007517814636, 0.0020760997079391757),
     ("", 0, 0),
 	("neg_entropy", 2.4415155291557302, 0.0022896276624128284),
-	("neg_cross_entropy", 2.5647097468376154, 0.012552127953993566),
+	("neg_cross_entropy", 2.6198157191276548, 0.014454618108392098),
     ("", 0, 0),
-    ("circuit_breakers_no_lora2", 0, 0),
-    ("circuit_breakers", 0, 0),
+	("circuit_breakers_no_lora2", 2.4364689111709605, 0.0013721766556624578),
+	("circuit_breakers", 2.4158615469932547, 2.063177649415145e-05),
+	("TAR", 2.4225908398628233, 0.0002518591581188142),
 ]
-
-# # 240/120, 250 trials, smol, cruelty, 0.1 retain_loss_budget, last 30 trials
-# # configs/smol_target_modules_cruelty.yaml
-# smol_cruelty = [
-#     ("down_proj", 2.7491, 0.0003),
-#     ("gate_proj", 2.9338, 0.0034),
-#     ("up_proj", 2.8199, 0.0044),
-#     ("o_proj", 2.9478, 0.0088),
-#     ("q_proj", 2.7555, 0.0014),
-#     ("k_proj", 2.7638, 0.0009),
-#     ("v_proj", 2.8453, 0.0058),
-#     ("", 0, 0),
-#     ("gate_v", 2.8640, 0.0022),
-#     ("gate_v_up", 2.8572, 0.0032),
-#     ("gate_v_up_o", 2.8864, 0.0034),
-#     ("gate_v_up_o_q", 2.8722, 0.0039),
-#     ("all_linear", 2.8032, 0.0010),
-# ]
 
 # Create and show the plot
 fig, axes = create_model_comparison_plot_horizontal(
@@ -271,7 +222,7 @@ fig, axes = create_model_comparison_plot_horizontal(
         smol_cruelty,
         smol_cruelty3,
     ],  # Example with 3 plots using same data
-    ["Pythia-14M\npython", "SmolLM-135M\ncruelty", "SmolLM-135M\ncruelty3"],
+    ["Pythia-14M\npython\n", "SmolLM-135M\ncruelty\nrelearning_rate=1e-4", "SmolLM-135M\ncruelty3\nrelearning_rate=5e-3"],
     baselines=[3.626, 2.682, 2.682],
     y_min=[0, 2.6, 2.4],
 )
@@ -279,6 +230,6 @@ plt.show()
 
 # %%
 
-plot_path = repo_root() / "paper" / "plots" / "main_comparison.pdf"
+plot_path = repo_root() / "paper" / "plots" / "cruelty_and_additions.pdf"
 fig.savefig(plot_path)
 # %%
