@@ -84,7 +84,7 @@ def make_sure_optimal_values_are_not_near_range_edges(study):
 # stats for the last n non-pruned trials
 def get_stats_from_last_n_trials(study, trials, n=10):
     ok_trials = [t for t in trials if t.state == optuna.trial.TrialState.COMPLETE]
-    print(f"{study.study_name}: len(ok_trials): {len(ok_trials)}")
+    print(f"all_trials={len(trials)}, ok_trials={len(ok_trials)}, {study.study_name}")
     values = [t.values[0] for t in ok_trials]
 
     # max_val = study.best_trial.values[0]

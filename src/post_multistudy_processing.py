@@ -28,11 +28,11 @@ storage = get_storage(db_url)
 # config_path = repo_root() / "configs" / "ablations_and_loss,smol,python.yaml"
 
 
-config_path = repo_root() / "configs" / "ablations_and_loss,smol,python.yaml"
+# config_path = repo_root() / "configs" / "ablations_and_loss,smol,python.yaml"
 # config_path = repo_root() / "configs" / "ablations_and_loss,smol,pile-bio.yaml"
 # config_path = repo_root() / "configs" / "ablations_and_loss,llama32,python.yaml"
 # config_path = repo_root() / "configs" / "ablations_and_loss,llama32,pile-bio.yaml"
-# config_path = repo_root() / "configs" / "ablations_and_loss,pythia,python.yaml"
+config_path = repo_root() / "configs" / "ablations_and_loss,pythia,python.yaml"
 # config_path = repo_root() / "configs" / "ablations_and_loss,pythia,pile-bio.yaml"
 
 
