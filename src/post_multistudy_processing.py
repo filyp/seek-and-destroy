@@ -20,17 +20,27 @@ storage = get_storage(db_url)
 
 # config_path = repo_root() / "configs" / "pythia_python.yaml"
 # config_path = repo_root() / "configs" / "smol_cruelty.yaml"
-config_path = repo_root() / "configs" / "smol_cruelty3.yaml"
+# config_path = repo_root() / "configs" / "smol_cruelty3.yaml"
 # config_path = repo_root() / "configs" / "smol_target_modules3.yaml"
 # config_path = repo_root() / "configs" / "smol_target_modules_cruelty.yaml"
 # config_path = repo_root() / "configs" / "pythia_normalization_test.yaml"
 # config_path = repo_root() / "configs" / "pythia_target_modules.yaml"
+# config_path = repo_root() / "configs" / "ablations_and_loss,smol,python.yaml"
+
+
+config_path = repo_root() / "configs" / "ablations_and_loss,smol,python.yaml"
+# config_path = repo_root() / "configs" / "ablations_and_loss,smol,pile-bio.yaml"
+# config_path = repo_root() / "configs" / "ablations_and_loss,llama32,python.yaml"
+# config_path = repo_root() / "configs" / "ablations_and_loss,llama32,pile-bio.yaml"
+# config_path = repo_root() / "configs" / "ablations_and_loss,pythia,python.yaml"
+# config_path = repo_root() / "configs" / "ablations_and_loss,pythia,pile-bio.yaml"
+
 
 # study_summaries = optuna.study.get_all_study_summaries(storage)
 # sorted_studies = sorted(study_summaries, key=lambda s: s.datetime_start)
 
 # %% get the studies
-# note: trials loading takes some time, and also DB usage, so maybe cache it
+# note: trials loading takes some time, and also DB usage, so we cache it
 # load YAML configuration
 with open(config_path, "r") as f:
     full_config = yaml.safe_load(f)
@@ -40,7 +50,6 @@ multistudy_name = Path(config_path).stem
 config = SimpleNamespace(**full_config["general_config"])
 relearn_config = SimpleNamespace(**full_config["relearn_config"])
 
-
 studies = []
 all_trials = []
 for variant_name in full_config["variants"]:
@@ -49,11 +58,11 @@ for variant_name in full_config["variants"]:
         f"{config.forget_set_name}"
         f"|{multistudy_name}|{variant_name}"
     )
-    print(study_name)
     try:
         study = optuna.load_study(study_name=study_name, storage=storage)
         trials = study.get_trials()
         if any(t.state == optuna.trial.TrialState.COMPLETE for t in trials):
+            print(study_name, len(trials))
             studies.append(study)
             all_trials.append(trials)
         else:
@@ -76,10 +85,6 @@ plot
 # %% check if optimal values are near range edges
 for study in studies:
     make_sure_optimal_values_are_not_near_range_edges(study)
-
-# %% trial num stats
-for study, trials in zip(studies, all_trials):
-    print(len(trials), study.study_name)
 
 # %% get stats for the last N trials
 markdown_table = """\

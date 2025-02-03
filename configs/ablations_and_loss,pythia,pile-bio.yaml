@@ -22,11 +22,11 @@ relearn_config:
 hyperparams:
   additional_param: None  # on default don't use this
   adv_decay: [0.3, 1, false]
-  adv_lr: [0.001, 0.01, true]
+  adv_lr: [0.001, 0.06, true]
   fork_every_n_loops: [6, 42, false]
   retain_momentum: [0, 0.99, false]
-  retaining_rate: [2.e-4, 2.e-3, true]
-  unlearning_rate: [1.e-5, 1.e-3, true]
+  retaining_rate: [3.e-4, 3.e-3, true]
+  unlearning_rate: [1.e-7, 1.e-3, true]
 
 variants:
 

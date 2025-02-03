@@ -29,6 +29,8 @@ def surgical_irreversible_unlearning(
         for name, p in model.named_parameters()
         if any(f"{m}.weight" in name for m in config.target_modules)
     ]
+    # normalizing by the total number of parameters ** 0.5 is useful for
+    # experiments with varying target modules, to make unlearning rate comparable
     total_interven_numel = sum(p.numel() for p in interven_params)
 
     # require grads only on intervened params
