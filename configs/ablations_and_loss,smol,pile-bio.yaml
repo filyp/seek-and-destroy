@@ -30,14 +30,6 @@ hyperparams:
 
 variants:
 
-  # ! loss functions
-  neg_cross_entropy_loss:
-    unlearning_loss_fn: neg_cross_entropy
-  neg_entropy_loss:
-    unlearning_loss_fn: neg_entropy
-  logit_loss:
-    unlearning_loss_fn: correct_logit_minus_avg
-
   # ! ablations
   no_masking:
     use_masking: false
@@ -49,3 +41,10 @@ variants:
   no_adv_decay:
     adv_decay: [1, 1, false]
   
+  # ! loss functions
+  neg_cross_entropy_loss:
+    unlearning_loss_fn: neg_cross_entropy
+  neg_entropy_loss:
+    unlearning_loss_fn: neg_entropy
+  logit_loss:
+    unlearning_loss_fn: correct_logit_minus_avg
