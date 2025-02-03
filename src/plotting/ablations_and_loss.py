@@ -41,7 +41,9 @@ for multistudy_name in multistudy_names:
     multistudy_to_method_stats[multistudy_name] = dict()
 
     # load YAML configuration
-    config_path = repo_root() / "configs" / f"ablations_and_loss,{multistudy_name}.yaml"
+    config_path = (
+        repo_root() / "configs" / f"ablations_and_loss2,{multistudy_name}.yaml"
+    )
     with open(config_path, "r") as f:
         full_config = yaml.safe_load(f)
 
@@ -58,11 +60,11 @@ for multistudy_name in multistudy_names:
         try:
             study = optuna.load_study(study_name=study_name, storage=storage)
         except KeyError:
-            print(f"Study {study_name} not found")
+            # print(f"Study {study_name} not found")
             continue
 
         if not any(t.state == optuna.trial.TrialState.COMPLETE for t in study.trials):
-            print(f"Study {study_name} has no complete trials!")
+            # print(f"Study {study_name} has no complete trials!")
             continue
 
         # get stats for the last N trials
@@ -75,14 +77,14 @@ for multistudy_name in multistudy_names:
             last_n_sem,
         )
 
-        # # check if optimal values are near range edges
-        # make_sure_optimal_values_are_not_near_range_edges(study)
+        # check if optimal values are near range edges
+        make_sure_optimal_values_are_not_near_range_edges(study)
 
 
 # %%
 titles_dict = {
     "neg_cross_entropy_loss": "neg cross entropy loss",
-    "neg_entropy_loss": "neg entropy loss", 
+    "neg_entropy_loss": "neg entropy loss",
     "logit_loss": "logit loss",
     "no_masking": "no masking",
     "no_r_momentum": "no r momentum",
@@ -154,10 +156,6 @@ plt.tight_layout()
 # plt.show()  # Ensure the plot is displayed
 
 # %%
-method_to_color
 
-# %%
-
-# plot_path = repo_root() / "paper" / "plots" / "main_comparison.pdf"
-# fig.savefig(plot_path)
-# # %%
+plot_path = repo_root() / "paper" / "plots" / "ablations_and_loss.pdf"
+fig.savefig(plot_path)

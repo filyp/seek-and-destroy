@@ -1,14 +1,15 @@
 general_config:
   method_name: surgical_irreversible_unlearning
   target_modules:
-    - dense_h_to_4h  # equivalent of gate_proj
-  model_id: EleutherAI/pythia-14m
-  retain_set_name: pile_bio_retain
-  forget_set_name: pile_bio_forget
+    - gate_proj
+  model_id: HuggingFaceTB/SmolLM-135M
+  retain_set_name: wikitext
+  forget_set_name: python
   unlearn_steps: 300
   batch_size: 16
   n_trials: 100
   normalize_grads: true
+  retain_loss_budget: 0.05
   # method specific
   unlearning_loss_fn: neg_cross_entropy
   use_masking: true
@@ -17,16 +18,16 @@ general_config:
 
 relearn_config:
   relearn_steps: 300
-  relearn_lr: 1.0e-4
+  relearn_lr: 3.0e-3
 
 hyperparams:
   additional_param: None  # on default don't use this
   adv_decay: [0.3, 1, false]
-  adv_lr: [0.001, 0.06, true]
+  adv_lr: [0.0003, 0.06, true]
   fork_every_n_loops: [6, 42, false]
   retain_momentum: [0, 0.99, false]
-  retaining_rate: [3.e-4, 3.e-3, true]
-  unlearning_rate: [1.e-7, 1.e-3, true]
+  retaining_rate: [3.e-4, 8.e-3, true]
+  unlearning_rate: [3.e-7, 3.e-1, true]
 
 variants:
 

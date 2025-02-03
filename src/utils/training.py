@@ -71,15 +71,13 @@ def make_sure_optimal_values_are_not_near_range_edges(study):
             max_ = np.log10(max_)
             value = np.log10(value)
 
+        method_name = study.study_name.split("|")[-1]
         if value < min_ + 0.1 * (max_ - min_):
-            print(f"\n{study.study_name}")
-            print(f"WARNING: {param_name} in the bottom 10% of the range in best trial")
-            print(f"range: {min_} - {max_}, value: {value}, log={param_dist.log}")
+            print(f"{method_name}\t{param_name}\t{value} in bottom 10%")
         if value > max_ - 0.1 * (max_ - min_):
-            print(f"\n{study.study_name}")
-            print(f"WARNING: {param_name} in the top 10% of the range in best trial")
-            print(f"range: {min_} - {max_}, value: {value}, log={param_dist.log}")
-
+            print(f"{method_name}\t{param_name}\t{value} in top 10%")
+            # print(f"WARNING: {param_name} in the top 10% of the range in best trial")
+            # print(f"range: {min_} - {max_}, value: {value}, log={param_dist.log}")
 
 # stats for the last n non-pruned trials
 def get_stats_from_last_n_trials(study, trials, n=10):

@@ -28,13 +28,12 @@ storage = get_storage(db_url)
 # config_path = repo_root() / "configs" / "ablations_and_loss,smol,python.yaml"
 
 
-# config_path = repo_root() / "configs" / "ablations_and_loss,smol,python.yaml"
-# config_path = repo_root() / "configs" / "ablations_and_loss,smol,pile-bio.yaml"
-# config_path = repo_root() / "configs" / "ablations_and_loss,llama32,python.yaml"
-# config_path = repo_root() / "configs" / "ablations_and_loss,llama32,pile-bio.yaml"
-config_path = repo_root() / "configs" / "ablations_and_loss,pythia,python.yaml"
-# config_path = repo_root() / "configs" / "ablations_and_loss,pythia,pile-bio.yaml"
-
+# config_path = repo_root() / "configs" / "ablations_and_loss2,pythia,python.yaml"
+# config_path = repo_root() / "configs" / "ablations_and_loss2,pythia,pile-bio.yaml"
+# config_path = repo_root() / "configs" / "ablations_and_loss2,smol,python.yaml"
+# config_path = repo_root() / "configs" / "ablations_and_loss2,smol,pile-bio.yaml"
+# config_path = repo_root() / "configs" / "ablations_and_loss2,llama32,python.yaml"
+config_path = repo_root() / "configs" / "ablations_and_loss2,llama32,pile-bio.yaml"
 
 # study_summaries = optuna.study.get_all_study_summaries(storage)
 # sorted_studies = sorted(study_summaries, key=lambda s: s.datetime_start)
@@ -116,3 +115,5 @@ print(python_results)
 # print(trials)
 # for trial in trials:
 #     new_study.add_trial(trial)
+
+# %%

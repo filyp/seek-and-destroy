@@ -50,7 +50,7 @@ plt.style.use("default")
 # config_path = repo_root() / "configs" / "pythia_python.yaml"
 # config_path = repo_root() / "configs" / "smol_target_modules2.yaml"
 # config_path = repo_root() / "configs" / "smol_cruelty3.yaml"
-config_path = repo_root() / "configs" / "ablations_and_loss,llama32,python.yaml"
+config_path = repo_root() / "configs" / "ablations_and_loss2,llama32,python.yaml"
 with open(config_path, "r") as f:
     full_config = yaml.safe_load(f)
 
