@@ -23,13 +23,21 @@ relearn_config:
 hyperparams:
   additional_param: None  # on default don't use this
   adv_decay: [0.3, 1, false]
-  adv_lr: [0.001, 0.06, true]
+  adv_lr: [0.0003, 0.1, true]
   fork_every_n_loops: [6, 42, false]
   retain_momentum: [0, 0.99, false]
-  retaining_rate: [3.e-4, 3.e-3, true]
-  unlearning_rate: [1.e-7, 1.e-2, true]
+  retaining_rate: [1.e-4, 1.e-2, true]
+  unlearning_rate: [1.e-7, 3.e-2, true]
 
 variants:
+
+  # ! loss functions
+  neg_cross_entropy_loss:
+    unlearning_loss_fn: neg_cross_entropy
+  neg_entropy_loss:
+    unlearning_loss_fn: neg_entropy
+  logit_loss:
+    unlearning_loss_fn: correct_logit_minus_avg
 
   # ! ablations
   no_masking:
@@ -41,11 +49,6 @@ variants:
     adv_decay: [1, 1, false]  # it has no effect anyway
   no_adv_decay:
     adv_decay: [1, 1, false]
+  no_normalization:
+    normalize_grads: false
   
-  # ! loss functions
-  neg_cross_entropy_loss:
-    unlearning_loss_fn: neg_cross_entropy
-  neg_entropy_loss:
-    unlearning_loss_fn: neg_entropy
-  logit_loss:
-    unlearning_loss_fn: correct_logit_minus_avg
