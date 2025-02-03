@@ -60,11 +60,12 @@ def eval_(model, f_eval_batch, r_eval_batch, allowed_r_loss=None, step=""):
 
 
 def make_sure_optimal_values_are_not_near_range_edges(study):
+    best_trial = study.best_trial  # ask only once because it's slow
     """Make sure the value is not in the top or bottom 10% of the range."""
-    for param_name, param_dist in study.best_trial.distributions.items():
+    for param_name, param_dist in best_trial.distributions.items():
         min_ = param_dist.low
         max_ = param_dist.high
-        value = study.best_params[param_name]
+        value = best_trial.params[param_name]
         if param_dist.log:
             min_ = np.log10(min_)
             max_ = np.log10(max_)
@@ -81,18 +82,17 @@ def make_sure_optimal_values_are_not_near_range_edges(study):
 
 
 # stats for the last n non-pruned trials
-def get_stats_from_last_n_trials(study, n=10):
-    ok_trials = [t for t in study.trials if t.state == optuna.trial.TrialState.COMPLETE]
+def get_stats_from_last_n_trials(study, trials, n=10):
+    ok_trials = [t for t in trials if t.state == optuna.trial.TrialState.COMPLETE]
     print(f"{study.study_name}: len(ok_trials): {len(ok_trials)}")
     values = [t.values[0] for t in ok_trials]
 
-    max_val = study.best_trial.values[0]
+    # max_val = study.best_trial.values[0]
     last_n_mean = np.mean(values[-n:])
     last_n_sem = np.std(values[-n:]) / np.sqrt(n)
     pure_name = study.study_name.split("|")[-1]
-    result = f"| {last_n_mean:.4f}±{last_n_sem:.4f} | {max_val:.4f} | {pure_name} |  |"
-    # print("last_n_mean ± last_n_sem, max_val, pure_name")
-    # print(result)
+    # result = f"| {last_n_mean:.4f}±{last_n_sem:.4f} | {max_val:.4f} | {pure_name} |  |"
+    result = f"| {last_n_mean:.4f}±{last_n_sem:.4f} | {pure_name} |  |"
     return result, last_n_mean, last_n_sem
 
 

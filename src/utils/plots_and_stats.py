@@ -3,6 +3,7 @@ import os
 import re
 
 import matplotlib.pyplot as plt
+import optuna
 import optuna.visualization as vis
 import plotly.graph_objects as go
 from optuna.visualization._slice import _generate_slice_subplot, _get_slice_plot_info
@@ -44,7 +45,9 @@ def save_img(fig, file_name):
 #     return slice_fig
 
 
-def stacked_slice_plot(studies):
+def stacked_slice_plot(
+    studies: list[optuna.Study], all_trials: list[list[optuna.Trial]]
+):
     study_names = [s.study_name for s in studies]
 
     param_set = set()
@@ -55,9 +58,8 @@ def stacked_slice_plot(studies):
     param_list.remove("unlearning_rate")
     param_list.insert(0, "unlearning_rate")
 
-
     # Calculate overall y-axis range across all studies
-    _values = [t.values[0] for s in studies for t in s.trials if t.values is not None]
+    _values = [t.values[0] for ts in all_trials for t in ts if t.values is not None]
     y_min = min(_values)
     y_max = max(_values)
 
@@ -72,7 +74,7 @@ def stacked_slice_plot(studies):
     common_prefix = os.path.commonprefix(study_names)
     figure.update_layout(layout)
     figure.update_layout(title={"text": common_prefix, "xanchor": "center", "x": 0.5})
-    
+
     showscale = True
     for i, study in enumerate(studies, start=1):
         info = _get_slice_plot_info(study, None, None, "Final forget loss")
@@ -123,12 +125,14 @@ def stacked_slice_plot(studies):
     return figure
 
 
-def stacked_history_and_importance_plots(studies):
+def stacked_history_and_importance_plots(
+    studies: list[optuna.Study], all_trials: list[list[optuna.Trial]]
+):
     study_names = [s.study_name for s in studies]
     common_prefix = os.path.commonprefix(study_names)
 
     # Calculate overall y-axis range
-    _values = [t.values[0] for s in studies for t in s.trials if t.values is not None]
+    _values = [t.values[0] for ts in all_trials for t in ts if t.values is not None]
     y_min = min(_values)
     y_max = max(_values)
 

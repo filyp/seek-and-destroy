@@ -30,6 +30,7 @@ config_path = repo_root() / "configs" / "smol_cruelty3.yaml"
 # sorted_studies = sorted(study_summaries, key=lambda s: s.datetime_start)
 
 # %% get the studies
+# note: trials loading takes some time, and also DB usage, so maybe cache it
 # load YAML configuration
 with open(config_path, "r") as f:
     full_config = yaml.safe_load(f)
@@ -41,6 +42,7 @@ relearn_config = SimpleNamespace(**full_config["relearn_config"])
 
 
 studies = []
+all_trials = []
 for variant_name in full_config["variants"]:
     study_name = (
         f"{config.unlearn_steps},{relearn_config.relearn_steps},"
@@ -50,8 +52,10 @@ for variant_name in full_config["variants"]:
     print(study_name)
     try:
         study = optuna.load_study(study_name=study_name, storage=storage)
-        if any(t.state == optuna.trial.TrialState.COMPLETE for t in study.trials):
+        trials = study.get_trials()
+        if any(t.state == optuna.trial.TrialState.COMPLETE for t in trials):
             studies.append(study)
+            all_trials.append(trials)
         else:
             print(f"Study {study_name} has no complete trials!")
     except KeyError:
@@ -59,13 +63,13 @@ for variant_name in full_config["variants"]:
 
 
 # %% slice plot
-plot = stacked_slice_plot(studies)
+plot = stacked_slice_plot(studies, all_trials)
 save_img(plot, f"{multistudy_name}_slice")
 plot
 
-
 # %% history and importance plots
-plot = stacked_history_and_importance_plots(studies)
+# plot param importances takes quite long
+plot = stacked_history_and_importance_plots(studies, all_trials)
 save_img(plot, f"{multistudy_name}_history_and_importance")
 plot
 
@@ -73,17 +77,17 @@ plot
 for study in studies:
     make_sure_optimal_values_are_not_near_range_edges(study)
 
-# %%
-for study in studies:
-    print(len(study.trials), study.study_name)
+# %% trial num stats
+for study, trials in zip(studies, all_trials):
+    print(len(trials), study.study_name)
 
 # %% get stats for the last N trials
 markdown_table = """\
-| last n trials<br>mean±sem | max   | study_name | notes |
-| ------------------- | ----- | ---------- | ----- |"""
+| last n trials<br>mean±sem | study_name | notes |
+| ------------------- | ---------- | ----- |"""
 python_results = ""
-for study in studies:
-    markdown_line, last_n_mean, last_n_sem = get_stats_from_last_n_trials(study, n=20)
+for study, trials in zip(studies, all_trials):
+    markdown_line, last_n_mean, last_n_sem = get_stats_from_last_n_trials(study, trials, n=20)
     markdown_table += f"\n{markdown_line}"
 
     pure_name = study.study_name.split("|")[-1]
@@ -107,5 +111,3 @@ print(python_results)
 # print(trials)
 # for trial in trials:
 #     new_study.add_trial(trial)
-
-# %%
