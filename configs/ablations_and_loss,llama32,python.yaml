@@ -9,6 +9,9 @@ general_config:
   batch_size: 16
   n_trials: 100
   normalize_grads: true
+  # with no_masking, we got huge pruning problems, so allow some retain breaking
+  retain_loss_budget: 0.01
+
   # method specific
   unlearning_loss_fn: neg_cross_entropy
   use_masking: true
@@ -25,9 +28,8 @@ hyperparams:
   adv_lr: [0.001, 0.06, true]
   fork_every_n_loops: [6, 42, false]
   retain_momentum: [0, 0.99, false]
-  # try also wider retaining rate, because on no_masking, we got huge pruning problems
-  retaining_rate: [1.e-4, 6.e-3, true]
-  unlearning_rate: [1.e-12, 3.e-4, true]
+  retaining_rate: [3.e-4, 3.e-3, true]
+  unlearning_rate: [3.e-8, 3.e-4, true]
 
 variants:
 
