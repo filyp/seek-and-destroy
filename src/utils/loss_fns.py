@@ -53,7 +53,7 @@ def biased_neg_entropy_loss(output, input_ids, correct_logit_bias) -> pt.Tensor:
     return entropy.mean() * -1
 
 
-def correct_logit_minus_avg_loss(output, input_ids, clip_at):
+def correct_logit_minus_avg_loss(output, input_ids, clip_at=0):
     logits = output.logits[:, :-1, :].flatten(end_dim=1).to(pt.float32)
     ids = input_ids[:, 1:].flatten()
     true_logits = logits[pt.arange(len(ids)), ids]
