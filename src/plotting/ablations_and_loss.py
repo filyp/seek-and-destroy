@@ -77,8 +77,8 @@ for multistudy_name in multistudy_names:
             last_n_sem,
         )
 
-        # check if optimal values are near range edges
-        make_sure_optimal_values_are_not_near_range_edges(study)
+        # # check if optimal values are near range edges
+        # make_sure_optimal_values_are_not_near_range_edges(study)
 
 
 # %%
@@ -104,7 +104,7 @@ positions_dict = {
 }
 
 # Create the plot with n subplots side by side
-fig, axes = plt.subplots(3, 2, figsize=(8, 8))
+fig, axes = plt.subplots(3, 2, figsize=(8, 6))
 
 # Set column titles with specified font size
 column_fontsize = 12  # Adjust this value as needed
@@ -157,7 +157,6 @@ for n, (multistudy_name, method_stats) in enumerate(multistudy_to_method_stats.i
     )
     baseline_path = repo_root() / "results" / "baselines" / f"{config_path.stem}.txt"
     baseline = float(baseline_path.read_text())
-    print(f"{baseline=}")
     # Add baseline
     ax.axvline(x=baseline, color="black", linestyle="--", alpha=0.3)
 
@@ -173,8 +172,6 @@ plt.tight_layout()
 
 # Create and show the plot
 # plt.show()  # Ensure the plot is displayed
-
-# %%
 
 plot_path = repo_root() / "paper" / "plots" / "ablations_and_loss.pdf"
 fig.savefig(plot_path)
