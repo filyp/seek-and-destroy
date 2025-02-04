@@ -87,7 +87,7 @@ titles_dict = {
     "neg_entropy_loss": "neg entropy loss",
     "logit_loss": "logit loss",
     "no_masking": "no masking",
-    "no_r_momentum": "no r momentum",
+    "no_r_momentum": "no retain momentum",
     "no_adversary": "no meta learning",
     "no_adv_decay": "no adversary decay",
     "no_normalization": "no normalization",
@@ -104,8 +104,17 @@ positions_dict = {
 }
 
 # Create the plot with n subplots side by side
-fig, axes = plt.subplots(3, 2, figsize=(8, 12))
+fig, axes = plt.subplots(3, 2, figsize=(8, 8))
 
+# Set column titles with specified font size
+column_fontsize = 12  # Adjust this value as needed
+axes[0, 0].set_title("Python", fontsize=column_fontsize)
+axes[0, 1].set_title("Pile-Bio", fontsize=column_fontsize)
+
+# Set row titles with the same font size
+row_titles = ["pythia-14m", "SmolLM-135M", "Llama-3.2-1B"]
+for i, ax in enumerate(axes[:, 0]):
+    ax.set_ylabel(row_titles[i], fontsize=column_fontsize)
 
 # Create a color mapping for methods
 # Use default color cycle
@@ -136,21 +145,29 @@ for n, (multistudy_name, method_stats) in enumerate(multistudy_to_method_stats.i
     else:
         ax.set_yticklabels([])
 
-    ax.set_xlabel("Forget loss")
-    ax.set_title(multistudy_name)
-
-    # Calculate the minimum and maximum mean values for the xlim
-    min_bar = min(mean for mean, sem in method_stats.values())
-    max_bar = max(mean for mean, sem in method_stats.values())
-    margin = (max_bar - min_bar) / 3  # Calculate the margin
-    ax.set_xlim(min_bar - margin, max_bar + margin)
+    # ax.set_xlabel("Forget loss")
+    # ax.set_title(multistudy_name)  # todo reenable this to see if manual labels are still valid
 
     # Remove top and right spines
     ax.spines["top"].set_visible(False)
     ax.spines["right"].set_visible(False)
 
-    # # Add baseline
-    # ax.axvline(x=baseline, color="black", linestyle="--", alpha=0.3)
+    config_path = (
+        repo_root() / "configs" / f"ablations_and_loss2,{multistudy_name}.yaml"
+    )
+    baseline_path = repo_root() / "results" / "baselines" / f"{config_path.stem}.txt"
+    baseline = float(baseline_path.read_text())
+    print(f"{baseline=}")
+    # Add baseline
+    ax.axvline(x=baseline, color="black", linestyle="--", alpha=0.3)
+
+    # Calculate the minimum and maximum mean values for the xlim
+    max_bar = max(mean for mean, sem in method_stats.values())
+    min_bar = min(mean for mean, sem in method_stats.values())
+    min_bar = min(min_bar, baseline)
+    margin = (max_bar - min_bar) / 5  # Calculate the margin
+    ax.set_xlim(min_bar - margin, max_bar + margin)
+
 
 plt.tight_layout()
 
