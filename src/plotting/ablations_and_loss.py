@@ -70,7 +70,7 @@ for multistudy_name in multistudy_names:
         # get stats for the last N trials
         trials = study.get_trials()
         markdown_line, last_n_mean, last_n_sem = get_stats_from_last_n_trials(
-            study, trials, n=20
+            study, trials, n=30
         )
         multistudy_to_method_stats[multistudy_name][variant_name] = (
             last_n_mean,
