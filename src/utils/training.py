@@ -73,9 +73,9 @@ def make_sure_optimal_values_are_not_near_range_edges(study):
 
         method_name = study.study_name.split("|")[-1]
         if value < min_ + 0.1 * (max_ - min_):
-            print(f"{method_name}\t{param_name}\t{value} in bottom 10%")
+            print(f"\t{param_name}\t in bottom 10% with value {value} in {method_name}")
         if value > max_ - 0.1 * (max_ - min_):
-            print(f"{method_name}\t{param_name}\t{value} in top 10%")
+            print(f"\t{param_name}\t in top 10% with value {value} in {method_name}")
             # print(f"WARNING: {param_name} in the top 10% of the range in best trial")
             # print(f"range: {min_} - {max_}, value: {value}, log={param_dist.log}")
 

@@ -90,15 +90,17 @@ titles_dict = {
     "no_r_momentum": "no r momentum",
     "no_adversary": "no meta learning",
     "no_adv_decay": "no adversary decay",
+    "no_normalization": "no normalization",
 }
 positions_dict = {
-    "neg_cross_entropy_loss": 7,
-    "neg_entropy_loss": 6,
-    "logit_loss": 5,
-    "no_masking": 3,
-    "no_r_momentum": 2,
-    "no_adversary": 1,
-    "no_adv_decay": 0,
+    "neg_cross_entropy_loss": 8,
+    "neg_entropy_loss": 7,
+    "logit_loss": 6,
+    "no_masking": 4,
+    "no_r_momentum": 3,
+    "no_adversary": 2,
+    "no_adv_decay": 1,
+    "no_normalization": 0,
 }
 
 # Create the plot with n subplots side by side

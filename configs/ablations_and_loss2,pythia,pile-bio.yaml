@@ -7,7 +7,7 @@ general_config:
   forget_set_name: pile_bio_forget
   unlearn_steps: 300
   batch_size: 16
-  n_trials: 100
+  n_trials: 200
   normalize_grads: true
   retain_loss_budget: 0.05
   # method specific
