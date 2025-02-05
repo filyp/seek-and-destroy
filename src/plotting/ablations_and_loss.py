@@ -85,28 +85,30 @@ for multistudy_name in multistudy_names:
 
 # %%
 titles_dict = {
-    "neg_cross_entropy_loss": "neg cross entropy loss",
-    "neg_entropy_loss": "neg entropy loss",
-    "logit_loss": "logit loss",
-    "no_masking": "no masking",
-    "no_r_momentum": "no retain momentum",
-    "no_adversary": "no meta learning",
-    "no_adv_decay": "no adversary decay",
-    "no_normalization": "no normalization",
+    "neg_cross_entropy_loss": "MUDMAN",
+    "neg_entropy_loss": "MUDMAN w/ neg entropy loss",
+    "no_masking": "MUDMAN w/o masking",
+    "no_normalization": "MUDMAN w/o normalization",
+    "no_adversary": "MUDMAN w/o meta learning",
+    "TAR": "TAR",
+    # "logit_loss": "logit loss",
+    # "no_r_momentum": "no retain momentum",
+    # "no_adv_decay": "no adversary decay",
 }
 positions_dict = {
-    "neg_cross_entropy_loss": 8,
-    "neg_entropy_loss": 7,
-    "logit_loss": 6,
-    "no_masking": 4,
-    "no_r_momentum": 3,
-    "no_adversary": 2,
-    "no_adv_decay": 1,
-    "no_normalization": 0,
+    "neg_cross_entropy_loss": 5,
+    "neg_entropy_loss": 4,
+    "no_masking": 3,
+    "no_normalization": 2,
+    "no_adversary": 1,
+    "TAR": 0,
+    # "logit_loss": 6,
+    # "no_r_momentum": 3,
+    # "no_adv_decay": 1,
 }
 
 # Create the plot with n subplots side by side
-fig, axes = plt.subplots(3, 2, figsize=(8, 6))
+fig, axes = plt.subplots(3, 2, figsize=(8, 5))
 
 # Set column titles with specified font size
 column_fontsize = 12  # Adjust this value as needed
@@ -143,6 +145,7 @@ for n, (multistudy_name, method_stats) in enumerate(multistudy_to_method_stats.i
     # Update yticks for reversed order
     ax.set_yticks([positions_dict[name] for name in method_stats.keys()])
     if n % 2 == 0:
+        # ax.yaxis.set_tick_params(pad=150)  # Adjust this value as needed
         ax.set_yticklabels([titles_dict[name] for name in method_stats.keys()])
     else:
         ax.set_yticklabels([])
