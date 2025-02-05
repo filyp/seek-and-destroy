@@ -36,19 +36,28 @@ variants:
     unlearning_loss_fn: neg_cross_entropy
   neg_entropy_loss:
     unlearning_loss_fn: neg_entropy
-  logit_loss:
-    unlearning_loss_fn: correct_logit_minus_avg
+  # logit_loss:
+  #   unlearning_loss_fn: correct_logit_minus_avg
 
   # ! ablations
   no_masking:
     use_masking: false
-  no_r_momentum:
-    retain_momentum: [0, 0, false]
+  # no_r_momentum:
+  #   retain_momentum: [0, 0, false]
   no_adversary:
     train_adversary: false
     adv_decay: [1, 1, false]  # it has no effect anyway
-  no_adv_decay:
-    adv_decay: [1, 1, false]
+  # no_adv_decay:
+  #   adv_decay: [1, 1, false]
   no_normalization:
     normalize_grads: false
   
+  TAR:
+    # it also has and target modules
+    unlearning_loss_fn: neg_entropy
+    use_masking: false
+    retain_momentum: [0, 0, false]
+    additional_param_name: rep_eng_retain_lr
+    additional_param: [0, 2, false]
+    adv_decay: [1, 1, false]
+    normalize_grads: false

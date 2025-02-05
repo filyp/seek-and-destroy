@@ -70,11 +70,13 @@ for multistudy_name in multistudy_names:
         # get stats for the last N trials
         trials = study.get_trials()
         markdown_line, last_n_mean, last_n_sem = get_stats_from_last_n_trials(
-            study, trials, n=30
+            study, trials, n=20
         )
         multistudy_to_method_stats[multistudy_name][variant_name] = (
             last_n_mean,
             last_n_sem,
+            # study.best_trial.values[0],
+            # 0,
         )
 
         # # check if optimal values are near range edges
@@ -172,6 +174,8 @@ plt.tight_layout()
 
 # Create and show the plot
 # plt.show()  # Ensure the plot is displayed
+
+# %%
 
 plot_path = repo_root() / "paper" / "plots" / "ablations_and_loss.pdf"
 fig.savefig(plot_path)
