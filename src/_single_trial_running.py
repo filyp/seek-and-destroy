@@ -50,7 +50,8 @@ plt.style.use("default")
 # config_path = repo_root() / "configs" / "pythia_python.yaml"
 # config_path = repo_root() / "configs" / "smol_target_modules2.yaml"
 # config_path = repo_root() / "configs" / "smol_cruelty3.yaml"
-config_path = repo_root() / "configs" / "ablations_and_loss2,llama32,python.yaml"
+# config_path = repo_root() / "configs" / "ablations_and_loss2,llama32,python.yaml"
+config_path = repo_root() / "configs" / "ablations_and_loss2,pythia,python.yaml"
 with open(config_path, "r") as f:
     full_config = yaml.safe_load(f)
 
@@ -99,14 +100,31 @@ hyperparams = SimpleNamespace(
     retaining_rate=0.001,
     unlearning_rate=3e-5,
 )
-config.unlearning_loss_fn = "neg_cross_entropy"
+# config.unlearning_loss_fn = "neg_cross_entropy"
 # config.unlearning_loss_fn = "correct_logit_minus_avg"
-config.train_adversary = True
+# config.train_adversary = True
 # note, not training adverary results in higher base_r loss
 
-config.unlearn_steps = 30
+# config.unlearn_steps = 30
 # del model
 pt.cuda.empty_cache()
+
+# %%
+from MUDMAN import MUDMAN
+hyperparams.unlearning_rate = 3e-1
+hyperparams.adv_lr = 0.001
+
+model = AutoModelForCausalLM.from_pretrained(config.model_id)
+MUDMAN(
+    model,
+    retain_batches,
+    forget_batches,
+    f_eval,
+    r_eval,
+    target_modules=["dense_h_to_4h"],
+)
+
+# %%
 
 set_seeds(42)
 pt.cuda.empty_cache()

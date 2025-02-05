@@ -89,7 +89,7 @@ titles_dict = {
     "neg_entropy_loss": "MUDMAN w/ neg entropy loss",
     "no_masking": "MUDMAN w/o masking",
     "no_normalization": "MUDMAN w/o normalization",
-    "no_adversary": "MUDMAN w/o meta learning",
+    "no_adversary": "MUDMAN w/o meta-learning",
     "TAR": "TAR",
     # "logit_loss": "logit loss",
     # "no_r_momentum": "no retain momentum",
@@ -108,7 +108,7 @@ positions_dict = {
 }
 
 # Create the plot with n subplots side by side
-fig, axes = plt.subplots(3, 2, figsize=(8, 5))
+fig, axes = plt.subplots(3, 2, figsize=(9, 5))
 
 # Set column titles with specified font size
 column_fontsize = 12  # Adjust this value as needed
@@ -178,7 +178,6 @@ plt.tight_layout()
 # Create and show the plot
 # plt.show()  # Ensure the plot is displayed
 
-# %%
 
 plot_path = repo_root() / "paper" / "plots" / "ablations_and_loss.pdf"
 fig.savefig(plot_path)
