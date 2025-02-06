@@ -23,7 +23,7 @@ def MUDMAN(
     fork_every_n_loops: int = 32,
     adv_lr: float = 0.001,
     retaining_rate: float = 0.001,
-    retain_momentum: float = 0.8,
+    retain_momentum: float = 0.9,
 ) -> AutoModelForCausalLM:
     """Meta-Unlearning with Dynamic Masking, Accumulation and Normalization (MUDMAN).
 

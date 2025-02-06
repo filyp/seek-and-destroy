@@ -29,6 +29,8 @@ storage = get_storage(db_url)
 
 # %% get the studies
 multistudy_to_method_stats = dict()
+# todo go from biggest to smallest
+# todo first show masking then other ablations? and loss at the end
 multistudy_names = [
     "pythia,python",
     "pythia,pile-bio",
@@ -70,7 +72,7 @@ for multistudy_name in multistudy_names:
         # get stats for the last N trials
         trials = study.get_trials()
         markdown_line, last_n_mean, last_n_sem = get_stats_from_last_n_trials(
-            study, trials, n=20
+            study, trials, n=40
         )
         multistudy_to_method_stats[multistudy_name][variant_name] = (
             last_n_mean,
@@ -85,30 +87,31 @@ for multistudy_name in multistudy_names:
 
 # %%
 titles_dict = {
+    "TAR": "TAR",
     "neg_cross_entropy_loss": "MUDMAN",
-    "neg_entropy_loss": "MUDMAN w/ neg entropy loss",
+    "no_adversary": "MUDMAN w/o meta-learning",
     "no_masking": "MUDMAN w/o masking",
     "no_normalization": "MUDMAN w/o normalization",
-    "no_adversary": "MUDMAN w/o meta-learning",
-    "TAR": "TAR",
+    "neg_entropy_loss": "MUDMAN w/ neg entropy loss",
     # "logit_loss": "logit loss",
     # "no_r_momentum": "no retain momentum",
     # "no_adv_decay": "no adversary decay",
 }
 positions_dict = {
-    "neg_cross_entropy_loss": 5,
-    "neg_entropy_loss": 4,
-    "no_masking": 3,
-    "no_normalization": 2,
-    "no_adversary": 1,
-    "TAR": 0,
+    "TAR": 5,
+    "neg_cross_entropy_loss": 4,
+    "no_adversary": 3,
+    "no_masking": 2,
+    "no_normalization": 1,
+    "neg_entropy_loss": 0,
     # "logit_loss": 6,
     # "no_r_momentum": 3,
     # "no_adv_decay": 1,
 }
 
 # Create the plot with n subplots side by side
-fig, axes = plt.subplots(3, 2, figsize=(9, 5))
+fig, axes = plt.subplots(3, 2, figsize=(9, 4.5))
+# todo post-review: make the plot higher, to relax a bit; (maybe also add the safeguarding loss? nah)
 
 # Set column titles with specified font size
 column_fontsize = 12  # Adjust this value as needed

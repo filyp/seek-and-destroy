@@ -7,7 +7,7 @@ general_config:
   forget_set_name: python
   unlearn_steps: 120
   batch_size: 16
-  n_trials: 250
+  n_trials: 400
   normalize_grads: true
   retain_loss_budget: 0.05  # with no_masking, we got huge pruning problems, so allow some retain breaking
   # method specific
