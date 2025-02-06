@@ -27,7 +27,7 @@ def save_img(fig, file_name):
     # fig.write_image(dir_name / f"{file_name}.svg")  # too big and sometimes distorted
     fig.write_image(dir_name / f"{file_name}.pdf")  # needed for paper
     fig.write_image(dir_name / f"{file_name}.png")  # needed for notes
-    return dir_name / f"{file_name}.svg"
+    return dir_name / f"{file_name}.png"
 
 
 # def plot_slice_layout(study, dir_="plots/slice_layout"):

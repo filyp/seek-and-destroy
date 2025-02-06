@@ -132,6 +132,7 @@ method_to_color
 
 # Define data for plotting
 data = []  # Initialize data list
+scales = [6, 0.5]
 
 for n, (multistudy_name, method_stats) in enumerate(multistudy_to_method_stats.items()):
     ax = axes[n // 2, n % 2]
@@ -171,9 +172,10 @@ for n, (multistudy_name, method_stats) in enumerate(multistudy_to_method_stats.i
     max_bar = max(mean for mean, sem in method_stats.values())
     min_bar = min(mean for mean, sem in method_stats.values())
     min_bar = min(min_bar, baseline)
-    margin = (max_bar - min_bar) / 5  # Calculate the margin
-    ax.set_xlim(min_bar - margin, max_bar + margin)
-
+    # margin = (max_bar - min_bar) / 5  # Calculate the margin
+    center = (max_bar + min_bar) / 2
+    scale = scales[n % 2]
+    ax.set_xlim(center - scale / 2, center + scale / 2)
 
 plt.tight_layout()
 

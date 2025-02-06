@@ -39,47 +39,68 @@ config_path = repo_root() / "configs" / "ablations_and_loss2,pythia,pile-bio.yam
 # sorted_studies = sorted(study_summaries, key=lambda s: s.datetime_start)
 
 # %% get the studies
-# note: trials loading takes some time, and also DB usage, so we cache it
-# load YAML configuration
-with open(config_path, "r") as f:
-    full_config = yaml.safe_load(f)
 
-multistudy_name = Path(config_path).stem
 
-config = SimpleNamespace(**full_config["general_config"])
-relearn_config = SimpleNamespace(**full_config["relearn_config"])
-
-studies = []
-all_trials = []
-for variant_name in full_config["variants"]:
-    study_name = (
-        f"{config.unlearn_steps},{relearn_config.relearn_steps},"
-        f"{config.forget_set_name}"
-        f"|{multistudy_name}|{variant_name}"
+multistudy_names = [
+    "llama32,python",
+    "llama32,pile-bio",
+    "smol,python",
+    "smol,pile-bio",
+    "pythia,python",
+    "pythia,pile-bio",
+]
+for multistudy_name in multistudy_names:
+    config_path = (
+        repo_root() / "configs" / f"ablations_and_loss2,{multistudy_name}.yaml"
     )
-    try:
-        study = optuna.load_study(study_name=study_name, storage=storage)
-        trials = study.get_trials()
-        if any(t.state == optuna.trial.TrialState.COMPLETE for t in trials):
-            print(study_name, len(trials))
-            studies.append(study)
-            all_trials.append(trials)
-        else:
-            print(f"Study {study_name} has no complete trials!")
-    except KeyError:
-        print(f"Study {study_name} not found")
 
+    # note: trials loading takes some time, and also DB usage, so we cache it
+    # load YAML configuration
+    with open(config_path, "r") as f:
+        full_config = yaml.safe_load(f)
 
-# %% slice plot
-plot = stacked_slice_plot(studies, all_trials)
-save_img(plot, f"{multistudy_name}_slice")
-plot
+    multistudy_name = Path(config_path).stem
 
-# %% history and importance plots
-# plot param importances takes quite long
-plot = stacked_history_and_importance_plots(studies, all_trials)
-save_img(plot, f"{multistudy_name}_history_and_importance")
-plot
+    config = SimpleNamespace(**full_config["general_config"])
+    relearn_config = SimpleNamespace(**full_config["relearn_config"])
+
+    studies = []
+    all_trials = []
+    for variant_name in full_config["variants"]:
+        study_name = (
+            f"{config.unlearn_steps},{relearn_config.relearn_steps},"
+            f"{config.forget_set_name}"
+            f"|{multistudy_name}|{variant_name}"
+        )
+        try:
+            study = optuna.load_study(study_name=study_name, storage=storage)
+            trials = study.get_trials()
+            if any(t.state == optuna.trial.TrialState.COMPLETE for t in trials):
+                print(study_name, len(trials))
+                studies.append(study)
+                all_trials.append(trials)
+            else:
+                print(f"Study {study_name} has no complete trials!")
+        except KeyError:
+            print(f"Study {study_name} not found")
+
+    # # %% slice plot
+    plot = stacked_slice_plot(studies, all_trials)
+    dir_name = repo_root() / "paper" / "plots" / "slice"
+    dir_name.mkdir(parents=True, exist_ok=True)
+    plot.write_image(dir_name / f"{multistudy_name}.pdf")
+
+    # # %% history and importance plots (takes quite long)
+    plot = stacked_history_and_importance_plots(studies, all_trials)
+    dir_name = repo_root() / "paper" / "plots" / "history"
+    dir_name.mkdir(parents=True, exist_ok=True)
+    plot.write_image(dir_name / f"{multistudy_name}.pdf")
+
+    # save_img(plot, f"{multistudy_name}_history_and_importance")
+
+# %%
+
+# %%
 
 # %% check if optimal values are near range edges
 for study in studies:
