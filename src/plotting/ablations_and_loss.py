@@ -29,15 +29,13 @@ storage = get_storage(db_url)
 
 # %% get the studies
 multistudy_to_method_stats = dict()
-# todo go from biggest to smallest
-# todo first show masking then other ablations? and loss at the end
 multistudy_names = [
-    "pythia,python",
-    "pythia,pile-bio",
-    "smol,python",
-    "smol,pile-bio",
     "llama32,python",
     "llama32,pile-bio",
+    "smol,python",
+    "smol,pile-bio",
+    "pythia,python",
+    "pythia,pile-bio",
 ]
 for multistudy_name in multistudy_names:
     multistudy_to_method_stats[multistudy_name] = dict()
@@ -72,7 +70,7 @@ for multistudy_name in multistudy_names:
         # get stats for the last N trials
         trials = study.get_trials()
         markdown_line, last_n_mean, last_n_sem = get_stats_from_last_n_trials(
-            study, trials, n=40
+            study, trials, n=30
         )
         multistudy_to_method_stats[multistudy_name][variant_name] = (
             last_n_mean,
@@ -117,9 +115,11 @@ fig, axes = plt.subplots(3, 2, figsize=(9, 4.5))
 column_fontsize = 12  # Adjust this value as needed
 axes[0, 0].set_title("Python", fontsize=column_fontsize)
 axes[0, 1].set_title("Pile-Bio", fontsize=column_fontsize)
+axes[-1, 0].set_xlabel("Forget loss after relearning")
+axes[-1, 1].set_xlabel("Forget loss after relearning")
 
 # Set row titles with the same font size
-row_titles = ["pythia-14m", "SmolLM-135M", "Llama-3.2-1B"]
+row_titles = ["Llama-3.2-1B", "SmolLM-135M", "pythia-14m"]
 for i, ax in enumerate(axes[:, 0]):
     ax.set_ylabel(row_titles[i], fontsize=column_fontsize)
 
@@ -153,8 +153,7 @@ for n, (multistudy_name, method_stats) in enumerate(multistudy_to_method_stats.i
     else:
         ax.set_yticklabels([])
 
-    # ax.set_xlabel("Forget loss")
-    # ax.set_title(multistudy_name)  # todo reenable this to see if manual labels are still valid
+    # ax.set_title(multistudy_name)  # todo when reoadring plots, reenable this to see if manual labels are still valid
 
     # Remove top and right spines
     ax.spines["top"].set_visible(False)
