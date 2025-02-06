@@ -30,7 +30,7 @@ from unlearning_methods.surgical_irreversible_unlearning import (
 )
 from utils.data_loading import CachedBatches, dataset_loaders
 from utils.git_and_reproducibility import get_storage, repo_root
-from utils.model_operations import relearn
+from utils.model_operations import relearn_with_retain
 from utils.training import set_seeds
 from utils.wmdp_eval import eval_on_wmdp
 
@@ -75,22 +75,24 @@ storage = get_storage(db_url)
 
 multistudy_name = Path(config_path).stem
 
-for variant_name in full_config["variants"]:
-    study_name = (
-        f"{config.unlearn_steps},{relearn_config.relearn_steps},"
-        f"{config.forget_set_name}"
-        f"|{multistudy_name}|{variant_name}"
-    )
-    study = optuna.load_study(study_name=study_name, storage=storage)
-    trials = study.get_trials()
-    break
-
-# # %%
-# ok_trials = [t for t in trials if t.state == optuna.trial.TrialState.COMPLETE]
-# print(f"all_trials={len(trials)}, ok_trials={len(ok_trials)}, {study.study_name}")
+# for variant_name in full_config["variants"]:
+# variant_name = "neg_cross_entropy_loss"
+variant_name = "no_masking"
+study_name = (
+    f"{config.unlearn_steps},{relearn_config.relearn_steps},"
+    f"{config.forget_set_name}"
+    f"|{multistudy_name}|{variant_name}"
+)
+study = optuna.load_study(study_name=study_name, storage=storage)
+trials = study.get_trials()
 
 # %%
-best_trial = study.best_trial
+ok_trials = [t for t in trials if t.state == optuna.trial.TrialState.COMPLETE]
+print(f"all_trials={len(trials)}, ok_trials={len(ok_trials)}, {study.study_name}")
+last_trial = ok_trials[-1]
+# best_trial = study.best_trial
+
+# %%
 model = AutoModelForCausalLM.from_pretrained(config.model_id, torch_dtype=pt.bfloat16)
 
 accuracies = []
@@ -99,11 +101,11 @@ accuracies.append(accuracy)
 print(f"accuracy={accuracy}")
 
 # %%
-for i in range(10):
+for i in range(5):
     set_seeds(42)
     config.unlearn_steps = 120
     model = surgical_irreversible_unlearning(
-        SimpleNamespace(**best_trial.params),
+        SimpleNamespace(**last_trial.params),
         config,
         retain_batches,
         forget_batches,
@@ -121,7 +123,7 @@ for i in range(10):
 for i in range(10):
     set_seeds(42)
     config.relearn_steps = 120
-    forget_losses = relearn(
+    forget_losses = relearn_with_retain(
         model, relearn_config, retain_val_batches, forget_val_batches
     )
     # use min rather than last, in case it anomalously increases
@@ -134,4 +136,9 @@ for i in range(10):
 
 
 # %%
-accuracies
+# plot
+plt.plot(accuracies)
+plt.show()
+
+
+# %%

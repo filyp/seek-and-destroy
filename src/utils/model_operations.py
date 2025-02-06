@@ -79,3 +79,47 @@ def relearn(model, config, retain_val_batches, forget_val_batches, use_lora=Fals
 
     logging.info("")
     return f_losses
+
+
+def relearn_with_retain(model, config, retain_val_batches, forget_val_batches):
+    for p in model.parameters():
+        p.requires_grad = True
+
+    # get batches
+    retain_val_iter = iter(retain_val_batches)
+    forget_val_iter = iter(forget_val_batches)
+    f_eval_batch = next(forget_val_iter)
+    r_eval_batch = next(retain_val_iter)
+
+    optimizer = pt.optim.SGD(model.parameters(), lr=config.relearn_lr)
+
+    # ! relearning loop
+    logging.info("")
+    f_losses = []
+    # each step is one pass (forward or backward) and a loop has two passes
+    passes_per_loop = 4
+    for loop_num in range(config.relearn_steps // passes_per_loop):
+        model.train()
+
+        # standard forward, backward, and update
+        optimizer.zero_grad(set_to_none=True)
+        f_input_ids = next(forget_val_iter)
+        loss_forget = cross_entropy_loss(model(f_input_ids), f_input_ids)
+        loss_forget.backward()
+        optimizer.step()
+
+        # standard forward, backward, and update
+        optimizer.zero_grad(set_to_none=True)
+        r_input_ids = next(retain_val_iter)
+        loss_retain = cross_entropy_loss(model(r_input_ids), r_input_ids)
+        loss_retain.backward()
+        optimizer.step()
+
+        _passes_done = (loop_num + 1) * passes_per_loop
+        if _passes_done % 20 == 0:
+            res = eval_(model, f_eval_batch, r_eval_batch, step=_passes_done)
+            f_losses.append(res["forget_loss"])
+            # wandb.log(res, step=_passes_done)
+
+    logging.info("")
+    return f_losses
