@@ -9,16 +9,24 @@ from utils.training import *
 
 
 def surgical_irreversible_unlearning(
-    h, config, retain_batches, forget_batches, f_eval, r_eval, allowed_r_loss
+    h,
+    config,
+    retain_batches,
+    forget_batches,
+    f_eval,
+    r_eval,
+    allowed_r_loss,
+    model=None,
 ):
     h.fork_every_n_loops = int(h.fork_every_n_loops)
 
-    if config.model_id in ["meta-llama/Llama-3.2-1B"]:
-        model = AutoModelForCausalLM.from_pretrained(
-            config.model_id, torch_dtype=pt.bfloat16
-        )
-    else:
-        model = AutoModelForCausalLM.from_pretrained(config.model_id)
+    if model is None:
+        if config.model_id in ["meta-llama/Llama-3.2-1B"]:
+            model = AutoModelForCausalLM.from_pretrained(
+                config.model_id, torch_dtype=pt.bfloat16
+            )
+        else:
+            model = AutoModelForCausalLM.from_pretrained(config.model_id)
     model.config.use_cache = False
 
     clip_at = h.additional_param if config.additional_param_name == "clip_at" else 0

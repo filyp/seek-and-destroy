@@ -26,9 +26,6 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from unlearning_methods.surgical_irreversible_unlearning import (
     surgical_irreversible_unlearning,
 )
-from unlearning_methods.surgical_irreversible_unlearning_lora import (
-    surgical_irreversible_unlearning_lora,
-)
 from utils.data_loading import CachedBatches, dataset_loaders
 from utils.git_and_reproducibility import *
 from utils.loss_fns import loss_fns
@@ -51,7 +48,8 @@ plt.style.use("default")
 # config_path = repo_root() / "configs" / "smol_target_modules2.yaml"
 # config_path = repo_root() / "configs" / "smol_cruelty3.yaml"
 # config_path = repo_root() / "configs" / "ablations_and_loss2,llama32,python.yaml"
-config_path = repo_root() / "configs" / "ablations_and_loss2,pythia,python.yaml"
+config_path = repo_root() / "configs" / "ablations_and_loss2,llama32,pile-bio.yaml"
+# config_path = repo_root() / "configs" / "ablations_and_loss2,pythia,python.yaml"
 with open(config_path, "r") as f:
     full_config = yaml.safe_load(f)
 
@@ -59,12 +57,6 @@ config = full_config["general_config"]
 
 config = SimpleNamespace(**config)
 relearn_config = SimpleNamespace(**full_config["relearn_config"])
-
-# %%
-# config.retain_set_name = "pile_bio_retain"
-# config.forget_set_name = "pile_bio_forget"
-# config.retain_set_name = "wikitext"
-# config.forget_set_name = "python"
 
 # %%
 
@@ -85,9 +77,6 @@ f_eval = next(iter(forget_val_batches))
 allowed_r_loss = eval_(
     AutoModelForCausalLM.from_pretrained(config.model_id), f_eval, r_eval
 )["retain_loss"]
-
-from unlearning_methods.circuit_breakers import circuit_breakers
-from unlearning_methods.circuit_breakers_no_lora import circuit_breakers_no_lora
 
 # %%
 
