@@ -31,7 +31,7 @@ from unlearning_methods.surgical_irreversible_unlearning import (
 from utils.data_loading import CachedBatches, dataset_loaders
 from utils.git_and_reproducibility import get_storage, repo_root
 from utils.model_operations import relearn_with_retain
-from utils.training import set_seeds
+from utils.training import eval_, set_seeds
 from utils.wmdp_eval import eval_on_wmdp
 
 logging.basicConfig(
@@ -68,6 +68,10 @@ retain_val_batches = CachedBatches(retain_set["validation"], config.batch_size)
 forget_val_batches = CachedBatches(forget_set["validation"], config.batch_size)
 r_eval = next(iter(retain_val_batches))
 f_eval = next(iter(forget_val_batches))
+
+allowed_r_loss = eval_(
+    AutoModelForCausalLM.from_pretrained(config.model_id), f_eval, r_eval
+)["retain_loss"] + 0.1
 
 # %%
 db_url = json.load(open(repo_root() / "secret.json"))["db_url"]
@@ -113,6 +117,7 @@ for i in range(5):
         r_eval,
         allowed_r_loss=float("inf"),
         model=model,
+        soft_threshold=allowed_r_loss,
     )
 
     accuracy = eval_on_wmdp(model)
@@ -127,8 +132,8 @@ for i in range(10):
         model, relearn_config, retain_val_batches, forget_val_batches
     )
     # use min rather than last, in case it anomalously increases
-    forget_loss = min(forget_losses)
-    print(f"forget_loss={forget_loss}")
+    # forget_loss = min(forget_losses)
+    # print(f"forget_loss={forget_loss}")
 
     accuracy = eval_on_wmdp(model)
     accuracies.append(accuracy)

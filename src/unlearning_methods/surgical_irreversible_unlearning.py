@@ -17,8 +17,10 @@ def surgical_irreversible_unlearning(
     r_eval,
     allowed_r_loss,
     model=None,
+    soft_threshold=None,
 ):
     h.fork_every_n_loops = int(h.fork_every_n_loops)
+    unlearn = True
 
     if model is None:
         if config.model_id in ["meta-llama/Llama-3.2-1B"]:
@@ -150,7 +152,8 @@ def surgical_irreversible_unlearning(
                 p.grad *= total_interven_numel**0.5 / grad_norm
 
             # in Llama no optuna run, just turn off this line when retain perf broken
-            p.base_data -= h.unlearning_rate * p.grad
+            if unlearn:
+                p.base_data -= h.unlearning_rate * p.grad
 
             if config.additional_param_name == "adv_update":
                 assert config.train_adversary  # otherwise it may be wrong
@@ -162,6 +165,12 @@ def surgical_irreversible_unlearning(
             _eval_counter += 1
             for p in interven_params:  # switch to base model
                 p.data = p.base_data
-            eval_(model, f_eval, r_eval, allowed_r_loss, _passes_done)
+            res = eval_(model, f_eval, r_eval, allowed_r_loss, _passes_done)
+            if soft_threshold is not None and res["retain_loss"] > soft_threshold:
+                unlearn = False
+                logging.info("unlearning disabled")
+            else:
+                unlearn = True
+                logging.info("unlearning enabled")
 
     return model
