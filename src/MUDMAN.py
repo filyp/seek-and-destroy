@@ -27,9 +27,9 @@ def MUDMAN(
 ) -> AutoModelForCausalLM:
     """Meta-Unlearning with Dynamic Masking, Accumulation and Normalization (MUDMAN).
 
-    This function implements a selective unlearning approach that allows forgetting specific data
-    while retaining performance on other data.
-    It uses an adversarial mechanism and gradient masking.
+    This function implements a selective unlearning approach that allows forgetting
+    specific data while retaining general performance.
+    It uses meta-learning and masking of the most disruptive updates.
 
     Args:
         model: The neural model to be modified (typically a transformer model)
@@ -37,17 +37,17 @@ def MUDMAN(
         forget_batches: Iterator of batches containing data that should be forgotten
         f_eval: Evaluation batch for the forget set
         r_eval: Evaluation batch for the retain set
-        unlearning_rate (float): Learning rate for the unlearning updates
-        target_modules (list): List of module names to target for intervention
-        unlearn_steps (int): Number of unlearning steps to perform
-        allowed_r_loss (float): Maximum allowed loss increase on retain set
-        fork_every_n_loops (int): Frequency of adversary forking from base model
-        adv_lr (float): Learning rate for the adversarial updates
-        retaining_rate (float): Learning rate for retain updates
-        retain_momentum (float): Momentum factor for retain gradient accumulation
+        unlearning_rate: Learning rate for the unlearning updates
+        target_modules: List of module names to target for intervention
+        unlearn_steps: Number of unlearning steps to perform
+        allowed_r_loss: Maximum allowed loss increase on retain set
+        fork_every_n_loops: Frequency of adversary forking from the main model
+        adv_lr: Learning rate for the adversarial updates
+        retaining_rate: Learning rate for retain updates
+        retain_momentum: Momentum factor for retain gradient accumulation
 
     Returns:
-        model: The modified model after unlearning
+        The modified model after unlearning
     """
     model.config.use_cache = False
 
@@ -71,7 +71,7 @@ def MUDMAN(
     retain_iter = iter(retain_batches)
     forget_iter = iter(forget_batches)
 
-    # ! unlearning loop
+    # ! Unlearning loop
     passes_per_loop = 4
     assert unlearn_steps % passes_per_loop == 0
     for loop_num in range(unlearn_steps // passes_per_loop):
@@ -83,20 +83,20 @@ def MUDMAN(
             for p in interven_params:
                 p.adv_data = p.base_data.clone().detach()
 
-        # ! retain pass
+        # ! Retain pass
         model.zero_grad()
-        for p in interven_params:  # Switch to base model
+        for p in interven_params:  # Switch to main model
             p.data = p.base_data
         output = model(r_input_ids)
         cross_entropy_loss(output, r_input_ids).backward()
         for p in interven_params:
-            # ! update disruption scores
+            # ! Update disruption scores
             p.retain_acc *= retain_momentum
             p.retain_acc += p.grad * (1 - retain_momentum)
-            # ! retain update
+            # ! Retain update
             p.base_data -= retaining_rate * p.retain_acc
 
-        # ! relearn the adversary
+        # ! Relearn the adversary
         model.zero_grad()
         for p in interven_params:  # Switch to adversary
             p.data = p.adv_data
@@ -106,17 +106,17 @@ def MUDMAN(
             # Apply adversary update
             p.adv_data -= adv_lr * p.grad
 
-        # ! unlearning step with masking
+        # ! Unlearning step with masking
         grad_norm = sum(p.grad.norm() ** 2 for p in interven_params) ** 0.5
         for p in interven_params:
             p.grad *= -1  # For unlearning use the inverted gradient
             p.grad *= p.retain_acc.sign() == p.grad.sign()  # Mask
             p.base_data -= unlearning_rate / grad_norm * p.grad  # Normalize & update
 
-        # ! eval current loss
+        # ! Eval current loss
         _passes_done = (loop_num + 1) * passes_per_loop
         if _passes_done % 20 == 0:
-            for p in interven_params:  # Switch to base model
+            for p in interven_params:  # Switch to main model
                 p.data = p.base_data
             eval_(model, f_eval, r_eval, allowed_r_loss, _passes_done)
 
