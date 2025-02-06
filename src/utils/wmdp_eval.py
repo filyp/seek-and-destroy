@@ -78,7 +78,7 @@ def eval_on_wmdp(model, batch_size=8):
 
         probs = pt.softmax(last_token_logits, dim=-1)
         answer_probs = probs[:, answer_ids]
-        assert all(answer_probs.sum(dim=-1) > 0.02), answer_probs
+        assert all(answer_probs.sum(dim=-1) > 0.1), answer_probs
 
         answer_probs /= answer_probs.sum(dim=-1, keepdim=True)  # normalize
         # assert pt.allclose(answer_probs.sum(dim=-1), pt.tensor(1.0, dtype=pt.bfloat16))

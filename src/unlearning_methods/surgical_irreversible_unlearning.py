@@ -18,9 +18,10 @@ def surgical_irreversible_unlearning(
     allowed_r_loss,
     model=None,
     soft_threshold=None,
+    init_unlearn=None,
 ):
     h.fork_every_n_loops = int(h.fork_every_n_loops)
-    unlearn = True
+    unlearn = init_unlearn if init_unlearn is not None else True
 
     if model is None:
         if config.model_id in ["meta-llama/Llama-3.2-1B"]:
@@ -167,10 +168,15 @@ def surgical_irreversible_unlearning(
                 p.data = p.base_data
             res = eval_(model, f_eval, r_eval, allowed_r_loss, _passes_done)
             if soft_threshold is not None and res["retain_loss"] > soft_threshold:
+                if unlearn:
+                    logging.info("unlearning disabled")
                 unlearn = False
-                logging.info("unlearning disabled")
             else:
+                if not unlearn:
+                    logging.info("unlearning enabled")
                 unlearn = True
-                logging.info("unlearning enabled")
 
-    return model
+    if init_unlearn is not None:
+        return model, unlearn
+    else:
+        return model

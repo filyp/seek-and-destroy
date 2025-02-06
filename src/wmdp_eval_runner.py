@@ -71,7 +71,7 @@ f_eval = next(iter(forget_val_batches))
 
 allowed_r_loss = eval_(
     AutoModelForCausalLM.from_pretrained(config.model_id), f_eval, r_eval
-)["retain_loss"] + 0.1
+)["retain_loss"] + 0.05
 
 # %%
 db_url = json.load(open(repo_root() / "secret.json"))["db_url"]
@@ -80,8 +80,8 @@ storage = get_storage(db_url)
 multistudy_name = Path(config_path).stem
 
 # for variant_name in full_config["variants"]:
-# variant_name = "neg_cross_entropy_loss"
-variant_name = "no_masking"
+variant_name = "neg_cross_entropy_loss"
+# variant_name = "no_masking"
 study_name = (
     f"{config.unlearn_steps},{relearn_config.relearn_steps},"
     f"{config.forget_set_name}"
@@ -105,11 +105,16 @@ accuracies.append(accuracy)
 print(f"accuracy={accuracy}")
 
 # %%
+hyperparams = SimpleNamespace(**last_trial.params)
+# hyperparams.retaining_rate = 0.001
+
+# %%
+unlearn = True
 for i in range(5):
     set_seeds(42)
     config.unlearn_steps = 120
-    model = surgical_irreversible_unlearning(
-        SimpleNamespace(**last_trial.params),
+    model, unlearn = surgical_irreversible_unlearning(
+        hyperparams,
         config,
         retain_batches,
         forget_batches,
@@ -118,6 +123,7 @@ for i in range(5):
         allowed_r_loss=float("inf"),
         model=model,
         soft_threshold=allowed_r_loss,
+        init_unlearn=unlearn,
     )
 
     accuracy = eval_on_wmdp(model)
