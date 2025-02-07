@@ -100,15 +100,14 @@ allowed_r_loss = _init_res["retain_loss"] + 0.05
 hyperparams = SimpleNamespace(
     adv_decay=1,
     adv_lr=0.001,
-    fork_every_n_loops=24,
-    retain_momentum=0.98,
+    fork_every_n_loops=48,
+    retain_momentum=0.95,
     retaining_rate=0.001,
     unlearning_rate=5e-6,
 )
 
 # config.unlearning_loss_fn = "correct_logit_minus_avg"
 # config.unlearning_loss_fn = "neg_entropy"
-
 
 variants = dict(
     neg_cross_entropy_loss=dict(unlearning_loss_fn="neg_cross_entropy"),
@@ -143,17 +142,15 @@ for variant_name, variant_config in variants.items():
     _hyperparams = SimpleNamespace(**_hyperparams)
 
     wandb.init(project="wmdp-eval", name=variant_name)
+    accuracy = eval_on_wmdp(model, subset=128)
+    wandb.log(_init_res | {"wmdp_accuracy": accuracy}, step=0)
+
     model = AutoModelForCausalLM.from_pretrained(
         _config.model_id, torch_dtype=pt.bfloat16
     )
 
-    accuracies = []
-    accuracy = eval_on_wmdp(model, subset=128)
-    accuracies.append(accuracy)
-    print(f"accuracy={accuracy}")
-
     set_seeds(42)
-    _config.unlearn_steps = 1200
+    _config.unlearn_steps = 2400
     model = surgical_irreversible_unlearning(
         _hyperparams,
         _config,
