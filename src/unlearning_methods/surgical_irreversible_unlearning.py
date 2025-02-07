@@ -182,7 +182,9 @@ def surgical_irreversible_unlearning(
 
         if eval_wmdp_every is not None and _passes_done % eval_wmdp_every == 0:
             accuracy = eval_on_wmdp(model, subset=128)
-            wandb.log(res | {"wmdp_accuracy": accuracy}, step=_passes_done)
+            wandb.log(
+                res | {"wmdp_accuracy": accuracy, "unlearn": unlearn}, step=_passes_done
+            )
             print(f"accuracy={accuracy}")
 
     for p in interven_params:  # switch to base model

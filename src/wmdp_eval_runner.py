@@ -1,4 +1,5 @@
 # %%
+import datetime
 from IPython import get_ipython
 
 import wandb
@@ -132,6 +133,8 @@ variants = dict(
 )
 
 # %%
+
+stamp = datetime.datetime.now().strftime("%H-%M")
 for variant_name, variant_config in variants.items():
     _config = deepcopy(config.__dict__) | variant_config
     _hyperparams = deepcopy(hyperparams.__dict__) | variant_config
@@ -141,13 +144,13 @@ for variant_name, variant_config in variants.items():
     _config = SimpleNamespace(**_config)
     _hyperparams = SimpleNamespace(**_hyperparams)
 
-    wandb.init(project="wmdp-eval", name=variant_name)
-    accuracy = eval_on_wmdp(model, subset=128)
-    wandb.log(_init_res | {"wmdp_accuracy": accuracy}, step=0)
-
     model = AutoModelForCausalLM.from_pretrained(
         _config.model_id, torch_dtype=pt.bfloat16
     )
+
+    wandb.init(project="wmdp-eval", name=f"{stamp}-{variant_name}")
+    accuracy = eval_on_wmdp(model, subset=128)
+    wandb.log(_init_res | {"wmdp_accuracy": accuracy}, step=0)
 
     set_seeds(42)
     _config.unlearn_steps = 2400
