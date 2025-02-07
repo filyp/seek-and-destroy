@@ -150,8 +150,8 @@ def run_study(storage, config_path, variant_num, if_study_exists="fail", n_trial
             group=variant_name,
             name=f"{variant_name}-{trial.number}",
         )
-        accuracy = eval_on_wmdp(model)
-        wandb.log(_init_res | {"wmdp_accuracy": accuracy}, step=0)
+        # accuracy = eval_on_wmdp(model)
+        # wandb.log(_init_res | {"wmdp_accuracy": accuracy}, step=0)
 
         set_seeds(42)
         model = unlearning_func(
