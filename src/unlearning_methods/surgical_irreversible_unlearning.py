@@ -7,7 +7,6 @@ import wandb
 
 from utils.loss_fns import *
 from utils.training import *
-from utils.wmdp_eval import eval_on_wmdp
 
 
 def surgical_irreversible_unlearning(
@@ -24,6 +23,8 @@ def surgical_irreversible_unlearning(
 ):
     h.fork_every_n_loops = int(h.fork_every_n_loops)
     unlearn = True
+    if eval_wmdp_every is not None:
+        from utils.wmdp_eval import eval_on_wmdp
 
     if model is None:
         if config.model_id in ["meta-llama/Llama-3.2-1B"]:
