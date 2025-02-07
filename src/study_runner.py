@@ -145,13 +145,17 @@ def run_study(storage, config_path, variant_num, if_study_exists="fail", n_trial
         hyperparams = SimpleNamespace(**hyperparams)
         logging.info(f"trial {trial.number} - {trial.params}")
 
+        model = AutoModelForCausalLM.from_pretrained(
+            config.model_id, torch_dtype=pt.bfloat16
+        )
+
         wandb.init(
             project="wmdp-eval2",
             group=variant_name,
             name=f"{variant_name}-{trial.number}",
         )
-        # accuracy = eval_on_wmdp(model)
-        # wandb.log(_init_res | {"wmdp_accuracy": accuracy}, step=0)
+        accuracy = eval_on_wmdp(model)
+        wandb.log(_init_res | {"wmdp_accuracy": accuracy}, step=0)
 
         set_seeds(42)
         model = unlearning_func(
@@ -163,6 +167,7 @@ def run_study(storage, config_path, variant_num, if_study_exists="fail", n_trial
             r_eval,
             allowed_r_loss,
             eval_wmdp_every=config.eval_wmdp_every,
+            model=model,
         )
 
         set_seeds(42)
