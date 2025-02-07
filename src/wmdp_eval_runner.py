@@ -1,6 +1,8 @@
 # %%
 from IPython import get_ipython
 
+import wandb
+
 # automatically reload all modules
 ipython = get_ipython()
 if ipython is not None:  # Only runs in IPython environment
@@ -69,9 +71,12 @@ forget_val_batches = CachedBatches(forget_set["validation"], config.batch_size)
 r_eval = next(iter(retain_val_batches))
 f_eval = next(iter(forget_val_batches))
 
-allowed_r_loss = eval_(
-    AutoModelForCausalLM.from_pretrained(config.model_id), f_eval, r_eval
-)["retain_loss"] + 0.05
+allowed_r_loss = (
+    eval_(AutoModelForCausalLM.from_pretrained(config.model_id), f_eval, r_eval)[
+        "retain_loss"
+    ]
+    + 0.05
+)
 
 # %%
 db_url = json.load(open(repo_root() / "secret.json"))["db_url"]
@@ -90,66 +95,56 @@ study_name = (
 study = optuna.load_study(study_name=study_name, storage=storage)
 trials = study.get_trials()
 
-# %%
-ok_trials = [t for t in trials if t.state == optuna.trial.TrialState.COMPLETE]
-print(f"all_trials={len(trials)}, ok_trials={len(ok_trials)}, {study.study_name}")
-last_trial = ok_trials[-1]
-# best_trial = study.best_trial
+# # %%
+# ok_trials = [t for t in trials if t.state == optuna.trial.TrialState.COMPLETE]
+# print(f"all_trials={len(trials)}, ok_trials={len(ok_trials)}, {study.study_name}")
+# last_trial = ok_trials[-1]
+# # best_trial = study.best_trial
 
 # %%
 model = AutoModelForCausalLM.from_pretrained(config.model_id, torch_dtype=pt.bfloat16)
+subset = 128
 
 accuracies = []
-accuracy = eval_on_wmdp(model)
+accuracy = eval_on_wmdp(model, subset=subset)
 accuracies.append(accuracy)
 print(f"accuracy={accuracy}")
 
 # %%
-hyperparams = SimpleNamespace(**last_trial.params)
-# hyperparams.retaining_rate = 0.001
+# hyperparams = SimpleNamespace(**last_trial.params)
+hyperparams = SimpleNamespace()
+hyperparams.adv_decay = 1
+hyperparams.adv_lr = 0.001
+hyperparams.fork_every_n_loops = 24
+hyperparams.retain_momentum = 0.98
+hyperparams.retaining_rate = 0.001
+hyperparams.unlearning_rate = 0.5e-5
+# config.unlearning_loss_fn = "correct_logit_minus_avg"
+config.unlearning_loss_fn = "neg_entropy"
+
+# todo also log forget and retain lossese to wandb
+wandb.init(project="wmdp-eval")
+# %%
+set_seeds(42)
+config.unlearn_steps = 1200
+model = surgical_irreversible_unlearning(
+    hyperparams,
+    config,
+    retain_batches,
+    forget_batches,
+    f_eval,
+    r_eval,
+    allowed_r_loss=float("inf"),
+    model=model,
+    soft_threshold=allowed_r_loss,
+    eval_wmdp_every=120,
+)
 
 # %%
-unlearn = True
-for i in range(5):
-    set_seeds(42)
-    config.unlearn_steps = 120
-    model, unlearn = surgical_irreversible_unlearning(
-        hyperparams,
-        config,
-        retain_batches,
-        forget_batches,
-        f_eval,
-        r_eval,
-        allowed_r_loss=float("inf"),
-        model=model,
-        soft_threshold=allowed_r_loss,
-        init_unlearn=unlearn,
-    )
-
-    accuracy = eval_on_wmdp(model)
-    accuracies.append(accuracy)
-    print(f"accuracy={accuracy}")
-
-# %%
-for i in range(10):
-    set_seeds(42)
-    config.relearn_steps = 120
-    forget_losses = relearn_with_retain(
-        model, relearn_config, retain_val_batches, forget_val_batches
-    )
-    # use min rather than last, in case it anomalously increases
-    # forget_loss = min(forget_losses)
-    # print(f"forget_loss={forget_loss}")
-
-    accuracy = eval_on_wmdp(model)
-    accuracies.append(accuracy)
-    print(f"accuracy={accuracy}")
-
-
-# %%
-# plot
-plt.plot(accuracies)
-plt.show()
-
+set_seeds(42)
+relearn_config.relearn_steps = 1200
+forget_losses = relearn_with_retain(
+    model, relearn_config, retain_val_batches, forget_val_batches, eval_wmdp_every=120
+)
 
 # %%

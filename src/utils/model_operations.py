@@ -2,11 +2,12 @@ import logging
 from copy import deepcopy
 
 import torch as pt
-import wandb
 from peft import LoraConfig, get_peft_model
 
+import wandb
 from utils.loss_fns import *
 from utils.training import eval_
+from utils.wmdp_eval import eval_on_wmdp
 
 
 def only_grad_on(model, params_to_grad):
@@ -81,7 +82,9 @@ def relearn(model, config, retain_val_batches, forget_val_batches, use_lora=Fals
     return f_losses
 
 
-def relearn_with_retain(model, config, retain_val_batches, forget_val_batches):
+def relearn_with_retain(
+    model, config, retain_val_batches, forget_val_batches, eval_wmdp_every=None
+):
     for p in model.parameters():
         p.requires_grad = True
 
@@ -120,6 +123,11 @@ def relearn_with_retain(model, config, retain_val_batches, forget_val_batches):
             res = eval_(model, f_eval_batch, r_eval_batch, step=_passes_done)
             f_losses.append(res["forget_loss"])
             # wandb.log(res, step=_passes_done)
+
+        if eval_wmdp_every is not None and _passes_done % eval_wmdp_every == 0:
+            accuracy = eval_on_wmdp(model, subset=128)
+            wandb.log({"wmdp_accuracy": accuracy})
+            print(f"accuracy={accuracy}")
 
     logging.info("")
     return f_losses

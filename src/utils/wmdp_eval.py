@@ -52,16 +52,20 @@ Answer:"""
 model = AutoModelForCausalLM.from_pretrained(model_id, torch_dtype=pt.bfloat16)
 
 
-def eval_on_wmdp(model, batch_size=8):
+def eval_on_wmdp(model, batch_size=16, subset=None):
     assert model.config.name_or_path == "meta-llama/Llama-3.2-1B"
     pt.cuda.empty_cache()
 
     tokenizer = AutoTokenizer.from_pretrained("meta-llama/Llama-3.2-1B")
+    tokenizer.pad_token = tokenizer.eos_token
+
     # note that this assumes start-of-sequence token is used (which is true for llama)
     answer_ids = pt.tensor([tokenizer.encode(t)[1:] for t in answer_tokens]).reshape(4)
 
     # sort wmdp_bio by the prompt length
     sorted_wmdp_bio = sorted(wmdp_bio_dataset, key=lambda ex: len(format_prompt(ex)))
+    if subset is not None:
+        sorted_wmdp_bio = sorted_wmdp_bio[:subset]
 
     acc = 0
     for i in range(0, len(sorted_wmdp_bio), batch_size):
@@ -69,10 +73,10 @@ def eval_on_wmdp(model, batch_size=8):
         batch = sorted_wmdp_bio[i : i + batch_size]
         batch_text = [format_prompt(ex) for ex in batch]
 
-        tokenizer.pad_token = tokenizer.eos_token
         input_dict = tokenizer(batch_text, return_tensors="pt", padding=True)
 
-        output = model(**input_dict)
+        with pt.inference_mode():
+            output = model(**input_dict)
         last_positions = input_dict["attention_mask"].sum(dim=-1) - 1
         last_token_logits = output.logits[range(len(batch)), last_positions]
 

@@ -3,9 +3,11 @@ from copy import deepcopy
 
 import torch as pt
 from transformers import AutoModelForCausalLM
+import wandb
 
 from utils.loss_fns import *
 from utils.training import *
+from utils.wmdp_eval import eval_on_wmdp
 
 
 def surgical_irreversible_unlearning(
@@ -18,10 +20,10 @@ def surgical_irreversible_unlearning(
     allowed_r_loss,
     model=None,
     soft_threshold=None,
-    init_unlearn=None,
+    eval_wmdp_every=None,
 ):
     h.fork_every_n_loops = int(h.fork_every_n_loops)
-    unlearn = init_unlearn if init_unlearn is not None else True
+    unlearn = True
 
     if model is None:
         if config.model_id in ["meta-llama/Llama-3.2-1B"]:
@@ -31,7 +33,7 @@ def surgical_irreversible_unlearning(
         else:
             model = AutoModelForCausalLM.from_pretrained(config.model_id)
     model.config.use_cache = False
-
+    
     clip_at = h.additional_param if config.additional_param_name == "clip_at" else 0
 
     # get params to intervene on
@@ -108,57 +110,56 @@ def surgical_irreversible_unlearning(
             for p in interven_params:
                 p.adv_data = p.base_data
 
-        # ! relearn the adversary
-        model.zero_grad(set_to_none=True)
-        for p in interven_params:  # switch to adversary
-            p.data = p.adv_data
-        output = model(f_input_ids)
-        if config.train_adversary:
-            loss = cross_entropy_loss(output, f_input_ids)
-            loss.backward(retain_graph=True)
+        if unlearn:
+            # ! relearn the adversary
+            model.zero_grad(set_to_none=True)
+            for p in interven_params:  # switch to adversary
+                p.data = p.adv_data
+            output = model(f_input_ids)
+            if config.train_adversary:
+                loss = cross_entropy_loss(output, f_input_ids)
+                loss.backward(retain_graph=True)
+                for p in interven_params:
+                    assert p.data.data_ptr() == p.adv_data.data_ptr()
+                    # apply adversary update
+                    p.adv_data -= h.adv_lr * p.grad
+                    # decay adversary into base model
+                    p.adv_data *= h.adv_decay
+                    p.adv_data += p.base_data * (1 - h.adv_decay)
+
+            # ! unlearning step with masking
+            # get unlearning grads loss from adversary
+            # reuse the computation graph from previous block
+            model.zero_grad(set_to_none=True)
+            loss_fn = loss_fns[config.unlearning_loss_fn]
+            loss = loss_fn(output, f_input_ids, clip_at)
+            loss.backward()
+            grad_norm = sum(p.grad.norm() ** 2 for p in interven_params) ** 0.5
             for p in interven_params:
                 assert p.data.data_ptr() == p.adv_data.data_ptr()
-                # apply adversary update
-                p.adv_data -= h.adv_lr * p.grad
-                # decay adversary into base model
-                p.adv_data *= h.adv_decay
-                p.adv_data += p.base_data * (1 - h.adv_decay)
 
-        # ! unlearning step with masking
-        # get unlearning grads loss from adversary
-        # reuse the computation graph from previous block
-        model.zero_grad(set_to_none=True)
-        loss_fn = loss_fns[config.unlearning_loss_fn]
-        loss = loss_fn(output, f_input_ids, clip_at)
-        loss.backward()
-        grad_norm = sum(p.grad.norm() ** 2 for p in interven_params) ** 0.5
-        for p in interven_params:
-            assert p.data.data_ptr() == p.adv_data.data_ptr()
+                if config.additional_param_name == "forget_momentum":
+                    p.forget_acc *= h.additional_param
+                    p.forget_acc += p.grad * (1 - h.additional_param)
+                    p.grad = p.forget_acc.clone().detach()
 
-            if config.additional_param_name == "forget_momentum":
-                p.forget_acc *= h.additional_param
-                p.forget_acc += p.grad * (1 - h.additional_param)
-                p.grad = p.forget_acc.clone().detach()
+                if config.use_masking:
+                    mask = p.retain_acc.sign() == p.grad.sign()
+                    p.grad *= mask
 
-            if config.use_masking:
-                mask = p.retain_acc.sign() == p.grad.sign()
-                p.grad *= mask
+                if config.additional_param_name == "discard_growing_weights":
+                    mask2 = p.base_data.sign() != p.grad.sign()
+                    p.grad[mask2] *= h.additional_param
 
-            if config.additional_param_name == "discard_growing_weights":
-                mask2 = p.base_data.sign() != p.grad.sign()
-                p.grad[mask2] *= h.additional_param
+                # normalize
+                if config.normalize_grads:
+                    p.grad *= total_interven_numel**0.5 / grad_norm
 
-            # normalize
-            if config.normalize_grads:
-                p.grad *= total_interven_numel**0.5 / grad_norm
-
-            # in Llama no optuna run, just turn off this line when retain perf broken
-            if unlearn:
                 p.base_data -= h.unlearning_rate * p.grad
 
-            if config.additional_param_name == "adv_update":
-                assert config.train_adversary  # otherwise it may be wrong
-                p.adv_data -= h.unlearning_rate * p.grad * h.additional_param
+                if config.additional_param_name == "adv_update":
+                    assert config.train_adversary  # otherwise it may be wrong
+                    p.adv_data -= h.unlearning_rate * p.grad * h.additional_param
 
         # ! eval current loss
         _passes_done = (loop_num + 1) * passes_per_loop
@@ -175,8 +176,13 @@ def surgical_irreversible_unlearning(
                 if not unlearn:
                     logging.info("unlearning enabled")
                 unlearn = True
+        
+        if eval_wmdp_every is not None and _passes_done % eval_wmdp_every == 0:
+            accuracy = eval_on_wmdp(model, subset=128)
+            wandb.log({"wmdp_accuracy": accuracy})
+            print(f"accuracy={accuracy}")
 
-    if init_unlearn is not None:
-        return model, unlearn
-    else:
-        return model
+    for p in interven_params:  # switch to base model
+        p.data = p.base_data
+
+    return model
