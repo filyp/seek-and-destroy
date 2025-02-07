@@ -150,7 +150,7 @@ def run_study(storage, config_path, variant_num, if_study_exists="fail", n_trial
         )
 
         wandb.init(
-            project="wmdp-eval2",
+            project="wmdp-eval3",
             group=variant_name,
             name=f"{variant_name}-{trial.number}",
         )
@@ -165,9 +165,12 @@ def run_study(storage, config_path, variant_num, if_study_exists="fail", n_trial
             forget_batches,
             f_eval,
             r_eval,
-            allowed_r_loss,
-            eval_wmdp_every=config.eval_wmdp_every,
+
+            allowed_r_loss=float("inf"),
             model=model,
+            soft_threshold=allowed_r_loss,
+
+            eval_wmdp_every=config.eval_wmdp_every,
         )
 
         set_seeds(42)
