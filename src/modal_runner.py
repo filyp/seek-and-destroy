@@ -23,14 +23,15 @@ app = modal.App("example-get-started", image=image)
 
 # no timeout
 @app.function(gpu="L4", cpu=(1, 1), timeout=24 * 3600)
-def remote_func(db_url, config_path, variant_num, if_study_exists, n_trials, allow_dirty_repo, hf_token):
+def remote_func(db_url, config_path, variant_num, if_study_exists, n_trials, allow_dirty_repo, hf_token, wandb_key):
     # clone repo
     subprocess.run(["git", "clone", repo, "/root/code"], check=True)
     os.chdir("/root/code")
     subprocess.run(["git", "checkout", branch], check=True)
     
-    # set hf token with proper environment variable name
+    # set environment variables for authentication
     os.environ["HUGGING_FACE_HUB_TOKEN"] = hf_token
+    os.environ["WANDB_API_KEY"] = wandb_key
 
     import torch as pt
     from transformers import AutoModelForCausalLM, AutoTokenizer
@@ -67,9 +68,19 @@ def main(
     n_trials: int | None = None,
     allow_dirty_repo: bool = False,
 ):
-    # Load both DB URL and HF token from secret.json
+    # Load secrets from secret.json
     secrets = json.load(open("secret.json"))
     db_url = secrets["db_url"]
     hf_token = secrets["hf_token"]
+    wandb_key = secrets["wandb_key"]  # Make sure to add this to your secret.json
     
-    remote_func.remote(db_url, config_path, variant_num, if_study_exists, n_trials, allow_dirty_repo, hf_token)
+    remote_func.remote(
+        db_url, 
+        config_path, 
+        variant_num, 
+        if_study_exists, 
+        n_trials, 
+        allow_dirty_repo, 
+        hf_token,
+        wandb_key,
+    )
