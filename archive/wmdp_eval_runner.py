@@ -105,7 +105,7 @@ hyperparams = SimpleNamespace(
     fork_every_n_loops=48,
     retain_momentum=0.95,
     retaining_rate=0.001,
-    unlearning_rate=5e-6,
+    unlearning_rate=1e-5,
 )
 
 # config.unlearning_loss_fn = "correct_logit_minus_avg"
@@ -114,11 +114,11 @@ hyperparams = SimpleNamespace(
 variants = dict(
     neg_cross_entropy_loss=dict(
         unlearning_loss_fn="neg_cross_entropy",
-        unlearning_rate=8e-6,
+        # unlearning_rate=8e-6,
     ),
     neg_entropy_loss=dict(
         unlearning_loss_fn="neg_entropy",
-        unlearning_rate=5e-6,
+        # unlearning_rate=5e-6,
     ),
     # logit_loss=dict(
     #   unlearning_loss_fn="correct_logit_minus_avg"

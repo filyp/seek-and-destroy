@@ -49,7 +49,7 @@ Answer:"""
     # Answer (just A, B, C or D):"""
 
 
-def eval_on_wmdp(model, batch_size=16, subset=256):
+def eval_on_wmdp(model, batch_size=16, subset=None):
     assert model.config.name_or_path == "meta-llama/Llama-3.2-1B"
     pt.cuda.empty_cache()
 

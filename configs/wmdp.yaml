@@ -1,0 +1,67 @@
+general_config:
+  method_name: surgical_irreversible_unlearning
+  target_modules:
+    - gate_proj
+  model_id: meta-llama/Llama-3.2-1B
+  retain_set_name: pile_bio_retain
+  forget_set_name: pile_bio_forget
+  unlearn_steps: 2400  # 20x what the other runs use
+  batch_size: 16
+  n_trials: 5 
+  normalize_grads: true
+  retain_loss_budget: 0.05
+  # method specific
+  unlearning_loss_fn: neg_cross_entropy
+  use_masking: true
+  train_adversary: true
+  additional_param_name: null
+  eval_wmdp_every: 240
+
+relearn_config:
+  relearn_steps: 1200  # 10x what the other runs use
+  relearn_lr: 1.0e-3
+
+hyperparams:
+  additional_param: None  # on default don't use this
+  adv_decay: 1
+  adv_lr: 0.001
+  fork_every_n_loops: 48
+  retain_momentum: 0.95
+  retaining_rate: 0.001
+  unlearning_rate: [1.e-5, 1.e+0, true]
+
+variants:
+
+  # ! loss functions
+  neg_cross_entropy_loss:
+    unlearning_loss_fn: neg_cross_entropy
+  neg_entropy_loss:
+    unlearning_loss_fn: neg_entropy
+  logit_loss:
+    unlearning_loss_fn: correct_logit_minus_avg
+
+  # ! ablations
+  no_masking:
+    use_masking: false
+    unlearning_rate: [1.e-7, 1.e-4, true]
+  # no_r_momentum:
+  #   retain_momentum: [0, 0, false]
+  no_adversary:
+    train_adversary: false
+    adv_decay: [1, 1, false]  # it has no effect anyway
+  # no_adv_decay:
+  #   adv_decay: [1, 1, false]
+  no_normalization:
+    normalize_grads: false
+    unlearning_rate: [1.e-1, 1.e+2, true]
+  
+  TAR2:
+    # it also has and target modules
+    # this run uses repE retain loss correctly, with squared norm
+    unlearning_loss_fn: neg_entropy
+    use_masking: false
+    retain_momentum: 0
+    additional_param_name: rep_eng_retain_lr
+    square_norm: true
+    additional_param: [1, 1, false]
+    normalize_grads: false

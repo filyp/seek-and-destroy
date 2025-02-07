@@ -4,6 +4,10 @@
 # necessary for determinism:
 import os
 
+import wandb
+
+from utils.wmdp_eval import eval_on_wmdp
+
 os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":4096:8"
 # os.environ['CUBLAS_WORKSPACE_CONFIG'] = ":16:8"  # less mem but slower
 
@@ -26,7 +30,7 @@ from unlearning_methods.surgical_irreversible_unlearning_lora import (
 )
 from utils.data_loading import CachedBatches, dataset_loaders
 from utils.git_and_reproducibility import *
-from utils.model_operations import relearn
+from utils.model_operations import relearn, relearn_with_retain
 from utils.training import *
 
 logging.basicConfig(
@@ -80,9 +84,10 @@ def run_study(storage, config_path, variant_num, if_study_exists="fail", n_trial
     r_eval = next(iter(retain_val_batches))
     f_eval = next(iter(forget_val_batches))
 
-    allowed_r_loss = eval_(
+    _init_res = eval_(
         AutoModelForCausalLM.from_pretrained(config.model_id), f_eval, r_eval
-    )["retain_loss"]
+    )
+    allowed_r_loss = _init_res["retain_loss"]
     allowed_r_loss += getattr(config, "retain_loss_budget", 0)
 
     unlearning_func = dict(
@@ -126,18 +131,76 @@ def run_study(storage, config_path, variant_num, if_study_exists="fail", n_trial
         forget_loss = min(forget_losses)
         return forget_loss
 
+    def objective_wmdp(trial):
+        # construct hyperparams
+        hyperparams = dict()
+        for hp_name, distribution in hyperparam_ranges.items():
+            if distribution is None:
+                continue
+            elif isinstance(distribution, list):
+                low, high, log = distribution
+                hyperparams[hp_name] = trial.suggest_float(hp_name, low, high, log=log)
+            else:
+                hyperparams[hp_name] = distribution
+        hyperparams = SimpleNamespace(**hyperparams)
+        logging.info(f"trial {trial.number} - {trial.params}")
+
+        wandb.init(
+            project="wmdp-eval2",
+            group=variant_name,
+            name=f"{variant_name}-{trial.number}",
+        )
+        accuracy = eval_on_wmdp(model)
+        wandb.log(_init_res | {"wmdp_accuracy": accuracy}, step=0)
+
+        set_seeds(42)
+        model = unlearning_func(
+            hyperparams,
+            config,
+            retain_batches,
+            forget_batches,
+            f_eval,
+            r_eval,
+            allowed_r_loss,
+            eval_wmdp_every=config.eval_wmdp_every,
+        )
+
+        set_seeds(42)
+        _ = relearn_with_retain(
+            model,
+            relearn_config,
+            retain_val_batches,
+            forget_val_batches,
+            eval_wmdp_every=config.eval_wmdp_every,
+            step_offset=config.unlearn_steps,
+        )
+
+        return eval_on_wmdp(model)
+
     if if_study_exists == "delete":
         delete_study_if_exists(study_name, storage)
-    study = optuna.create_study(
-        study_name=study_name,
-        storage=storage,
-        direction="maximize",
-        load_if_exists=(if_study_exists in ["load", "load-remaining"]),
-    )
+
+    if hasattr(config, "eval_wmdp_every"):
+        study = optuna.create_study(
+            study_name=study_name,
+            storage=storage,
+            direction="minimize",
+            load_if_exists=(if_study_exists in ["load", "load-remaining"]),
+        )
+        study.set_metric_names(["wmdp_accuracy"])
+    else:
+        study = optuna.create_study(
+            study_name=study_name,
+            storage=storage,
+            direction="maximize",
+            load_if_exists=(if_study_exists in ["load", "load-remaining"]),
+        )
+        study.set_metric_names(["forget_loss"])
+
     save_file_and_attach_logger(config_path, study.study_name)
-    study.set_metric_names(["forget_loss"])
     study.set_user_attr("commit_hash", commit_hash())
     study.set_user_attr("is_repo_clean", is_repo_clean())
+
     for k, v in config.__dict__.items():
         study.set_user_attr(k, v)
 
@@ -148,7 +211,10 @@ def run_study(storage, config_path, variant_num, if_study_exists="fail", n_trial
 
     try:
         print(f"{n_trials=}")
-        study.optimize(objective, n_trials=n_trials)
+        if hasattr(config, "eval_wmdp_every"):
+            study.optimize(objective_wmdp, n_trials=n_trials)
+        else:
+            study.optimize(objective, n_trials=n_trials)
     except KeyboardInterrupt:
         pass
 
