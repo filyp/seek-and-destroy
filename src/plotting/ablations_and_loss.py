@@ -85,7 +85,7 @@ for multistudy_name in multistudy_names:
 
 # %%
 titles_dict = {
-    "TAR": "TAR",
+    "TAR2": "TAR",
     "neg_cross_entropy_loss": "MUDMAN",
     "no_adversary": "MUDMAN w/o meta-learning",
     "no_masking": "MUDMAN w/o masking",
@@ -96,7 +96,7 @@ titles_dict = {
     # "no_adv_decay": "no adversary decay",
 }
 positions_dict = {
-    "TAR": 5,
+    "TAR2": 5,
     "neg_cross_entropy_loss": 4,
     "no_adversary": 3,
     "no_masking": 2,
