@@ -1,5 +1,6 @@
 # %%
 import datetime
+
 from IPython import get_ipython
 
 import wandb
@@ -111,15 +112,29 @@ hyperparams = SimpleNamespace(
 # config.unlearning_loss_fn = "neg_entropy"
 
 variants = dict(
-    neg_cross_entropy_loss=dict(unlearning_loss_fn="neg_cross_entropy"),
-    neg_entropy_loss=dict(unlearning_loss_fn="neg_entropy"),
+    neg_cross_entropy_loss=dict(
+        unlearning_loss_fn="neg_cross_entropy",
+        unlearning_rate=8e-6,
+    ),
+    neg_entropy_loss=dict(
+        unlearning_loss_fn="neg_entropy",
+        unlearning_rate=5e-6,
+    ),
     # logit_loss=dict(
     #   unlearning_loss_fn="correct_logit_minus_avg"
     # ),
     # ! ablations
-    no_masking=dict(use_masking=False),
-    no_adversary=dict(train_adversary=False),
-    no_normalization=dict(normalize_grads=False, unlearning_rate=5e-2),
+    no_masking=dict(
+        use_masking=False,
+        unlearning_rate=5e-7,
+    ),
+    no_adversary=dict(
+        train_adversary=False,
+    ),
+    no_normalization=dict(
+        normalize_grads=False,
+        unlearning_rate=5e-2,
+    ),
     TAR2=dict(
         # it also has and target modules
         unlearning_loss_fn="neg_entropy",
@@ -149,7 +164,7 @@ for variant_name, variant_config in variants.items():
     )
 
     wandb.init(project="wmdp-eval", name=f"{stamp}-{variant_name}")
-    accuracy = eval_on_wmdp(model, subset=128)
+    accuracy = eval_on_wmdp(model)
     wandb.log(_init_res | {"wmdp_accuracy": accuracy}, step=0)
 
     set_seeds(42)

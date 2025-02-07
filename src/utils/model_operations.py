@@ -130,7 +130,7 @@ def relearn_with_retain(
             # wandb.log(res, step=_passes_done)
 
         if eval_wmdp_every is not None and _passes_done % eval_wmdp_every == 0:
-            accuracy = eval_on_wmdp(model, subset=128)
+            accuracy = eval_on_wmdp(model)
             wandb.log(
                 res | {"wmdp_accuracy": accuracy}, step=_passes_done + step_offset
             )
