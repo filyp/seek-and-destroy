@@ -1,6 +1,7 @@
 import logging
 from copy import deepcopy
 
+import optuna
 import torch as pt
 from peft import LoraConfig, get_peft_model
 
@@ -130,7 +131,8 @@ def relearn_with_retain(
             f_losses.append(res["forget_loss"])
             # wandb.log(res, step=_passes_done)
             if res["retain_loss"] > allowed_r_loss:
-                raise ValueError("Relearning failed, retain loss too high")
+                wandb.finish()
+                raise optuna.TrialPruned("Relearning failed, retain loss too high")
 
         if eval_wmdp_every is not None and _passes_done % eval_wmdp_every == 0:
             accuracy = eval_on_wmdp(model)
