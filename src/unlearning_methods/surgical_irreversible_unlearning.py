@@ -170,7 +170,14 @@ def surgical_irreversible_unlearning(
             _eval_counter += 1
             for p in interven_params:  # switch to base model
                 p.data = p.base_data
-            res = eval_(model, f_eval, r_eval, allowed_r_loss, _passes_done)
+            res = eval_(
+                model,
+                f_eval,
+                r_eval,
+                allowed_r_loss,
+                _passes_done,
+                use_wandb=eval_wmdp_every is not None,
+            )
             if soft_threshold is not None and res["retain_loss"] > soft_threshold:
                 if unlearn:
                     logging.info("unlearning disabled")

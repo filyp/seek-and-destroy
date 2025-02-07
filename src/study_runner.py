@@ -179,6 +179,7 @@ def run_study(storage, config_path, variant_num, if_study_exists="fail", n_trial
             eval_wmdp_every=config.eval_wmdp_every,
             step_offset=config.unlearn_steps,
         )
+        wandb.finish()
 
         return eval_on_wmdp(model)
 

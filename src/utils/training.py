@@ -6,6 +6,7 @@ import optuna
 import torch as pt
 from transformers import set_seed as set_transformers_seed
 
+import wandb
 from utils.git_and_reproducibility import *
 from utils.loss_fns import cross_entropy_loss
 
@@ -41,7 +42,9 @@ class MockTrial:
         pass
 
 
-def eval_(model, f_eval_batch, r_eval_batch, allowed_r_loss=None, step=""):
+def eval_(
+    model, f_eval_batch, r_eval_batch, allowed_r_loss=None, step="", use_wandb=False
+):
     model.eval()
     with pt.no_grad():
         res = dict(
@@ -54,6 +57,8 @@ def eval_(model, f_eval_batch, r_eval_batch, allowed_r_loss=None, step=""):
 
     if allowed_r_loss is not None and res["retain_loss"] > allowed_r_loss:
         logging.info(f"Pruning trial because retain loss is too high")
+        if use_wandb:
+            wandb.finish()
         raise optuna.TrialPruned()
 
     return res
@@ -78,6 +83,7 @@ def make_sure_optimal_values_are_not_near_range_edges(study):
             print(f"\t{param_name}\t in top 10% with value {value} in {method_name}")
             # print(f"WARNING: {param_name} in the top 10% of the range in best trial")
             # print(f"range: {min_} - {max_}, value: {value}, log={param_dist.log}")
+
 
 # stats for the last n non-pruned trials
 def get_stats_from_last_n_trials(study, trials, n=10):
