@@ -131,7 +131,9 @@ def circuit_breaker_forget_loss(
     return forget_loss
 
 
-def circuit_breaker_retain_loss(model, retain_input_ids, frozen_model=None, lora_model=None):
+def circuit_breaker_retain_loss(
+    model, retain_input_ids, frozen_model=None, lora_model=None, square_norm=False
+):
 
     retain_attention_mask = pt.ones_like(retain_input_ids)
 
@@ -171,9 +173,11 @@ def circuit_breaker_retain_loss(model, retain_input_ids, frozen_model=None, lora
     diffs = lora_retain_hidden - orig_retain_hidden
     # the last hidden state is anomalously high (at least for pythia)
     diffs = diffs[:-1]
-    retain_loss = pt.norm(diffs, dim=-1, p=2, dtype=pt.float).nanmean()
 
-    return retain_loss
+    if square_norm:
+        return pt.norm(diffs, dim=-1, p=2, dtype=pt.float).pow(2).nanmean()
+    else:
+        return pt.norm(diffs, dim=-1, p=2, dtype=pt.float).nanmean()
 
 
 # def correct_logit_loss(output, input_ids):

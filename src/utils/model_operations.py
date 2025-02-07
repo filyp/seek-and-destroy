@@ -83,7 +83,12 @@ def relearn(model, config, retain_val_batches, forget_val_batches, use_lora=Fals
 
 
 def relearn_with_retain(
-    model, config, retain_val_batches, forget_val_batches, eval_wmdp_every=None
+    model,
+    config,
+    retain_val_batches,
+    forget_val_batches,
+    eval_wmdp_every=None,
+    step_offset=0,
 ):
     for p in model.parameters():
         p.requires_grad = True
@@ -126,7 +131,9 @@ def relearn_with_retain(
 
         if eval_wmdp_every is not None and _passes_done % eval_wmdp_every == 0:
             accuracy = eval_on_wmdp(model, subset=128)
-            wandb.log({"wmdp_accuracy": accuracy})
+            wandb.log(
+                res | {"wmdp_accuracy": accuracy}, step=_passes_done + step_offset
+            )
             print(f"accuracy={accuracy}")
 
     logging.info("")

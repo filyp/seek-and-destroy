@@ -3,8 +3,8 @@ from copy import deepcopy
 
 import torch as pt
 from transformers import AutoModelForCausalLM
-import wandb
 
+import wandb
 from utils.loss_fns import *
 from utils.training import *
 
@@ -34,7 +34,7 @@ def surgical_irreversible_unlearning(
         else:
             model = AutoModelForCausalLM.from_pretrained(config.model_id)
     model.config.use_cache = False
-    
+
     clip_at = h.additional_param if config.additional_param_name == "clip_at" else 0
 
     # get params to intervene on
@@ -94,7 +94,9 @@ def surgical_irreversible_unlearning(
         loss = cross_entropy_loss(output, r_input_ids)
         if config.additional_param_name == "rep_eng_retain_lr":
             # ! representation engineering retain loss
-            rep_eng_loss = circuit_breaker_retain_loss(model, r_input_ids, frozen_model)
+            rep_eng_loss = circuit_breaker_retain_loss(
+                model, r_input_ids, frozen_model, square_norm=config.square_norm
+            )
             # note this loss is scaled both by this LR and retaining_rate
             rep_eng_loss *= h.additional_param
             loss += rep_eng_loss
@@ -177,10 +179,10 @@ def surgical_irreversible_unlearning(
                 if not unlearn:
                     logging.info("unlearning enabled")
                 unlearn = True
-        
+
         if eval_wmdp_every is not None and _passes_done % eval_wmdp_every == 0:
             accuracy = eval_on_wmdp(model, subset=128)
-            wandb.log({"wmdp_accuracy": accuracy})
+            wandb.log(res | {"wmdp_accuracy": accuracy}, step=_passes_done)
             print(f"accuracy={accuracy}")
 
     for p in interven_params:  # switch to base model

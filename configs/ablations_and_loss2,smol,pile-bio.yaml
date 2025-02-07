@@ -53,12 +53,25 @@ variants:
     normalize_grads: false
     unlearning_rate: [1.e-4, 3.e+2, true]
   
-  TAR:
+  # TAR:
+  #   # it also has and target modules
+  #   unlearning_loss_fn: neg_entropy
+  #   use_masking: false
+  #   retain_momentum: [0, 0, false]
+  #   additional_param_name: rep_eng_retain_lr
+  #   square_norm: false
+  #   additional_param: [0, 2, false]
+  #   adv_decay: [1, 1, false]
+  #   normalize_grads: false
+  
+  TAR2:
     # it also has and target modules
+    # this run uses repE retain loss correctly, with squared norm
     unlearning_loss_fn: neg_entropy
     use_masking: false
     retain_momentum: [0, 0, false]
     additional_param_name: rep_eng_retain_lr
-    additional_param: [0, 2, false]
+    square_norm: true
+    additional_param: [1, 1, false]
     adv_decay: [1, 1, false]
     normalize_grads: false
