@@ -181,6 +181,10 @@ def run_study(storage, config_path, variant_num, if_study_exists="fail", n_trial
             forget_val_batches,
             eval_wmdp_every=config.eval_wmdp_every,
             step_offset=config.unlearn_steps,
+            # this is very rarely needed, but when it happens, it means
+            # relearning was broken, so reject
+            # (alternative would be to relearn slower, but that's inefficient)
+            allowed_r_loss=_init_res["retain_loss"] + config.hard_loss_budget,
         )
         wandb.finish()
 

@@ -89,6 +89,7 @@ def relearn_with_retain(
     forget_val_batches,
     eval_wmdp_every=None,
     step_offset=0,
+    allowed_r_loss=float("inf"),
 ):
     for p in model.parameters():
         p.requires_grad = True
@@ -128,6 +129,8 @@ def relearn_with_retain(
             res = eval_(model, f_eval_batch, r_eval_batch, step=_passes_done)
             f_losses.append(res["forget_loss"])
             # wandb.log(res, step=_passes_done)
+            if res["retain_loss"] > allowed_r_loss:
+                raise ValueError("Relearning failed, retain loss too high")
 
         if eval_wmdp_every is not None and _passes_done % eval_wmdp_every == 0:
             accuracy = eval_on_wmdp(model)

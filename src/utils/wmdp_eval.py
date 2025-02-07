@@ -1,7 +1,10 @@
 # %%
+import logging
+import optuna
 import torch as pt
 from datasets import load_dataset
 from transformers import AutoModelForCausalLM, AutoTokenizer
+import wandb
 
 
 model_id = "meta-llama/Llama-3.2-1B"
@@ -79,7 +82,10 @@ def eval_on_wmdp(model, batch_size=16, subset=None):
 
         probs = pt.softmax(last_token_logits, dim=-1)
         answer_probs = probs[:, answer_ids]
-        # assert all(answer_probs.sum(dim=-1) > 0.1), answer_probs
+        # if not all(answer_probs.sum(dim=-1) > 0.2):
+        #     logging.warning("Sum of answer probs is too low, pruning")
+        #     wandb.finish()
+        #     raise optuna.TrialPruned()
 
         answer_probs /= answer_probs.sum(dim=-1, keepdim=True)  # normalize
         # assert pt.allclose(answer_probs.sum(dim=-1), pt.tensor(1.0, dtype=pt.bfloat16))

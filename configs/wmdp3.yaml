@@ -49,7 +49,6 @@ variants:
   #   retain_momentum: [0, 0, false]
   no_adversary:
     train_adversary: false
-    adv_decay: [1, 1, false]  # it has no effect anyway
   # no_adv_decay:
   #   adv_decay: [1, 1, false]
   no_normalization:
