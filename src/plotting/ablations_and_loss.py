@@ -102,11 +102,11 @@ titles_dict = {
     # "no_adv_decay": "no adversary decay",
 }
 positions_dict = {
-    "TAR2": 5,
-    "neg_cross_entropy_loss": 4,
-    "no_adversary": 3,
-    "no_masking": 2,
-    "no_normalization": 1,
+    "TAR2": 4,
+    "neg_cross_entropy_loss": 3,
+    "no_adversary": 2,
+    "no_masking": 1,
+    "no_normalization": 0,
     # "neg_entropy_loss": 0,
     # "logit_loss": 6,
     # "no_r_momentum": 3,
@@ -122,9 +122,9 @@ column_fontsize = 12  # Adjust this value as needed
 axes[0, 0].set_title("Llama-3.2-1B", fontsize=column_fontsize)
 axes[0, 1].set_title("SmolLM-135M", fontsize=column_fontsize)
 axes[0, 2].set_title("pythia-14m", fontsize=column_fontsize)
-axes[-1, 0].set_xlabel("Forget loss after relearning")
-axes[-1, 1].set_xlabel("Forget loss after relearning")
-axes[-1, 2].set_xlabel("Forget loss after relearning")
+axes[-1, 0].set_xlabel("Forget loss after relearning↑")
+axes[-1, 1].set_xlabel("Forget loss after relearning↑")
+axes[-1, 2].set_xlabel("Forget loss after relearning↑")
 
 # Set row titles with the same font size
 axes[0, 0].set_ylabel("Pile-Bio", fontsize=column_fontsize, labelpad=12)
