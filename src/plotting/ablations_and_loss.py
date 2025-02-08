@@ -30,12 +30,18 @@ storage = get_storage(db_url)
 # %% get the studies
 multistudy_to_method_stats = dict()
 multistudy_names = [
-    "llama32,python",
+    # "llama32,python",
+    # "llama32,pile-bio",
+    # "smol,python",
+    # "smol,pile-bio",
+    # "pythia,python",
+    # "pythia,pile-bio",
     "llama32,pile-bio",
-    "smol,python",
     "smol,pile-bio",
-    "pythia,python",
     "pythia,pile-bio",
+    "llama32,python",
+    "smol,python",
+    "pythia,python",
 ]
 for multistudy_name in multistudy_names:
     multistudy_to_method_stats[multistudy_name] = dict()
@@ -87,10 +93,10 @@ for multistudy_name in multistudy_names:
 titles_dict = {
     "TAR2": "TAR",
     "neg_cross_entropy_loss": "MUDMAN",
-    "no_adversary": "MUDMAN w/o meta-learning",
-    "no_masking": "MUDMAN w/o masking",
-    "no_normalization": "MUDMAN w/o normalization",
-    "neg_entropy_loss": "MUDMAN w/ neg entropy loss",
+    "no_adversary": "w/o meta-learning",
+    "no_masking": "w/o masking",
+    "no_normalization": "w/o normalization",
+    # "neg_entropy_loss": "MUDMAN w/ neg entropy loss",
     # "logit_loss": "logit loss",
     # "no_r_momentum": "no retain momentum",
     # "no_adv_decay": "no adversary decay",
@@ -101,27 +107,28 @@ positions_dict = {
     "no_adversary": 3,
     "no_masking": 2,
     "no_normalization": 1,
-    "neg_entropy_loss": 0,
+    # "neg_entropy_loss": 0,
     # "logit_loss": 6,
     # "no_r_momentum": 3,
     # "no_adv_decay": 1,
 }
 
 # Create the plot with n subplots side by side
-fig, axes = plt.subplots(3, 2, figsize=(9, 4.5))
+fig, axes = plt.subplots(2, 3, figsize=(9, 3.5))
 # todo post-review: make the plot higher, to relax a bit; (maybe also add the safeguarding loss? nah)
 
 # Set column titles with specified font size
 column_fontsize = 12  # Adjust this value as needed
-axes[0, 0].set_title("Python", fontsize=column_fontsize)
-axes[0, 1].set_title("Pile-Bio", fontsize=column_fontsize)
+axes[0, 0].set_title("Llama-3.2-1B", fontsize=column_fontsize)
+axes[0, 1].set_title("SmolLM-135M", fontsize=column_fontsize)
+axes[0, 2].set_title("pythia-14m", fontsize=column_fontsize)
 axes[-1, 0].set_xlabel("Forget loss after relearning")
 axes[-1, 1].set_xlabel("Forget loss after relearning")
+axes[-1, 2].set_xlabel("Forget loss after relearning")
 
 # Set row titles with the same font size
-row_titles = ["Llama-3.2-1B", "SmolLM-135M", "pythia-14m"]
-for i, ax in enumerate(axes[:, 0]):
-    ax.set_ylabel(row_titles[i], fontsize=column_fontsize)
+axes[0, 0].set_ylabel("Pile-Bio", fontsize=column_fontsize, labelpad=12)
+axes[1, 0].set_ylabel("Python", fontsize=column_fontsize, labelpad=12)
 
 # Create a color mapping for methods
 # Use default color cycle
@@ -132,10 +139,13 @@ method_to_color
 
 # Define data for plotting
 data = []  # Initialize data list
-scales = [6, 0.5]
+scales = [0.5, 6]
 
 for n, (multistudy_name, method_stats) in enumerate(multistudy_to_method_stats.items()):
-    ax = axes[n // 2, n % 2]
+    ax = axes[n // 3, n % 3]
+
+    # filter method_stats
+    method_stats = {n: s for n, s in method_stats.items() if n in titles_dict}
 
     ax.barh(
         [positions_dict[name] for name in method_stats.keys()],
@@ -148,7 +158,7 @@ for n, (multistudy_name, method_stats) in enumerate(multistudy_to_method_stats.i
 
     # Update yticks for reversed order
     ax.set_yticks([positions_dict[name] for name in method_stats.keys()])
-    if n % 2 == 0:
+    if n % 3 == 0:
         # ax.yaxis.set_tick_params(pad=150)  # Adjust this value as needed
         ax.set_yticklabels([titles_dict[name] for name in method_stats.keys()])
     else:
@@ -174,7 +184,7 @@ for n, (multistudy_name, method_stats) in enumerate(multistudy_to_method_stats.i
     min_bar = min(min_bar, baseline)
     # margin = (max_bar - min_bar) / 5  # Calculate the margin
     center = (max_bar + min_bar) / 2
-    scale = scales[n % 2]
+    scale = scales[n // 3]
     ax.set_xlim(center - scale / 2, center + scale / 2)
 
 plt.tight_layout()

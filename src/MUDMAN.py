@@ -4,7 +4,7 @@ from typing import Iterator
 import torch as pt
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from utils.loss_fns import cross_entropy_loss
+from utils.loss_fns import cross_entropy_loss, loss_fns
 from utils.training import eval_
 
 
@@ -24,6 +24,7 @@ def MUDMAN(
     adv_lr: float = 0.001,
     retaining_rate: float = 0.001,
     retain_momentum: float = 0.9,
+    unlearning_loss_fn_name: str = "neg_entropy",
 ) -> AutoModelForCausalLM:
     """Meta-Unlearning with Dynamic Masking, Accumulation and Normalization (MUDMAN).
 
@@ -38,6 +39,7 @@ def MUDMAN(
         f_eval: Evaluation batch for the forget set
         r_eval: Evaluation batch for the retain set
         unlearning_rate: Learning rate for the unlearning updates
+            Optimal values may be quite high, because gradients are normalized
         target_modules: List of module names to target for intervention
         unlearn_steps: Number of unlearning steps to perform
         allowed_r_loss: Maximum allowed loss increase on retain set
@@ -45,11 +47,13 @@ def MUDMAN(
         adv_lr: Learning rate for the adversarial updates
         retaining_rate: Learning rate for retain updates
         retain_momentum: Momentum factor for retain gradient accumulation
+        unlearning_loss_fn_name: Name of the unlearning loss function to use
 
     Returns:
         The modified model after unlearning
     """
     model.config.use_cache = False
+    unlearning_loss_fn = loss_fns[unlearning_loss_fn_name]
 
     # Get params to intervene on
     interven_params = [
@@ -101,15 +105,16 @@ def MUDMAN(
         for p in interven_params:  # Switch to adversary
             p.data = p.adv_data
         output = model(f_input_ids)
-        cross_entropy_loss(output, f_input_ids).backward()
+        cross_entropy_loss(output, f_input_ids).backward(retain_graph=True)
         for p in interven_params:
             # Apply adversary update
             p.adv_data -= adv_lr * p.grad
 
         # ! Unlearning step with masking
+        model.zero_grad()
+        unlearning_loss_fn(output, f_input_ids).backward()
         grad_norm = sum(p.grad.norm() ** 2 for p in interven_params) ** 0.5
         for p in interven_params:
-            p.grad *= -1  # For unlearning use the inverted gradient
             p.grad *= p.retain_acc.sign() == p.grad.sign()  # Mask
             p.base_data -= unlearning_rate / grad_norm * p.grad  # Normalize & update
 
@@ -134,6 +139,7 @@ if __name__ == "__main__":
     retain_set_name = "pile_bio_retain"
     forget_set_name = "pile_bio_forget"
     batch_size = 16
+    # initial losses on these datasets: forget loss: 2.955, retain loss: 3.260
 
     pt.set_default_device("cuda")
 
