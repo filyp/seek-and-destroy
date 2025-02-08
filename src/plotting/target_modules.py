@@ -32,7 +32,7 @@ def create_model_comparison_plot_horizontal(
 
     # Create the plot with n subplots side by side
     n_plots = len(datasets)
-    fig, axes = plt.subplots(1, n_plots, figsize=(8, 4))
+    fig, axes = plt.subplots(1, n_plots, figsize=(8.3, 3.8))
 
     # Convert to array of axes if single plot
     if n_plots == 1:
@@ -78,7 +78,7 @@ def create_model_comparison_plot_horizontal(
         # Update yticks for reversed order
         ax.set_yticks(df["pos"])
         ax.set_yticklabels(df["study_name"])
-        ax.set_xlabel("Forget loss")
+        ax.set_xlabel("Forget loss after relearning↑")
         ax.set_title(model_name)
 
         # Start x-axis at 0
@@ -163,7 +163,7 @@ def create_model_comparison_plot_vertical(
         # Update xticks
         ax.set_xticks(df["pos"])
         ax.set_xticklabels(df["study_name"], rotation=45, ha="right")
-        ax.set_ylabel("Forget loss")
+        ax.set_ylabel("Forget loss after relearning↑")
         ax.set_title(model_name)
 
         # Start y-axis at 0
@@ -263,8 +263,8 @@ smol_cruelty = [
 ]
 
 # Create and show the plot
-fig, axes = create_model_comparison_plot_vertical(
-    # fig, axes = create_model_comparison_plot_horizontal(
+# fig, axes = create_model_comparison_plot_vertical(
+fig, axes = create_model_comparison_plot_horizontal(
     [pythia_python, smol_python, smol_cruelty],  # Example with 3 plots using same data
     ["Pythia-14M\npython", "SmolLM-135M\npython", "SmolLM-135M\ncruelty"],
     baselines=[3.63, 2.11, 2.682],
