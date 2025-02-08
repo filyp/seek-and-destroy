@@ -88,12 +88,12 @@ plot
 
 
 multistudy_names = [
-    "llama32,python",
     "llama32,pile-bio",
-    "smol,python",
     "smol,pile-bio",
-    "pythia,python",
     "pythia,pile-bio",
+    "llama32,python",
+    "smol,python",
+    "pythia,python",
 ]
 for multistudy_name in multistudy_names:
     config_path = (
@@ -131,7 +131,7 @@ for multistudy_name in multistudy_names:
             print(f"Study {study_name} not found")
 
     # # %% slice plot
-    plot = stacked_slice_plot(studies, all_trials)
+    plot = stacked_slice_plot(studies, all_trials, show_additional_param=False)
     dir_name = repo_root() / "paper" / "plots" / "slice"
     dir_name.mkdir(parents=True, exist_ok=True)
     plot.write_image(dir_name / f"{multistudy_name}.pdf")
@@ -141,10 +141,8 @@ for multistudy_name in multistudy_names:
     dir_name = repo_root() / "paper" / "plots" / "history"
     dir_name.mkdir(parents=True, exist_ok=True)
     plot.write_image(dir_name / f"{multistudy_name}.pdf")
-
+    
     # save_img(plot, f"{multistudy_name}_history_and_importance")
-
-# %%
 
 # %%
 

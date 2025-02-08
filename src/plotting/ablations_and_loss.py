@@ -114,7 +114,7 @@ positions_dict = {
 }
 
 # Create the plot with n subplots side by side
-fig, axes = plt.subplots(2, 3, figsize=(9, 3.5))
+fig, axes = plt.subplots(2, 3, figsize=(9, 3.3))
 # todo post-review: make the plot higher, to relax a bit; (maybe also add the safeguarding loss? nah)
 
 # Set column titles with specified font size

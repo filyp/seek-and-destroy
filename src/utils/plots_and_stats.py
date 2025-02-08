@@ -46,7 +46,9 @@ def save_img(fig, file_name):
 
 
 def stacked_slice_plot(
-    studies: list[optuna.Study], all_trials: list[list[optuna.Trial]]
+    studies: list[optuna.Study],
+    all_trials: list[list[optuna.Trial]],
+    show_additional_param: bool = True,
 ):
     study_names = [s.study_name for s in studies]
 
@@ -57,6 +59,10 @@ def stacked_slice_plot(
     # move unlearning_rate to the beginning
     param_list.remove("unlearning_rate")
     param_list.insert(0, "unlearning_rate")
+    
+    if not show_additional_param:
+        # remove additional_param if present
+        param_list = [p for p in param_list if "additional_param" not in p]
 
     # Calculate overall y-axis range across all studies
     _values = [t.values[0] for ts in all_trials for t in ts if t.values is not None]
@@ -83,7 +89,13 @@ def stacked_slice_plot(
             trace[0].update(marker={"showscale": showscale})
             showscale = False  # only needs to be set once
 
+            if not show_additional_param:
+                # Skip additional_param columns
+                if "additional_param" in subplot_info.param_name:
+                    continue
+
             j = param_list.index(subplot_info.param_name) + 1
+
             for t in trace:
                 figure.add_trace(t, row=i, col=j)
 
@@ -119,7 +131,7 @@ def stacked_slice_plot(
                 figure.update_xaxes(type="log", row=i, col=j)
 
     figure.update_layout(
-        width=300 * len(param_list),
+        width=225 * len(param_list),
         height=300 * len(study_names),
     )
     return figure
@@ -149,7 +161,7 @@ def stacked_history_and_importance_plots(
     figure.update_layout(**common_layout)
     figure.update_layout(
         title={"text": common_prefix, "xanchor": "center", "x": 0.5},
-        width=1200,
+        width=900,
         height=300 * len(studies),
         showlegend=False,
     )
