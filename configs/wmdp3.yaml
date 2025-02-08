@@ -7,7 +7,7 @@ general_config:
   forget_set_name: pile_bio_forget
   unlearn_steps: 2400  # 20x what the other runs use
   batch_size: 16
-  n_trials: 5 
+  n_trials: 30
   normalize_grads: true
   hard_loss_budget: 0.1
   soft_loss_budget: 0.05
@@ -34,26 +34,35 @@ hyperparams:
 variants:
 
   # ! loss functions
-  neg_cross_entropy_loss:
-    unlearning_loss_fn: neg_cross_entropy
+  # neg_cross_entropy_loss:
+  #   unlearning_loss_fn: neg_cross_entropy
   neg_entropy_loss:
     unlearning_loss_fn: neg_entropy
-  logit_loss:
-    unlearning_loss_fn: correct_logit_minus_avg
+  # logit_loss:
+  #   unlearning_loss_fn: correct_logit_minus_avg
 
   # ! ablations
-  no_masking:
+  no_masking_ent:
     use_masking: false
     unlearning_rate: [1.e-7, 1.e-4, true]
-  # no_r_momentum:
-  #   retain_momentum: [0, 0, false]
-  no_adversary:
+    unlearning_loss_fn: neg_entropy
+  no_adversary_ent:
     train_adversary: false
-  # no_adv_decay:
-  #   adv_decay: [1, 1, false]
-  no_normalization:
+    unlearning_loss_fn: neg_entropy
+  no_normalization_ent:
     normalize_grads: false
     unlearning_rate: [1.e-1, 1.e+2, true]
+    unlearning_loss_fn: neg_entropy
+
+  # # ! ablations
+  # no_masking:
+  #   use_masking: false
+  #   unlearning_rate: [1.e-7, 1.e-4, true]
+  # no_adversary:
+  #   train_adversary: false
+  # no_normalization:
+  #   normalize_grads: false
+  #   unlearning_rate: [1.e-1, 1.e+2, true]
   
   TAR2:
     # it also has and target modules
